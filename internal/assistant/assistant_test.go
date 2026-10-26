@@ -3,6 +3,7 @@ package assistant
 import (
 	"archive/zip"
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -101,7 +102,7 @@ func setup(t *testing.T, p *fakeProvider) (*Service, *projects.Service, string, 
 	s := &Service{
 		DB: db, Projects: ps,
 		Agent:    agent.Agent{Provider: p, Compiler: okCompiler{}, MaxIterations: 10, Timeout: time.Minute},
-		ModelFor: func(context.Context) (string, error) { return "m", nil },
+		ModelFor: func(_ context.Context, c Choice) (Choice, error) { return Choice{Model: cmp.Or(c.Model, "m")}, nil },
 	}
 	c, err := s.CreateChat(context.Background(), res.Project.ID)
 	if err != nil {
@@ -137,7 +138,7 @@ func TestScenarioAcceptCreatesOneCommit(t *testing.T) {
 	s, ps, id, chat := setup(t, p)
 	ctx := context.Background()
 	var activity []string
-	turn, err := s.Ask(ctx, chat, "Add a related-work subsection after the introduction", Context{OpenFile: "main.tex"}, func(e agent.Event) {
+	turn, err := s.Ask(ctx, chat, "Add a related-work subsection after the introduction", Context{OpenFile: "main.tex"}, Choice{}, func(e agent.Event) {
 		if e.Type == "activity" {
 			activity = append(activity, e.Activity)
 		}
@@ -186,7 +187,7 @@ func TestScenarioRejectLeavesNoTrace(t *testing.T) {
 	}}
 	s, ps, id, chat := setup(t, p)
 	ctx := context.Background()
-	turn, err := s.Ask(ctx, chat, "add related work", Context{}, func(agent.Event) {})
+	turn, err := s.Ask(ctx, chat, "add related work", Context{}, Choice{}, func(agent.Event) {})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +221,7 @@ func TestScenarioUserEditsDuringTurn(t *testing.T) {
 		p.before = map[int]func(){1: func() {
 			ps.WriteFile(ctx, id, "main.tex", strings.NewReader(strings.Replace(mainTex, "Method text.", "Method text, edited by hand.", 1)))
 		}}
-		turn, err := s.Ask(ctx, chat, "add related work", Context{}, func(agent.Event) {})
+		turn, err := s.Ask(ctx, chat, "add related work", Context{}, Choice{}, func(agent.Event) {})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -238,7 +239,7 @@ func TestScenarioUserEditsDuringTurn(t *testing.T) {
 		s, ps, id, chat := setup(t, p)
 		mine := strings.Replace(mainTex, "Intro text.", "Intro text, rewritten by me.", 1)
 		p.before = map[int]func(){1: func() { ps.WriteFile(ctx, id, "main.tex", strings.NewReader(mine)) }}
-		turn, err := s.Ask(ctx, chat, "add related work", Context{}, func(agent.Event) {})
+		turn, err := s.Ask(ctx, chat, "add related work", Context{}, Choice{}, func(agent.Event) {})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -263,7 +264,7 @@ func TestScenarioUsageLimit(t *testing.T) {
 	}}
 	s, ps, id, chat := setup(t, p)
 	logBefore := commits(t, ps, id)
-	turn, err := s.Ask(context.Background(), chat, "add related work", Context{}, func(agent.Event) {})
+	turn, err := s.Ask(context.Background(), chat, "add related work", Context{}, Choice{}, func(agent.Event) {})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,11 +285,11 @@ func TestStopAndBusy(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	result := make(chan *Turn)
 	go func() {
-		turn, _ := s.Ask(ctx, chat, "slow", Context{}, func(agent.Event) {})
+		turn, _ := s.Ask(ctx, chat, "slow", Context{}, Choice{}, func(agent.Event) {})
 		result <- turn
 	}()
 	<-p.entered // the model is "thinking"
-	if _, err := s.Ask(context.Background(), chat, "second", Context{}, func(agent.Event) {}); !errors.Is(err, ErrBusy) {
+	if _, err := s.Ask(context.Background(), chat, "second", Context{}, Choice{}, func(agent.Event) {}); !errors.Is(err, ErrBusy) {
 		t.Fatalf("concurrent turn: %v", err)
 	}
 	cancel() // Stop

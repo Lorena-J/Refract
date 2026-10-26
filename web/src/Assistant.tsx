@@ -15,7 +15,9 @@ import {
   Square,
   X,
 } from 'lucide-react'
-import { api, describe, errorText, stream, type ApiError, type ChatGPTStatus } from './api'
+import { api, describe, errorText, stream, type ApiError, type ChatGPTStatus, type Model } from './api'
+import ModelPicker from './ModelPicker'
+import { resolveChoice } from '@/lib/models'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -85,6 +87,7 @@ export default function Assistant(p: Props) {
   const [running, setRunning] = useState(false)
   const [error, setError] = useState('')
   const [height, setHeight] = useState<number | null>(null) // while dragging; prefs keep the last one
+  const [models, setModels] = useState<Model[]>([])
   const abort = useRef<AbortController | null>(null)
   const input = useRef<HTMLTextAreaElement>(null)
   const overlay = useRef<HTMLDivElement>(null)
@@ -106,6 +109,15 @@ export default function Assistant(p: Props) {
   useEffect(() => {
     if (p.focus) input.current?.focus()
   }, [p.focus])
+
+  const usable = !!p.status?.status.signed_in && p.status.status.plan_granted
+  useEffect(() => {
+    if (!usable) return
+    api<Model[]>('/api/chatgpt/models')
+      .then(setModels)
+      .catch(() => {}) // the server falls back to its default model
+  }, [usable])
+  const choice = resolveChoice(models, prefs.model, prefs.effort)
 
   const bubble = !p.open && prefs.chatBubble
 
@@ -147,7 +159,8 @@ export default function Assistant(p: Props) {
       abort.current = new AbortController()
       await stream(
         `/api/chats/${id}/turns`,
-        { message, context: p.getContext() },
+        // Unresolved (models not loaded yet): send the stored pick, the server validates it.
+        { message, context: p.getContext(), choice: choice.model ? { model: choice.model.slug, effort: choice.effort } : { model: prefs.model, effort: prefs.effort } },
         (ev) => {
           if (ev.type === 'text') update((t) => ({ ...t, reply: t.reply + ev.text }))
           if (ev.type === 'activity') update((t) => ({ ...t, activity: [...t.activity, ev.activity] }))
@@ -418,6 +431,7 @@ export default function Assistant(p: Props) {
                   {plan?.plan_granted && p.status && <PlanBadge manageUsage={p.status.manage_usage} />}
                 </>
               )}
+              <ModelPicker models={models} model={choice.model} effort={choice.effort} compact={!p.open} />
               {!p.open && turns.length > 0 && (
                 <Tooltip>
                   <TooltipTrigger asChild>

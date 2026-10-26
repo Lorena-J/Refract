@@ -169,3 +169,43 @@ func TestModelsKeepsListedOnly(t *testing.T) {
 		t.Fatalf("models = %+v, %v", ms, err)
 	}
 }
+
+func TestModelsEfforts(t *testing.T) {
+	p := provider(t, signedIn(), func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"models":[{"slug":"a","visibility":"list","default_reasoning_level":"medium",
+			"supported_reasoning_levels":[{"effort":"low","description":"Fast"},{"effort":"medium"},{"effort":"ultra"}]},
+			{"slug":"b","visibility":"list","default_reasoning_level":"ultra","supported_reasoning_levels":[{"effort":"ultra"}]}]}`)
+	})
+	ms, err := p.Models(context.Background())
+	if err != nil || len(ms) != 2 {
+		t.Fatalf("models = %+v, %v", ms, err)
+	}
+	if got := ms[0].Efforts; len(got) != 2 || got[0].Effort != "low" || got[0].Description != "Fast" || ms[0].DefaultEffort != "medium" {
+		t.Errorf("a = %+v (ultra must be dropped: the API rejects it)", ms[0])
+	}
+	if len(ms[1].Efforts) != 0 || ms[1].DefaultEffort != "" {
+		t.Errorf("b = %+v, want no efforts", ms[1])
+	}
+}
+
+func TestPick(t *testing.T) {
+	ms := []Model{
+		{Slug: "a", DefaultEffort: "medium", Efforts: []Effort{{Effort: "low"}, {Effort: "medium"}}},
+		{Slug: "b"},
+	}
+	for _, c := range []struct {
+		slug, effort, wantSlug, wantEffort string
+		ok                                 bool
+	}{
+		{"", "", "a", "medium", true},
+		{"a", "low", "a", "low", true},
+		{"a", "max", "a", "medium", true}, // not offered: default
+		{"b", "low", "b", "", true},
+		{"zzz", "", "", "", false},
+	} {
+		m, e, ok := Pick(ms, c.slug, c.effort)
+		if ok != c.ok || m.Slug != c.wantSlug || e != c.wantEffort {
+			t.Errorf("Pick(%q, %q) = %q, %q, %v", c.slug, c.effort, m.Slug, e, ok)
+		}
+	}
+}

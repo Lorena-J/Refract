@@ -6,10 +6,12 @@ export type Prefs = {
   wrap: boolean
   chatBubble: boolean // collapsed assistant: a bubble instead of the input bar
   chatHeight: number // px of the open chat sheet; 0 = default
+  model: string // assistant model slug; '' = the server's default
+  effort: string // reasoning effort; '' = the model's default
 }
 
 const KEY = 'refract-prefs'
-const defaults: Prefs = { fontSize: 'normal', wrap: true, chatBubble: false, chatHeight: 0 }
+const defaults: Prefs = { fontSize: 'normal', wrap: true, chatBubble: false, chatHeight: 0, model: '', effort: '' }
 const listeners = new Set<() => void>()
 
 function load(): Prefs {

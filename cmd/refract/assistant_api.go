@@ -60,6 +60,7 @@ func (a *assistantAPI) ask(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Message string            `json:"message"`
 		Context assistant.Context `json:"context"`
+		Choice  assistant.Choice  `json:"choice"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&in); err != nil {
 		httpError(w, err, http.StatusBadRequest)
@@ -73,7 +74,7 @@ func (a *assistantAPI) ask(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "data: %s\n\n", b)
 		rc.Flush()
 	}
-	turn, err := a.svc.Ask(r.Context(), r.PathValue("chat"), in.Message, in.Context, func(e agent.Event) { send(e) })
+	turn, err := a.svc.Ask(r.Context(), r.PathValue("chat"), in.Message, in.Context, in.Choice, func(e agent.Event) { send(e) })
 	if err != nil {
 		var ae *ai.Error
 		if !errors.As(err, &ae) {

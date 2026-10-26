@@ -219,3 +219,17 @@ func TestSearch(t *testing.T) {
 		t.Fatalf("no match = %q", out)
 	}
 }
+
+func TestEffortIsSent(t *testing.T) {
+	for _, effort := range []string{"", "high"} {
+		p := &fakeProvider{script: [][]ai.Event{say("ok")}}
+		a := &Agent{Provider: p, Compiler: &fakeCompiler{}, Model: "m", Effort: effort, MaxIterations: 1, Timeout: time.Minute}
+		if _, err := a.Run(context.Background(), Input{Dir: setup(t), Message: "hi"}, func(Event) {}); err != nil {
+			t.Fatal(err)
+		}
+		got := p.requests[0].Reasoning
+		if (effort == "") != (got == nil) || (got != nil && got.Effort != effort) {
+			t.Errorf("effort %q: request reasoning = %+v", effort, got)
+		}
+	}
+}

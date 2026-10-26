@@ -51,9 +51,24 @@ func (p *SIWC) Status(ctx context.Context) Status {
 
 // Model is one model the signed-in account may use.
 type Model struct {
-	Slug        string `json:"slug"`
-	DisplayName string `json:"display_name"`
+	Slug          string   `json:"slug"`
+	DisplayName   string   `json:"display_name"`
+	Description   string   `json:"description"`
+	DefaultEffort string   `json:"default_effort"`
+	Efforts       []Effort `json:"efforts"` // reasoning levels, lightest first; empty: no reasoning control
 }
+
+// Effort is one reasoning level of a model.
+type Effort struct {
+	Effort      string `json:"effort"`
+	Description string `json:"description"`
+}
+
+// apiEfforts are the reasoning.effort values the Responses API accepts. The
+// models list also offers Codex-only levels ("ultra": client-side delegation)
+// that the API rejects with invalid_value.
+// ponytail: fixed list; follow the API's error message if it grows.
+var apiEfforts = map[string]bool{"none": true, "minimal": true, "low": true, "medium": true, "high": true, "xhigh": true, "max": true}
 
 // Models lists models available on the user's plan.
 func (p *SIWC) Models(ctx context.Context) ([]Model, error) {
@@ -64,20 +79,63 @@ func (p *SIWC) Models(ctx context.Context) ([]Model, error) {
 	defer resp.Body.Close()
 	var body struct {
 		Models []struct {
-			Model
-			Visibility string `json:"visibility"`
+			Slug        string   `json:"slug"`
+			DisplayName string   `json:"display_name"`
+			Description string   `json:"description"`
+			Visibility  string   `json:"visibility"`
+			Default     string   `json:"default_reasoning_level"`
+			Levels      []Effort `json:"supported_reasoning_levels"`
 		} `json:"models"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		return nil, err
 	}
-	var out []Model
+	out := []Model{}
 	for _, m := range body.Models {
-		if m.Visibility == "list" {
-			out = append(out, m.Model)
+		if m.Visibility != "list" {
+			continue
 		}
+		mm := Model{Slug: m.Slug, DisplayName: m.DisplayName, Description: m.Description, Efforts: []Effort{}}
+		for _, l := range m.Levels {
+			if apiEfforts[l.Effort] {
+				mm.Efforts = append(mm.Efforts, l)
+			}
+		}
+		if mm.HasEffort(m.Default) {
+			mm.DefaultEffort = m.Default
+		}
+		out = append(out, mm)
 	}
 	return out, nil
+}
+
+// HasEffort reports whether e is one of the model's reasoning levels.
+func (m Model) HasEffort(e string) bool {
+	for _, x := range m.Efforts {
+		if x.Effort == e {
+			return true
+		}
+	}
+	return false
+}
+
+// Pick resolves a requested model and effort against the plan's models: an
+// empty slug means the first model, an unknown or empty effort the model's
+// default. ok is false when slug is set but not offered.
+func Pick(ms []Model, slug, effort string) (m Model, eff string, ok bool) {
+	for _, x := range ms {
+		if x.Slug == slug || slug == "" {
+			m, ok = x, true
+			break
+		}
+	}
+	if !ok {
+		return Model{}, "", false
+	}
+	if m.HasEffort(effort) {
+		return m, effort, true
+	}
+	return m, m.DefaultEffort, true
 }
 
 func (p *SIWC) Stream(ctx context.Context, req Request) (<-chan Event, error) {

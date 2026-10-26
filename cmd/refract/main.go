@@ -108,19 +108,24 @@ func run() error {
 			MaxIterations: 25,
 			Timeout:       15 * time.Minute,
 		},
-		ModelFor: func(ctx context.Context) (string, error) {
-			if a.model != "" {
-				return a.model, nil
-			}
-			// No model configured: use the first one the plan offers.
+		// The UI's pick, else REFRACT_MODEL_AGENT, else the plan's first model.
+		ModelFor: func(ctx context.Context, want assistant.Choice) (assistant.Choice, error) {
 			ms, err := a.provider.Models(ctx)
 			if err != nil {
-				return "", err
+				return assistant.Choice{}, err
 			}
-			if len(ms) == 0 {
-				return "", errors.New("no models available on this ChatGPT plan; set REFRACT_MODEL_AGENT")
+			slug := cmp.Or(want.Model, a.model)
+			m, effort, ok := ai.Pick(ms, slug, want.Effort)
+			switch {
+			case ok:
+				return assistant.Choice{Model: m.Slug, Effort: effort}, nil
+			case want.Model == "" && slug != "":
+				return assistant.Choice{Model: slug}, nil // configured, possibly unlisted: trust it
+			case len(ms) == 0:
+				return assistant.Choice{}, errors.New("no models available on this ChatGPT plan; set REFRACT_MODEL_AGENT")
+			default:
+				return assistant.Choice{}, fmt.Errorf("model %q is not available on this ChatGPT plan", want.Model)
 			}
-			return ms[0].Slug, nil
 		},
 	}}
 	if err := asa.svc.Recover(ctx); err != nil {

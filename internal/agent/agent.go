@@ -17,6 +17,7 @@ type Agent struct {
 	Provider      ai.Provider
 	Compiler      compile.Compiler
 	Model         string
+	Effort        string // reasoning effort; empty: the model's default
 	MaxIterations int           // model calls per turn (PLAN.md §4.6: default 25)
 	Timeout       time.Duration // whole turn
 }
@@ -72,6 +73,9 @@ func (a *Agent) Run(ctx context.Context, in Input, emit func(Event)) (string, er
 		Model:        a.Model,
 		Instructions: fmt.Sprintf(instructions, cmpOr(in.MainFile, "(not set)"), tree),
 		Tools:        tools.Definitions(),
+	}
+	if a.Effort != "" {
+		req.Reasoning = &ai.Reasoning{Effort: a.Effort}
 	}
 	for _, m := range in.History {
 		b, _ := json.Marshal(m)

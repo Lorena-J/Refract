@@ -51,6 +51,9 @@ export async function stream(path: string, body: unknown, onEvent: (ev: any) => 
   }
 }
 
+export type Effort = { effort: string; description: string }
+export type Model = { slug: string; display_name: string; description: string; default_effort: string; efforts: Effort[] }
+
 export type ChatGPTStatus = {
   status: { provider: string; signed_in: boolean; plan_granted: boolean; email?: string; limit_reached: boolean }
   welcome_seen: boolean

@@ -22,6 +22,12 @@ type Request struct {
 	Instructions string            `json:"instructions,omitempty"`
 	Input        []json.RawMessage `json:"input"`
 	Tools        []Tool            `json:"tools,omitempty"`
+	Reasoning    *Reasoning        `json:"reasoning,omitempty"`
+}
+
+// Reasoning sets how hard the model thinks: one of the model's Efforts.
+type Reasoning struct {
+	Effort string `json:"effort"`
 }
 
 // Tool is a function tool definition.

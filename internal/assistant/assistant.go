@@ -60,12 +60,18 @@ type Context struct {
 	ToLine    int    `json:"to_line"`
 }
 
+// Choice is the model and reasoning effort picked in the UI; empty fields mean the defaults.
+type Choice struct {
+	Model  string `json:"model"`
+	Effort string `json:"effort"`
+}
+
 // Service owns chats and turns.
 type Service struct {
 	DB       *sql.DB
 	Projects *projects.Service
-	Agent    agent.Agent                           // template; Model is filled by ModelFor
-	ModelFor func(context.Context) (string, error) // model for the agent loop
+	Agent    agent.Agent                              // template; Model and Effort are filled by ModelFor
+	ModelFor func(context.Context, Choice) (Choice, error) // resolves the user's choice for the agent loop
 
 	mu      sync.Mutex
 	running map[string]bool // project id → a turn is running
@@ -214,7 +220,7 @@ func (s *Service) save(ctx context.Context, t *Turn) error {
 
 // Ask runs a turn. emit streams agent events while it runs. Cancelling ctx
 // (the user pressed Stop or left) stops the turn; nothing is applied.
-func (s *Service) Ask(ctx context.Context, chatID, text string, ec Context, emit func(agent.Event)) (*Turn, error) {
+func (s *Service) Ask(ctx context.Context, chatID, text string, ec Context, want Choice, emit func(agent.Event)) (*Turn, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil, errors.New("empty message")
@@ -273,7 +279,7 @@ func (s *Service) Ask(ctx context.Context, chatID, text string, ec Context, emit
 		return t, s.save(bg, t)
 	}
 
-	model, err := s.ModelFor(ctx)
+	choice, err := s.ModelFor(ctx, want)
 	if err != nil {
 		return fail("failed", err)
 	}
@@ -284,7 +290,7 @@ func (s *Service) Ask(ctx context.Context, chatID, text string, ec Context, emit
 	t.Base = base
 
 	a := s.Agent
-	a.Model = model
+	a.Model, a.Effort = choice.Model, choice.Effort
 	t.Reply, err = a.Run(ctx, agent.Input{Dir: dir, MainFile: p.MainFile, History: history, Message: t.Message}, func(e agent.Event) {
 		if e.Type == "activity" {
 			t.Activity = append(t.Activity, e.Activity)
