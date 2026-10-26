@@ -50,3 +50,19 @@ func initRepo(ctx context.Context, dir, message string) error {
 	_, err := git(ctx, dir, "commit", "-q", "--allow-empty", "-m", message)
 	return err
 }
+
+// Checkpoint commits the working tree if anything changed, and reports whether it did.
+func (s *Service) Checkpoint(ctx context.Context, id, message string) (bool, error) {
+	if _, err := s.Get(ctx, id); err != nil {
+		return false, err
+	}
+	dir := s.Path(id)
+	if _, err := git(ctx, dir, "add", "-A"); err != nil {
+		return false, err
+	}
+	if out, err := git(ctx, dir, "status", "--porcelain"); err != nil || out == "" {
+		return false, err
+	}
+	_, err := git(ctx, dir, "commit", "-q", "-m", message)
+	return err == nil, err
+}

@@ -134,3 +134,16 @@ button.link { border: none; background: none; padding: 0 4px; color: inherit; te
 .empty { padding: 16px; }
 .binary { padding: 16px; height: 100%; overflow: auto; }
 .binary img { max-width: 100%; }
+
+.pane.preview { color: var(--fg); }
+.compile-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+.compile-bar select { max-width: 50%; }
+.problems { list-style: none; padding: 0; margin: 0; font-size: 0.9em; }
+.problem { padding: 6px 0; border-bottom: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+.problem-kind { font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.problem.error .problem-kind { color: #c0392b; }
+.problem-where { font-family: ui-monospace, monospace; }
+.problem-msg { flex-basis: 100%; }
+.compile-links { display: flex; gap: 8px; margin-top: 8px; }
+.raw-log { max-height: 50vh; overflow: auto; font-size: 0.8em; }
+.problem button.link { text-align: left; }

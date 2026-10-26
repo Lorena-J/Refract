@@ -123,3 +123,21 @@ func TestWriteFileTooLarge(t *testing.T) {
 		t.Fatal("failed write clobbered the file")
 	}
 }
+
+func TestCheckpointCommitsOnlyChanges(t *testing.T) {
+	ctx := context.Background()
+	s, id := newProject(t)
+	if made, err := s.Checkpoint(ctx, id, "checkpoint: compile"); err != nil || made {
+		t.Fatalf("clean tree: made=%v err=%v", made, err)
+	}
+	s.WriteFile(ctx, id, "main.tex", strings.NewReader("edited"))
+	os.MkdirAll(filepath.Join(s.Path(id), ".refract/build"), 0o755)
+	os.WriteFile(filepath.Join(s.Path(id), ".refract/build/main.pdf"), []byte("pdf"), 0o644)
+	if made, err := s.Checkpoint(ctx, id, "checkpoint: compile"); err != nil || !made {
+		t.Fatalf("edited tree: made=%v err=%v", made, err)
+	}
+	out, _ := git(ctx, s.Path(id), "show", "--stat", "--format=%s", "HEAD")
+	if !strings.HasPrefix(out, "checkpoint: compile") || !strings.Contains(out, "main.tex") || strings.Contains(out, ".refract") {
+		t.Fatalf("HEAD = %q", out)
+	}
+}

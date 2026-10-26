@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { EditorState } from '@codemirror/state'
 import { api, errorText, mkdir, move, readFile, removeFile, writeFile, type FileEntry, type OpenedFile, type Project } from './api'
 import { Autosaver, type SaveStatus } from './autosave'
+import CompilePanel, { type CompileResult } from './CompilePanel'
 import Editor from './Editor'
 import FileTree from './FileTree'
 
@@ -22,6 +23,10 @@ export default function Workspace({ id }: { id: string }) {
   const [active, setActive] = useState<string | undefined>()
   const [statuses, setStatuses] = useState<Record<string, SaveStatus>>({})
   const [error, setError] = useState('')
+  const [compiling, setCompiling] = useState(false)
+  const [result, setResult] = useState<CompileResult | null>(null)
+  const [compileError, setCompileError] = useState('')
+  const [jump, setJump] = useState<{ path: string; line: number; n: number } | undefined>()
 
   // Outside React state: content loaded from the server and live editor states per open file.
   const loaded = useRef(new Map<string, OpenedFile>())
@@ -53,6 +58,42 @@ export default function Workspace({ id }: { id: string }) {
     window.addEventListener('beforeunload', onUnload)
     return () => window.removeEventListener('beforeunload', onUnload)
   }, [autosave])
+
+  async function compile() {
+    setCompiling(true)
+    setCompileError('')
+    try {
+      await autosave.flushAll() // compile what is on screen
+      setResult(await api<CompileResult>(`/api/projects/${id}/compile`, { method: 'POST' }))
+    } catch (e) {
+      setCompileError(errorText(e))
+    } finally {
+      setCompiling(false)
+    }
+  }
+  const compileRef = useRef(compile)
+  compileRef.current = compile
+
+  // Cmd/Ctrl+Enter anywhere in the workspace (the editor handles it itself when focused).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !e.defaultPrevented) {
+        e.preventDefault()
+        compileRef.current()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  async function jumpTo(path: string, line: number) {
+    await open(path)
+    setJump((j) => ({ path, line, n: (j?.n ?? 0) + 1 }))
+  }
+
+  async function setMainFile(path: string) {
+    await run(async () => setProject(await api<Project>(`/api/projects/${id}`, { method: 'PATCH', body: { main_file: path } })))
+  }
 
   async function run(fn: () => Promise<unknown>) {
     setError('')
@@ -196,6 +237,8 @@ export default function Workspace({ id }: { id: string }) {
               }}
               onChange={(p, c) => autosave.change(p, c)}
               onSave={() => active && autosave.flush(active)}
+              onCompile={compile}
+              jump={jump}
             />
           )}
           {active && current && !current.text && <BinaryView file={current} path={active} />}
@@ -203,7 +246,20 @@ export default function Workspace({ id }: { id: string }) {
         </div>
         {active && current?.text && <div className="status hint">{statusText[statuses[active] ?? 'saved']}</div>}
       </main>
-      <section className="pane preview">PDF</section>
+      <section className="pane preview">
+        {project && (
+          <CompilePanel
+            project={project}
+            texFiles={files.filter((f) => !f.dir && f.path.toLowerCase().endsWith('.tex')).map((f) => f.path)}
+            compiling={compiling}
+            result={result}
+            error={compileError}
+            onCompile={compile}
+            onMainFile={setMainFile}
+            onJump={jumpTo}
+          />
+        )}
+      </section>
     </div>
   )
 }

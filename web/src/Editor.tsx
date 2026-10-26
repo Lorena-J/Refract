@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { basicSetup } from 'codemirror'
-import { EditorState } from '@codemirror/state'
+import { EditorSelection, EditorState, Prec } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
 import { StreamLanguage } from '@codemirror/language'
 import { stex } from '@codemirror/legacy-modes/mode/stex'
@@ -22,30 +22,42 @@ type Props = {
   initial: (path: string) => string
   onChange: (path: string, content: string) => void
   onSave: () => void
+  onCompile: () => void
+  jump?: { path: string; line: number; n: number } // n changes on every request
 }
 
 // One EditorView; each open file keeps its own EditorState, swapped on tab switch.
-export default function Editor({ path, states, initial, onChange, onSave }: Props) {
+export default function Editor({ path, states, initial, onChange, onSave, onCompile, jump }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
   const current = useRef(path)
-  const cb = useRef({ onChange, onSave })
-  cb.current = { onChange, onSave }
+  const cb = useRef({ onChange, onSave, onCompile })
+  cb.current = { onChange, onSave, onCompile }
 
   const extensions = useRef([
     basicSetup,
     StreamLanguage.define(stex),
     EditorView.lineWrapping,
     theme,
-    keymap.of([
-      {
-        key: 'Mod-s',
-        run: () => {
-          cb.current.onSave()
-          return true
+    // Highest precedence: basicSetup binds Mod-Enter to "insert blank line".
+    Prec.highest(
+      keymap.of([
+        {
+          key: 'Mod-s',
+          run: () => {
+            cb.current.onSave()
+            return true
+          },
         },
-      },
-    ]),
+        {
+          key: 'Mod-Enter',
+          run: () => {
+            cb.current.onCompile()
+            return true
+          },
+        },
+      ]),
+    ),
     EditorView.updateListener.of((u) => {
       // Keep the map live, so tab switches and renames always see the latest state.
       if (states.has(current.current)) states.set(current.current, u.state)
@@ -74,6 +86,14 @@ export default function Editor({ path, states, initial, onChange, onSave }: Prop
     if (v.state !== next) v.setState(next)
     v.focus()
   }, [path])
+
+  useEffect(() => {
+    const v = view.current!
+    if (!jump || jump.path !== path) return
+    const line = v.state.doc.line(Math.min(Math.max(jump.line, 1), v.state.doc.lines))
+    v.dispatch({ selection: EditorSelection.cursor(line.from), effects: EditorView.scrollIntoView(line.from, { y: 'center' }) })
+    v.focus()
+  }, [jump, path])
 
   return <div className="editor-host" ref={host} />
 }

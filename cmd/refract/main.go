@@ -11,11 +11,13 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 
 	"refract/internal/ai"
 	"refract/internal/auth"
+	"refract/internal/compile"
 	"refract/internal/projects"
 	"refract/internal/siwc"
 	"refract/internal/store"
@@ -77,9 +79,24 @@ func run() error {
 		tmp: filepath.Join(dataDir, "tmp"),
 	}
 
+	timeout := 90 * time.Second
+	if v := os.Getenv("REFRACT_COMPILE_TIMEOUT"); v != "" {
+		secs, err := strconv.Atoi(v)
+		if err != nil || secs <= 0 {
+			return fmt.Errorf("REFRACT_COMPILE_TIMEOUT=%q: want a positive number of seconds", v)
+		}
+		timeout = time.Duration(secs) * time.Second
+	}
+	ca := &compileAPI{svc: pa.svc, runner: &compile.Runner{Compiler: &compile.Tectonic{
+		Bundle:   os.Getenv("REFRACT_TECTONIC_BUNDLE"),
+		CacheDir: os.Getenv("TECTONIC_CACHE_DIR"),
+		Timeout:  timeout,
+	}}}
+
 	app := http.NewServeMux()
 	a.routes(app, os.Getenv("REFRACT_DEV") == "1")
 	pa.routes(app)
+	ca.routes(app)
 	app.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 	app.Handle("/", web.Handler())
 
