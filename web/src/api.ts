@@ -107,7 +107,7 @@ export function errorText(e: unknown): string {
 export type FileEntry = { path: string; dir: boolean; size: number; mtime: number }
 export type OpenedFile = { text: true; content: string } | { text: false; blob: Blob; type: string; size: number }
 
-const fileURL = (id: string, path: string) => `/api/projects/${id}/file?path=${encodeURIComponent(path)}`
+export const fileURL = (id: string, path: string) => `/api/projects/${id}/file?path=${encodeURIComponent(path)}`
 
 export async function readFile(id: string, path: string): Promise<OpenedFile> {
   const res = await fetch(fileURL(id, path), { headers })

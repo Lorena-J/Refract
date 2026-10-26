@@ -68,6 +68,7 @@ type Props = {
   open: boolean // the chat sheet over the editor; collapsed it is an input bar or a bubble
   onOpen: (open: boolean) => void
   focus?: number // bump to focus the input
+  request?: { text: string; n: number } // send this (n changes on every request)
 }
 
 const finished: Partial<Record<Turn['status'], { label: string; tone: string }>> = {
@@ -110,6 +111,12 @@ export default function Assistant(p: Props) {
   useEffect(() => {
     if (p.focus) input.current?.focus()
   }, [p.focus])
+
+  useEffect(() => {
+    if (!p.request) return
+    if (running) setError('The assistant is busy with another request.')
+    else send(p.request.text)
+  }, [p.request?.n])
 
   const usable = !!p.status?.status.signed_in && p.status.status.plan_granted
   useEffect(() => {

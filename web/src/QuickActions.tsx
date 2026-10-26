@@ -35,6 +35,7 @@ type Job = { from: number; to: number; action: Action; instruction: string }
 
 export type QuickHandle = {
   run: (action: Action, instruction?: string) => void // from the ⌘K palette
+  ask: () => void // open the instruction field (context menu)
   cancel: () => boolean // Esc: stop a request or close a result
 }
 
@@ -118,6 +119,10 @@ export default function QuickActions({ view, path, dragging, handle }: Props) {
   }
 
   useImperativeHandle(handle, () => ({
+    ask() {
+      setAsking(true)
+      requestAnimationFrame(() => input.current?.focus())
+    },
     run(action, text = '') {
       if (action === 'custom') setInstruction(text)
       run(action, text)

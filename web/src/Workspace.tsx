@@ -4,6 +4,8 @@ import { usePanelRef } from 'react-resizable-panels'
 import {
   BookMarked,
   Check,
+  Copy,
+  Star,
   ChevronDown,
   ChevronLeft,
   File,
@@ -22,13 +24,27 @@ import {
   X,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { api, errorText, mkdir, move, readFile, removeFile, writeFile, type ChatGPTStatus, type FileEntry, type OpenedFile, type Project } from './api'
+import {
+  api,
+  download,
+  errorText,
+  fileURL,
+  mkdir,
+  move,
+  readFile,
+  removeFile,
+  writeFile,
+  type ChatGPTStatus,
+  type FileEntry,
+  type OpenedFile,
+  type Project,
+} from './api'
 import Assistant, { type Chat, type EditorContext, type Turn } from './Assistant'
 import Review from './Review'
 import History from './History'
 import CiteArxiv, { type Citation } from './CiteArxiv'
 import { Autosaver, type SaveStatus } from './autosave'
-import CompileStatus, { type CompileResult } from './CompileStatus'
+import CompileStatus, { type CompileResult, type Problem } from './CompileStatus'
 import Editor from './Editor'
 import FileTree from './FileTree'
 import PdfViewer, { type Highlight } from './PdfViewer'
@@ -58,6 +74,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ago } from '@/lib/time'
+import { WithContextMenu, type MenuEntry } from '@/components/Menu'
 import { useCommands } from '@/lib/commands'
 import { editorShortcuts, mod } from '@/lib/shortcuts'
 import { cn } from '@/lib/utils'
@@ -93,6 +110,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
   const [historyOpen, setHistoryOpen] = useState(false)
   const [citeOpen, setCiteOpen] = useState(false)
   const [insert, setInsert] = useState<{ path: string; text: string } | undefined>()
+  const [aiRequest, setAiRequest] = useState<{ text: string; n: number } | undefined>()
   const [selLines, setSelLines] = useState('')
   const [sideTab, setSideTab] = useState<'files' | 'chats'>('files')
   const [review, setReview] = useState<Turn | null>(null)
@@ -171,13 +189,24 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
   }
   const compileRef = useRef(compile)
   compileRef.current = compile
+  const closeRef = useRef(() => {})
+  closeRef.current = () => {
+    if (review) setReview(null)
+    else if (active) close(active)
+  }
 
   // Cmd/Ctrl+Enter anywhere in the workspace (the editor handles it itself when focused).
+  // Cmd/Ctrl+W closes the open file. Browsers keep that shortcut for themselves
+  // in a normal tab; it reaches the page when Refract is installed as an app.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !e.defaultPrevented) {
         e.preventDefault()
         compileRef.current()
+      }
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'w') {
+        e.preventDefault()
+        closeRef.current()
       }
     }
     window.addEventListener('keydown', onKey)
@@ -264,6 +293,32 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
         ? `No .tex file loads a bibliography yet: add \\bibliography{${c.path.replace(/\.bib$/, '')}} (or \\addbibresource{${c.path}}).`
         : undefined,
     })
+  }
+
+  function closeOthers(keep: string | null) {
+    for (const p of tabs) if (p !== keep) autosave.flush(p)
+    forget(tabs.filter((p) => p !== keep))
+  }
+
+  const tabMenu = (p: string): MenuEntry[] => [
+    { label: 'Close', icon: X, shortcut: `${mod}W`, onSelect: () => close(p) },
+    { label: 'Close others', onSelect: () => closeOthers(p), disabled: tabs.length < 2 },
+    { label: 'Close all', onSelect: () => closeOthers(null) },
+    '-',
+    ...(p.endsWith('.tex') && p !== project?.main_file ? [{ label: 'Set as main file', icon: Star, onSelect: () => setMainFile(p) }] : []),
+    { label: 'Copy path', icon: Copy, onSelect: () => navigator.clipboard.writeText(p) },
+  ]
+
+  // "Fix with AI" on compile problems: a new chat asking for the fix (and a check compile).
+  function fixWithAI(ps: Problem[]) {
+    const lines = ps.map((p) => `- ${p.file ? `${p.file}${p.line ? `:${p.line}` : ''}: ` : ''}${p.severity}: ${p.message}`)
+    const text =
+      ps.length === 1
+        ? `Fix this problem from the last compile, then compile to check it is gone:\n${lines[0]}`
+        : `Fix these problems from the last compile, then compile to check they are gone:\n${lines.join('\n')}`
+    setChatId('')
+    setChatOpen(true)
+    setAiRequest((r) => ({ text, n: (r?.n ?? 0) + 1 }))
   }
 
   async function jumpTo(path: string, line: number) {
@@ -481,6 +536,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
       .map((p) => ({ id: `project:${p.id}`, group: 'Projects', label: p.name, icon: FolderOpen, run: () => (window.location.href = `/p/${p.id}`) })),
   ])
 
+  const aiReady = !!status?.status.signed_in && status.status.plan_granted
   const current = active ? loaded.current.get(active) : undefined
   const texFiles = files.filter((f) => !f.dir && f.path.toLowerCase().endsWith('.tex')).map((f) => f.path)
   const saving = active ? saveState[statuses[active] ?? 'saved'] : null
@@ -597,6 +653,10 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                 onRename={rename}
                 onDelete={remove}
                 onUpload={upload}
+                onUploadClick={() => uploadInput.current?.click()}
+                onSetMain={setMainFile}
+                onDownload={(p) => run(() => download(fileURL(id, p), p.split('/').pop()!))}
+                mainFile={project?.main_file}
               />
             ) : (
               <div className="min-h-0 flex-1 overflow-auto px-2">
@@ -658,45 +718,47 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                   const on = p === active && !review
                   const dirty = statuses[p] && statuses[p] !== 'saved'
                   return (
-                    <div
-                      key={p}
-                      role="tab"
-                      aria-selected={on}
-                      className={cn(
-                        'group/tab flex h-7 shrink-0 items-center rounded-md border text-xs transition-colors duration-100',
-                        on
-                          ? 'border-border bg-background text-foreground shadow-xs'
-                          : 'border-transparent text-muted-foreground hover:bg-accent/60 hover:text-foreground',
-                      )}
-                    >
-                      <button
-                        className="flex items-center gap-1.5 py-1 pr-1 pl-2.5"
-                        onClick={() => {
-                          setReview(null)
-                          setActive(p)
-                        }}
-                        onAuxClick={(e) => e.button === 1 && close(p)}
-                        title={p}
+                    <WithContextMenu key={p} items={() => tabMenu(p)}>
+                      <div
+                        data-path={p}
+                        role="tab"
+                        aria-selected={on}
+                        className={cn(
+                          'group/tab flex h-7 shrink-0 items-center rounded-md border text-xs transition-colors duration-100',
+                          on
+                            ? 'border-border bg-background text-foreground shadow-xs'
+                            : 'border-transparent text-muted-foreground hover:bg-accent/60 hover:text-foreground',
+                        )}
                       >
-                        <FileText className="size-3.5 opacity-70" />
-                        {p.split('/').pop()}
-                      </button>
-                      <button
-                        className="relative mr-1 flex size-4 items-center justify-center rounded-sm transition-colors duration-100 hover:bg-accent"
-                        onClick={() => close(p)}
-                        aria-label={`Close ${p}`}
-                      >
-                        {/* unsaved: a dot that turns into × on hover */}
-                        {dirty && <span className="absolute size-1.5 rounded-full bg-warning group-hover/tab:hidden" />}
-                        <X
-                          className={cn(
-                            'size-3',
-                            dirty ? 'hidden group-hover/tab:block' : 'opacity-0 group-hover/tab:opacity-100',
-                            on && !dirty && 'opacity-60',
-                          )}
-                        />
-                      </button>
-                    </div>
+                        <button
+                          className="flex items-center gap-1.5 py-1 pr-1 pl-2.5"
+                          onClick={() => {
+                            setReview(null)
+                            setActive(p)
+                          }}
+                          onAuxClick={(e) => e.button === 1 && close(p)}
+                          title={p}
+                        >
+                          <FileText className="size-3.5 opacity-70" />
+                          {p.split('/').pop()}
+                        </button>
+                        <button
+                          className="relative mr-1 flex size-4 items-center justify-center rounded-sm transition-colors duration-100 hover:bg-accent"
+                          onClick={() => close(p)}
+                          aria-label={`Close ${p}`}
+                        >
+                          {/* unsaved: a dot that turns into × on hover */}
+                          {dirty && <span className="absolute size-1.5 rounded-full bg-warning group-hover/tab:hidden" />}
+                          <X
+                            className={cn(
+                              'size-3',
+                              dirty ? 'hidden group-hover/tab:block' : 'opacity-0 group-hover/tab:opacity-100',
+                              on && !dirty && 'opacity-60',
+                            )}
+                          />
+                        </button>
+                      </div>
+                    </WithContextMenu>
                   )
                 })}
                 {review && (
@@ -755,7 +817,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                   onSelect={setSelLines}
                   insert={insert}
                   onInserted={() => setInsert(undefined)}
-                  quick={!!status?.status.signed_in && status.status.plan_granted}
+                  quick={aiReady}
                   jump={jump}
                 />
               )}
@@ -780,6 +842,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                 open={chatOpen}
                 onOpen={setChatOpen}
                 focus={chatFocus}
+                request={aiRequest}
               />
             </div>
 
@@ -804,7 +867,16 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
               version={pdfVersion}
               highlight={highlight}
               onInverse={syncToSource}
-              toolbar={<CompileStatus projectId={id} compiling={compiling} result={result} error={compileError} onJump={jumpTo} />}
+              toolbar={
+                <CompileStatus
+                  projectId={id}
+                  compiling={compiling}
+                  result={result}
+                  error={compileError}
+                  onJump={jumpTo}
+                  onFix={aiReady ? fixWithAI : undefined}
+                />
+              }
             />
           </section>
         </ResizablePanel>
@@ -908,7 +980,7 @@ function Segmented({ value, onChange, options }: { value: string; onChange: (v: 
 }
 
 function EmptyEditor() {
-  const rows = editorShortcuts
+  const rows = editorShortcuts.slice(0, 4)
   return (
     <div className="enter flex h-full flex-col items-center justify-center gap-5 pb-16 text-center">
       <div>

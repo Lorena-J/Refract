@@ -22,6 +22,7 @@ import PaperIcon from '@/components/PaperIcon'
 import { ago } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { useCommands } from '@/lib/commands'
+import { DropdownItems, WithContextMenu, type MenuEntry } from '@/components/Menu'
 
 type Sort = { key: 'name' | 'updated'; desc: boolean }
 
@@ -37,6 +38,21 @@ export default function Projects({ status }: { status: ChatGPTStatus | null }) {
   const [reports, setReports] = useState<ImportResult[]>([])
   const zipInput = useRef<HTMLInputElement>(null)
   const folderInput = useRef<HTMLInputElement>(null)
+
+  const rowMenu = (p: Project): MenuEntry[] => [
+    { label: 'Open', icon: FolderOpen, onSelect: () => (window.location.href = `/p/${p.id}`) },
+    {
+      label: 'Rename',
+      icon: Pencil,
+      onSelect: () => {
+        setName(p.name)
+        setNaming({ mode: 'rename', project: p })
+      },
+    },
+    { label: 'Export .zip', icon: Download, onSelect: () => download(`/api/projects/${p.id}/export`, `${p.name}.zip`).catch((e) => toast.error(errorText(e))) },
+    '-',
+    { label: 'Delete', icon: Trash2, destructive: true, onSelect: () => setDeleting(p) },
+  ]
 
   useCommands(() => [
     {
@@ -226,42 +242,30 @@ export default function Projects({ status }: { status: ChatGPTStatus | null }) {
         <ul className="min-h-0 flex-1 overflow-auto">
           {shown.map((p, i) => (
             <li key={p.id} className="enter group border-b last:border-b-0" style={{ transitionDelay: `${Math.min(i, 8) * 30}ms` }}>
-              <div className="flex items-center gap-4 px-5 py-2.5 transition-colors duration-150 hover:bg-accent/50">
-                <a href={`/p/${p.id}`} className="flex min-w-0 flex-1 items-center gap-4 outline-none focus-visible:underline">
-                  <PaperIcon />
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-medium">{p.name}</span>
-                    <span className="block truncate text-xs text-muted-foreground">{p.main_file || 'Main file not set'}</span>
+              <WithContextMenu items={() => rowMenu(p)}>
+                <div className="flex items-center gap-4 px-5 py-2.5 transition-colors duration-150 hover:bg-accent/50">
+                  <a href={`/p/${p.id}`} className="flex min-w-0 flex-1 items-center gap-4 outline-none focus-visible:underline">
+                    <PaperIcon />
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium">{p.name}</span>
+                      <span className="block truncate text-xs text-muted-foreground">{p.main_file || 'Main file not set'}</span>
+                    </span>
+                  </a>
+                  <span className="w-12 text-right text-xs text-muted-foreground tabular-nums" title={new Date(p.updated_at).toLocaleString()}>
+                    {ago(p.updated_at)}
                   </span>
-                </a>
-                <span className="w-12 text-right text-xs text-muted-foreground tabular-nums" title={new Date(p.updated_at).toLocaleString()}>
-                  {ago(p.updated_at)}
-                </span>
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${p.name}`} className="text-muted-foreground" />}
-                  >
-                    <MoreHorizontal />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-44">
-                    <DropdownMenuItem
-                      onClick={() => {
-                        setName(p.name)
-                        setNaming({ mode: 'rename', project: p })
-                      }}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${p.name}`} className="text-muted-foreground" />}
                     >
-                      <Pencil /> Rename
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => download(`/api/projects/${p.id}/export`, `${p.name}.zip`).catch((e) => toast.error(errorText(e)))}>
-                      <Download /> Export .zip
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem variant="destructive" onClick={() => setDeleting(p)}>
-                      <Trash2 /> Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
+                      <MoreHorizontal />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-44">
+                      <DropdownItems items={rowMenu(p)} />
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </WithContextMenu>
             </li>
           ))}
         </ul>

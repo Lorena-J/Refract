@@ -1,8 +1,25 @@
 import { useState, type DragEvent } from 'react'
-import { ChevronRight, File, FileImage, FileText, Folder, FolderOpen, FolderPlus, MoreHorizontal, Pencil, Plus, Trash2, Upload } from 'lucide-react'
+import {
+  ChevronRight,
+  Copy,
+  Download,
+  File,
+  FileImage,
+  FileText,
+  Folder,
+  FolderOpen,
+  FolderPlus,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Star,
+  Trash2,
+  Upload,
+} from 'lucide-react'
 import type { FileEntry } from './api'
 import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownItems, WithContextMenu, type MenuEntry } from '@/components/Menu'
 import { cn } from '@/lib/utils'
 
 type Node = { name: string; path: string; dir: boolean; children: Node[] }
@@ -41,6 +58,10 @@ type Props = {
   onRename: (path: string) => void
   onDelete: (path: string, dir: boolean) => void
   onUpload: (dir: string, files: File[]) => void
+  onUploadClick: () => void // open the file picker for the project root
+  onSetMain: (path: string) => void
+  onDownload: (path: string) => void
+  mainFile?: string
 }
 
 export default function FileTree(p: Props) {
@@ -65,69 +86,71 @@ export default function FileTree(p: Props) {
     setDropTarget(dir)
   }
 
+  const menu = (n: Node): MenuEntry[] => [
+    ...(n.dir
+      ? [
+          { label: 'New file', icon: Plus, onSelect: () => p.onNew(n.path, 'file') },
+          { label: 'New folder', icon: FolderPlus, onSelect: () => p.onNew(n.path, 'folder') },
+          '-' as const,
+        ]
+      : [{ label: 'Open', icon: FileText, onSelect: () => p.onOpen(n.path) }]),
+    ...(!n.dir && n.path.endsWith('.tex') && n.path !== p.mainFile ? [{ label: 'Set as main file', icon: Star, onSelect: () => p.onSetMain(n.path) }] : []),
+    ...(!n.dir ? [{ label: 'Download', icon: Download, onSelect: () => p.onDownload(n.path) }] : []),
+    { label: 'Copy path', icon: Copy, onSelect: () => navigator.clipboard.writeText(n.path) },
+    '-',
+    { label: 'Rename or move', icon: Pencil, onSelect: () => p.onRename(n.path) },
+    { label: 'Delete', icon: Trash2, destructive: true, onSelect: () => p.onDelete(n.path, n.dir) },
+  ]
+
   const render = (nodes: Node[], depth: number) =>
     nodes.map((n) => {
       const Icon = n.dir ? (open.has(n.path) ? FolderOpen : Folder) : fileIcon(n.name)
       const isOpen = open.has(n.path)
       return (
         <li key={n.path}>
-          <div
-            className={cn(
-              'group/row relative flex h-8 items-center rounded-md pr-1 text-sm transition-colors duration-100',
-              n.path === p.active ? 'bg-foreground/[0.07] text-foreground' : 'text-foreground/80 hover:bg-foreground/[0.04] hover:text-foreground',
-              dropTarget === n.path && 'ring-1 ring-ring',
-            )}
-            style={{ paddingLeft: 6 + depth * 14 }}
-            onDragOver={(e) => n.dir && over(e, n.path)}
-            onDragLeave={() => setDropTarget(null)}
-            onDrop={(e) => n.dir && drop(e, n.path)}
-          >
-            <button
-              className="flex min-w-0 flex-1 items-center gap-1.5 self-stretch text-left outline-none focus-visible:underline"
-              onClick={() => (n.dir ? toggle(n.path) : p.onOpen(n.path))}
-              title={n.path}
+          <WithContextMenu items={() => menu(n)}>
+            <div
+              className={cn(
+                'group/row relative flex h-8 items-center rounded-md pr-1 text-sm transition-colors duration-100',
+                n.path === p.active ? 'bg-foreground/[0.07] text-foreground' : 'text-foreground/80 hover:bg-foreground/[0.04] hover:text-foreground',
+                dropTarget === n.path && 'ring-1 ring-ring',
+              )}
+              style={{ paddingLeft: 6 + depth * 14 }}
+              onDragOver={(e) => n.dir && over(e, n.path)}
+              onDragLeave={() => setDropTarget(null)}
+              onDrop={(e) => n.dir && drop(e, n.path)}
             >
-              {n.dir ? (
-                <ChevronRight className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform duration-150 ease-out', isOpen && 'rotate-90')} />
-              ) : (
-                <span className="w-3.5 shrink-0" />
-              )}
-              <Icon className="size-4 shrink-0 text-muted-foreground" />
-              <span className="truncate">{n.name}</span>
-              {!n.dir && p.dirty(n.path) && <span className="ml-1 size-1.5 shrink-0 rounded-full bg-warning" aria-label="unsaved changes" />}
-            </button>
-            <span className="flex items-center opacity-0 transition-opacity duration-100 group-hover/row:opacity-100 group-focus-within/row:opacity-100 has-data-popup-open:opacity-100">
-              {n.dir && (
-                <Button variant="ghost" size="icon-xs" aria-label={`New file in ${n.path}`} onClick={() => p.onNew(n.path, 'file')}>
-                  <Plus />
-                </Button>
-              )}
-              <DropdownMenu>
-                <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`Actions for ${n.path}`} />}>
-                  <MoreHorizontal />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-48">
-                  {n.dir && (
-                    <>
-                      <DropdownMenuItem onClick={() => p.onNew(n.path, 'file')}>
-                        <Plus /> New file
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => p.onNew(n.path, 'folder')}>
-                        <FolderPlus /> New folder
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                    </>
-                  )}
-                  <DropdownMenuItem onClick={() => p.onRename(n.path)}>
-                    <Pencil /> Rename or move
-                  </DropdownMenuItem>
-                  <DropdownMenuItem variant="destructive" onClick={() => p.onDelete(n.path, n.dir)}>
-                    <Trash2 /> Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </span>
-          </div>
+              <button
+                className="flex min-w-0 flex-1 items-center gap-1.5 self-stretch text-left outline-none focus-visible:underline"
+                onClick={() => (n.dir ? toggle(n.path) : p.onOpen(n.path))}
+                title={n.path}
+              >
+                {n.dir ? (
+                  <ChevronRight className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform duration-150 ease-out', isOpen && 'rotate-90')} />
+                ) : (
+                  <span className="w-3.5 shrink-0" />
+                )}
+                <Icon className="size-4 shrink-0 text-muted-foreground" />
+                <span className="truncate">{n.name}</span>
+                {!n.dir && p.dirty(n.path) && <span className="ml-1 size-1.5 shrink-0 rounded-full bg-warning" aria-label="unsaved changes" />}
+              </button>
+              <span className="flex items-center opacity-0 transition-opacity duration-100 group-hover/row:opacity-100 group-focus-within/row:opacity-100 has-data-popup-open:opacity-100">
+                {n.dir && (
+                  <Button variant="ghost" size="icon-xs" aria-label={`New file in ${n.path}`} onClick={() => p.onNew(n.path, 'file')}>
+                    <Plus />
+                  </Button>
+                )}
+                <DropdownMenu>
+                  <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`Actions for ${n.path}`} />}>
+                    <MoreHorizontal />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-52">
+                    <DropdownItems items={menu(n)} />
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </span>
+            </div>
+          </WithContextMenu>
           {n.dir && isOpen && <ul>{render(n.children, depth + 1)}</ul>}
         </li>
       )
@@ -135,7 +158,7 @@ export default function FileTree(p: Props) {
 
   return (
     <div
-      className={cn('min-h-0 flex-1 overflow-auto px-2 pb-2', dropTarget === '' && 'rounded-md ring-1 ring-ring ring-inset')}
+      className={cn('flex min-h-0 flex-1 flex-col overflow-auto px-2 pb-2', dropTarget === '' && 'rounded-md ring-1 ring-ring ring-inset')}
       onDragOver={(e) => over(e, '')}
       onDragLeave={(e) => e.currentTarget === e.target && setDropTarget(null)}
       onDrop={(e) => drop(e, '')}
@@ -146,6 +169,17 @@ export default function FileTree(p: Props) {
           <Upload className="size-3.5" /> Drop files here or create one.
         </p>
       )}
+      {/* Right click on the empty space below the tree. */}
+      <WithContextMenu
+        className="min-h-12 flex-1"
+        items={() => [
+          { label: 'New file', icon: Plus, onSelect: () => p.onNew('', 'file') },
+          { label: 'New folder', icon: FolderPlus, onSelect: () => p.onNew('', 'folder') },
+          { label: 'Upload files…', icon: Upload, onSelect: p.onUploadClick },
+        ]}
+      >
+        <div />
+      </WithContextMenu>
     </div>
   )
 }

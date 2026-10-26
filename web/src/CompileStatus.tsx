@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, CheckCircle2, ChevronRight, CircleX, FileWarning, Loader2, ScrollText } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ChevronRight, CircleX, FileWarning, Loader2, ScrollText, Sparkles } from 'lucide-react'
 import { api, type Warning } from './api'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -24,6 +24,7 @@ type Props = {
   result: CompileResult | null
   error: string
   onJump: (file: string, line: number) => void
+  onFix?: (problems: Problem[]) => void // ask the assistant; absent when AI is unavailable
 }
 
 // Noisy kinds, collapsed by default.
@@ -33,7 +34,7 @@ const groups = [
 ]
 
 // The compile state as a chip; click for problems and the log.
-export default function CompileStatus({ projectId, compiling, result, error, onJump }: Props) {
+export default function CompileStatus({ projectId, compiling, result, error, onJump, onFix }: Props) {
   const [checks, setChecks] = useState<Warning[]>([])
   const [open, setOpen] = useState(false)
   const [expanded, setExpanded] = useState<number[]>([])
@@ -50,6 +51,14 @@ export default function CompileStatus({ projectId, compiling, result, error, onJ
   const errors = problems.filter((x) => x.severity === 'error').length
   const warnings = problems.length - errors + checks.length
   const main = problems.filter((x) => !groups.some((g) => g.kinds.includes(x.kind)))
+  const portability: Problem[] = checks.map((w) => ({ severity: 'warning', kind: 'portability', file: w.file, line: w.line, message: w.message }))
+  const fixable = [...main, ...portability] // the noisy groups (box warnings) are left out of "fix all"
+  const fix = onFix
+    ? (ps: Problem[]) => {
+        setOpen(false)
+        onFix(ps)
+      }
+    : undefined
 
   let icon = <CheckCircle2 className="text-success" />
   let label = 'Compile to preview'
@@ -98,14 +107,21 @@ export default function CompileStatus({ projectId, compiling, result, error, onJ
         <PopoverContent align="start" className="max-h-[60vh] w-[26rem] overflow-auto p-0">
           <div className="flex items-center justify-between border-b px-3 py-2">
             <span className="text-sm font-medium">Problems</span>
-            <Button variant="ghost" size="xs" onClick={showLog}>
-              <ScrollText /> Full log
-            </Button>
+            <span className="flex items-center gap-1">
+              {fix && fixable.length > 0 && (
+                <Button variant="secondary" size="xs" onClick={() => fix(fixable)}>
+                  <Sparkles /> Fix all with AI
+                </Button>
+              )}
+              <Button variant="ghost" size="xs" onClick={showLog}>
+                <ScrollText /> Full log
+              </Button>
+            </span>
           </div>
           {error && <p className="px-3 py-2 text-sm text-destructive">{error}</p>}
           <ul className="divide-y">
             {main.map((x, i) => (
-              <ProblemRow key={i} problem={x} onJump={(f, l) => (setOpen(false), onJump(f, l))} />
+              <ProblemRow key={i} problem={x} onJump={(f, l) => (setOpen(false), onJump(f, l))} onFix={fix} />
             ))}
             {groups.map((g, gi) => {
               const items = problems.filter((x) => g.kinds.includes(x.kind))
@@ -122,19 +138,15 @@ export default function CompileStatus({ projectId, compiling, result, error, onJ
                   {isOpen && (
                     <ul className="divide-y border-t">
                       {items.map((x, i) => (
-                        <ProblemRow key={i} problem={x} onJump={(f, l) => (setOpen(false), onJump(f, l))} />
+                        <ProblemRow key={i} problem={x} onJump={(f, l) => (setOpen(false), onJump(f, l))} onFix={fix} />
                       ))}
                     </ul>
                   )}
                 </li>
               )
             })}
-            {checks.map((w, i) => (
-              <ProblemRow
-                key={'c' + i}
-                problem={{ severity: 'warning', kind: 'portability', file: w.file, line: w.line, message: w.message }}
-                onJump={(f, l) => (setOpen(false), onJump(f, l))}
-              />
+            {portability.map((x, i) => (
+              <ProblemRow key={'c' + i} problem={x} onJump={(f, l) => (setOpen(false), onJump(f, l))} onFix={fix} />
             ))}
           </ul>
           {!error && problems.length === 0 && checks.length === 0 && (
@@ -155,7 +167,7 @@ export default function CompileStatus({ projectId, compiling, result, error, onJ
   )
 }
 
-function ProblemRow({ problem: x, onJump }: { problem: Problem; onJump: (file: string, line: number) => void }) {
+function ProblemRow({ problem: x, onJump, onFix }: { problem: Problem; onJump: (file: string, line: number) => void; onFix?: (ps: Problem[]) => void }) {
   const Icon = x.severity === 'error' ? CircleX : x.kind === 'portability' ? FileWarning : AlertTriangle
   const body = (
     <>
@@ -173,16 +185,23 @@ function ProblemRow({ problem: x, onJump }: { problem: Problem; onJump: (file: s
     </>
   )
   return (
-    <li>
+    <li className="group/problem flex items-start transition-colors duration-100 hover:bg-accent/60">
       {x.file ? (
-        <button
-          className="flex w-full gap-2.5 px-3 py-2.5 text-left transition-colors duration-100 hover:bg-accent/60"
-          onClick={() => onJump(x.file!, x.line ?? 1)}
-        >
+        <button className="flex min-w-0 flex-1 gap-2.5 py-2.5 pl-3 text-left" onClick={() => onJump(x.file!, x.line ?? 1)}>
           {body}
         </button>
       ) : (
-        <div className="flex gap-2.5 px-3 py-2.5">{body}</div>
+        <div className="flex min-w-0 flex-1 gap-2.5 py-2.5 pl-3">{body}</div>
+      )}
+      {onFix && (
+        <Button
+          variant="ghost"
+          size="xs"
+          className="m-2 shrink-0 text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/problem:opacity-100 focus-visible:opacity-100 hover:text-foreground"
+          onClick={() => onFix([x])}
+        >
+          <Sparkles /> Fix
+        </Button>
       )}
     </li>
   )

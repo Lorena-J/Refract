@@ -7,7 +7,9 @@ import { getPrefs, usePrefs } from '@/lib/prefs'
 import { accept, proposalField, reject } from '@/lib/proposal'
 import QuickActions, { actions, type QuickHandle } from './QuickActions'
 import { useCommands } from '@/lib/commands'
-import { MessageSquareText } from 'lucide-react'
+import { ClipboardPaste, Copy, FileSearch, MessageSquareText, Pencil, Play, Scissors, TextSelect } from 'lucide-react'
+import { WithContextMenu, type MenuEntry } from '@/components/Menu'
+import { mod } from '@/lib/shortcuts'
 
 const wrapping = new Compartment()
 const wrapExt = (on: boolean) => (on ? EditorView.lineWrapping : [])
@@ -182,9 +184,61 @@ export default function Editor({ path, states, initial, onChange, onSave, onComp
     onInserted?.()
   }, [insert, path])
 
+  // Right click: clipboard, AI actions on the selection, sync and compile.
+  const menu = (): MenuEntry[] => {
+    const v = view.current
+    if (!v) return []
+    const sel = v.state.selection.main
+    const text = v.state.sliceDoc(sel.from, sel.to)
+    const edit = (insert: string, userEvent: string) => {
+      v.dispatch(v.state.replaceSelection(insert), { userEvent, scrollIntoView: true })
+      v.focus()
+    }
+    return [
+      {
+        label: 'Cut',
+        icon: Scissors,
+        shortcut: `${mod}X`,
+        disabled: sel.empty,
+        onSelect: () => navigator.clipboard.writeText(text).then(() => edit('', 'delete.cut')),
+      },
+      { label: 'Copy', icon: Copy, shortcut: `${mod}C`, disabled: sel.empty, onSelect: () => navigator.clipboard.writeText(text) },
+      { label: 'Paste', icon: ClipboardPaste, shortcut: `${mod}V`, onSelect: () => navigator.clipboard.readText().then((t) => edit(t, 'input.paste')) },
+      {
+        label: 'Select all',
+        icon: TextSelect,
+        shortcut: `${mod}A`,
+        onSelect: () => {
+          v.dispatch({ selection: { anchor: 0, head: v.state.doc.length } })
+          v.focus()
+        },
+      },
+      '-',
+      ...(quick && !sel.empty
+        ? [
+            ...actions.map((a) => ({ label: a.command, icon: a.icon, onSelect: () => quickRef.current?.run(a.id) })),
+            { label: 'Ask the assistant…', icon: Pencil, onSelect: () => quickRef.current?.ask() },
+            '-' as const,
+          ]
+        : []),
+      {
+        label: 'Show in PDF',
+        icon: FileSearch,
+        shortcut: `${mod}J`,
+        onSelect: () => {
+          const line = v.state.doc.lineAt(sel.head)
+          cb.current.onSync(current.current, line.number, sel.head - line.from + 1)
+        },
+      },
+      { label: 'Compile', icon: Play, shortcut: `${mod}↵`, onSelect: () => cb.current.onCompile() },
+    ]
+  }
+
   return (
     <div className="relative h-full">
-      <div className="h-full" ref={host} />
+      <WithContextMenu items={menu} className="h-full select-text">
+        <div className="h-full" ref={host} />
+      </WithContextMenu>
       {quick && mounted && <QuickActions view={mounted} path={path} dragging={dragging} handle={quickRef} />}
     </div>
   )

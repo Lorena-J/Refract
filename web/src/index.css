@@ -562,6 +562,8 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    /* An app, not a page: no rubber-band bounce or scroll chaining. */
+    overscroll-behavior: none;
   }
   html,
   body,
