@@ -1,0 +1,64 @@
+<p align="center"><img src="assets/logo.svg" width="96" alt="Refract"></p>
+
+# Refract
+
+A private, single-user LaTeX workspace with an AI assistant, for your own server. Edit, compile with Tectonic and read the PDF side by side; ask the assistant for changes and review them as diffs; find real papers to cite; keep every version in git.
+
+- **Editor and PDF**: CodeMirror, Tectonic, SyncTeX (⌘J / ⌘-click), problems with "Fix with AI".
+- **Assistant**: works on a copy of the project and proposes a diff you accept or reject. Quick actions on any selection (improve, shorten, fix grammar, table, explain, free instruction) shown as inline diffs.
+- **References**: finds published papers (OpenAlex) and arXiv preprints that support a passage, and places `\cite` for you to review. Bibliography entries always come from the publisher's or arXiv's metadata, never from a model.
+- **History and sync**: every saved version is a git commit; restore any file or version; push and pull to GitHub or any https git remote.
+- English and Spanish UI, light and dark themes.
+
+The AI uses your ChatGPT plan ("Sign in with ChatGPT"), so there is no API key to pay for.
+
+## Run it
+
+Refract runs as one container (Go server, built web UI, Tectonic and SyncTeX). Build the image from this repository (no prebuilt image is published yet):
+
+```sh
+docker build -t refract .
+docker run -d -p 8080:8080 -v refract-data:/data \
+  -e REFRACT_SECRET_KEY="$(openssl rand -base64 32)" \
+  -e REFRACT_CF_TEAM_DOMAIN=yourteam.cloudflareaccess.com -e REFRACT_CF_AUD=<aud tag> \
+  -e REFRACT_ALLOWED_SUBJECT=<printed by refract login> \
+  refract
+```
+
+Keep `REFRACT_SECRET_KEY` stable: it encrypts the stored tokens. Refract has no login of its own and expects to sit behind [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/), whose JWT it verifies. It refuses to start without that configuration unless you set `REFRACT_AUTH=none` (only on a private network).
+
+### Connect ChatGPT
+
+Sign-in happens on your own computer: run `make login` from a clone of this repository (release binaries will follow), choose *Continue with ChatGPT*, then upload the credential file it writes in **Settings → Assistant**. Set `REFRACT_ALLOWED_SUBJECT` to the subject it prints, so the server only accepts your account.
+
+### Connect GitHub (optional)
+
+Projects can push to and pull from any https git remote with a personal access token. To pick or create GitHub repositories from Refract instead, create a [GitHub OAuth App](https://github.com/settings/developers) with **Enable Device Flow** checked (the callback URL is not used), set `REFRACT_GITHUB_CLIENT_ID` to its client ID, and connect in **Settings → Integrations**. No client secret is needed.
+
+## Configuration
+
+| Variable | Purpose |
+|---|---|
+| `REFRACT_SECRET_KEY` | **Required.** 32 bytes, base64 (`openssl rand -base64 32`). Encrypts stored credentials and tokens. |
+| `REFRACT_DATA_DIR` | Projects, database and caches. Default `/data`. |
+| `REFRACT_ADDR` | Listen address. Default `:8080`. |
+| `REFRACT_AUTH` | `cloudflare` (default) or `none`. |
+| `REFRACT_CF_TEAM_DOMAIN`, `REFRACT_CF_AUD` | Your Cloudflare Access team domain and application AUD tag. |
+| `REFRACT_ALLOWED_SUBJECT` | The ChatGPT account allowed to sign in (printed by `refract login`). |
+| `REFRACT_MODEL_AGENT` | Default model for the assistant when none is picked in the UI. |
+| `REFRACT_MODEL_QUICK` | Default model for quick actions and citations. |
+| `REFRACT_COMPILE_TIMEOUT` | Seconds per compile. Default 90. |
+| `REFRACT_GITHUB_CLIENT_ID` | Client ID of your GitHub OAuth App (device flow), to connect a GitHub account. |
+| `REFRACT_OPENALEX_API_KEY` | Free [OpenAlex key](https://openalex.org/settings/api). Without it, paper searches share a small free daily budget per IP address. |
+| `REFRACT_TECTONIC_BUNDLE` | Pinned Tectonic bundle URL (set in the image). |
+
+## Develop
+
+```sh
+make dev     # API on :8080 and Vite on :5173 (REFRACT_AUTH=none, data in ./data)
+make test    # Go tests, vet and web unit tests
+make e2e     # build and run the Playwright smoke test
+make docker  # multi-arch image (amd64, arm64) and a smoke test
+```
+
+Requires Go, Node and Tectonic (plus `synctex` for PDF sync) on your machine; the image bundles them.

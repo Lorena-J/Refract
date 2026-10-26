@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { EditorState } from '@codemirror/state'
 import { usePanelRef } from 'react-resizable-panels'
 import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
   BookMarked,
   Check,
   Copy,
@@ -12,6 +14,7 @@ import {
   FileText,
   FolderOpen,
   FolderPlus,
+  GitBranch,
   History as HistoryIcon,
   Loader2,
   MessageSquare,
@@ -42,6 +45,7 @@ import {
 import Assistant, { type Chat, type EditorContext, type Turn } from './Assistant'
 import Review from './Review'
 import History from './History'
+import GitDialog, { pulledMessage, type PullResult } from './GitDialog'
 import CiteDialog, { type Citation, type CiteTarget } from './CiteDialog'
 import { Autosaver, type SaveStatus } from './autosave'
 import CompileStatus, { type CompileResult, type Problem } from './CompileStatus'
@@ -109,6 +113,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
   const [chatOpen, setChatOpen] = useState(false)
   const [chatFocus, setChatFocus] = useState(0)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [gitOpen, setGitOpen] = useState(false)
   const [citing, setCiting] = useState<{ target: CiteTarget | null; suggest: boolean } | null>(null)
   const [proposal, setProposal] = useState<{ path: string; from: number; to: number; original: string; text: string } | undefined>()
   const [insert, setInsert] = useState<{ path: string; text: string } | undefined>()
@@ -283,6 +288,29 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
     const res = await api<{ turn: Turn }>(`/api/turns/${review.id}/reject`, { method: 'POST' })
     setTurnUpdate(res.turn)
     setReview(null)
+  }
+
+  async function pulled(res: PullResult) {
+    if (res.changed.length) {
+      await reloadFromDisk(tabs)
+      setReview(null)
+    }
+    const msg = pulledMessage(res)
+    if (res.conflicts.length) toast.error(msg)
+    else toast.success(msg)
+  }
+
+  // Push/pull from the palette, without opening the dialog.
+  async function sync(op: 'push' | 'pull') {
+    await autosave.flushAll()
+    try {
+      if (op === 'push') {
+        await api(`/api/projects/${id}/remote/push`, { method: 'POST' })
+        toast.success(t('Pushed to the remote'))
+      } else await pulled(await api<PullResult>(`/api/projects/${id}/remote/pull`, { method: 'POST' }))
+    } catch (e) {
+      toast.error(errorText(e))
+    }
   }
 
   async function cited(c: Citation, sel: CiteTarget | null) {
@@ -508,6 +536,9 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
     { id: 'ws:newfile', group: 'Actions', label: t('New file'), icon: FileText, run: () => create('', 'file') },
     { id: 'ws:newfolder', group: 'Actions', label: t('New folder'), icon: FolderPlus, run: () => create('', 'folder') },
     { id: 'ws:upload', group: 'Actions', label: t('Upload files'), icon: Upload, run: () => uploadInput.current?.click() },
+    { id: 'ws:git', group: 'Actions', label: t('Git remote…'), icon: GitBranch, keywords: 'github remote sync push pull', run: () => setGitOpen(true) },
+    { id: 'ws:push', group: 'Actions', label: t('Push to the remote'), icon: ArrowUpFromLine, keywords: 'git github sync upload', run: () => sync('push') },
+    { id: 'ws:pull', group: 'Actions', label: t('Pull from the remote'), icon: ArrowDownToLine, keywords: 'git github sync download', run: () => sync('pull') },
     {
       id: 'ws:history',
       group: 'Actions',
@@ -597,6 +628,9 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                 <DropdownMenuContent align="start" className="w-64">
                   <DropdownMenuItem render={<a href="/" />}>
                     <ChevronLeft /> {t('All projects')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setGitOpen(true)}>
+                    <GitBranch /> {t('Git remote…')}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setHistoryOpen(true)}>
                     <HistoryIcon /> {t('History')}
@@ -938,6 +972,14 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
         </DialogContent>
       </Dialog>
 
+      <GitDialog
+        projectId={id}
+        projectName={project?.name ?? ''}
+        open={gitOpen}
+        onClose={() => setGitOpen(false)}
+        beforeSync={() => autosave.flushAll()}
+        onPulled={pulled}
+      />
       <History
         projectId={id}
         open={historyOpen}

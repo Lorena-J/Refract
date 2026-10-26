@@ -13,6 +13,11 @@ import (
 // git runs the git CLI in dir, isolated from any system/global config and
 // with hooks disabled: a project's content must never make git execute code.
 func git(ctx context.Context, dir string, args ...string) (string, error) {
+	return gitEnv(ctx, dir, nil, args...)
+}
+
+// gitEnv is git with extra environment entries (secrets go here, not in args).
+func gitEnv(ctx context.Context, dir string, env []string, args ...string) (string, error) {
 	base := []string{
 		"-c", "core.hooksPath=/dev/null",
 		"-c", "user.name=Refract",
@@ -28,6 +33,7 @@ func git(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", append(base, args...)...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_TERMINAL_PROMPT=0")
+	cmd.Env = append(cmd.Env, env...)
 	var out, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &stderr
 	if err := cmd.Run(); err != nil {
@@ -59,6 +65,17 @@ func initRepo(ctx context.Context, dir, message string) error {
 
 // Checkpoint commits the working tree if anything changed, and reports whether it did.
 func (s *Service) Checkpoint(ctx context.Context, id, message string) (bool, error) {
+	return s.checkpoint(ctx, id, message, true)
+}
+
+// committed tells OnCommit (auto-push) that the project's history grew.
+func (s *Service) committed(id string) {
+	if s.OnCommit != nil {
+		go s.OnCommit(id)
+	}
+}
+
+func (s *Service) checkpoint(ctx context.Context, id, message string, notify bool) (bool, error) {
 	if _, err := s.Get(ctx, id); err != nil {
 		return false, err
 	}
@@ -69,6 +86,11 @@ func (s *Service) Checkpoint(ctx context.Context, id, message string) (bool, err
 	if out, err := git(ctx, dir, "status", "--porcelain"); err != nil || out == "" {
 		return false, err
 	}
-	_, err := git(ctx, dir, "commit", "-q", "-m", message)
-	return err == nil, err
+	if _, err := git(ctx, dir, "commit", "-q", "-m", message); err != nil {
+		return false, err
+	}
+	if notify {
+		s.committed(id)
+	}
+	return true, nil
 }

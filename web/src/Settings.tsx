@@ -1,7 +1,7 @@
-import { useRef, useState } from 'react'
-import { CheckCircle2, Code2, ExternalLink, Keyboard, Monitor, Moon, Sparkles, Sun, SunMoon, Upload } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { CheckCircle2, Code2, Copy, ExternalLink, GitBranch, Keyboard, Loader2, Monitor, Moon, Sparkles, Sun, SunMoon, Upload } from 'lucide-react'
 import { toast } from 'sonner'
-import { api, describe, RequestError, type ChatGPTStatus } from './api'
+import { api, describe, errorText, RequestError, type ChatGPTStatus } from './api'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import {
@@ -41,6 +41,9 @@ export default function SettingsDialog({ status, onChange }: Props) {
             <SettingsNavItem value="assistant" icon={<Sparkles />} meta={status?.status.signed_in ? undefined : t('Off')}>
               {t('Assistant')}
             </SettingsNavItem>
+            <SettingsNavItem value="integrations" icon={<GitBranch />}>
+              {t('Integrations')}
+            </SettingsNavItem>
             <SettingsNavItem value="shortcuts" icon={<Keyboard />}>
               {t('Shortcuts')}
             </SettingsNavItem>
@@ -48,6 +51,7 @@ export default function SettingsDialog({ status, onChange }: Props) {
           <General />
           <EditorPane />
           <AssistantPane status={status} onChange={onChange} />
+          <Integrations />
           <SettingsPane value="shortcuts" title={t('Keyboard shortcuts')} description={t('Hold ⌘ (Ctrl) anywhere, or press ?, to see them over the page.')}>
             {shortcutGroups.map((g) => (
               <SettingsGroup key={g.title} title={g.title}>
@@ -219,6 +223,123 @@ function AssistantPane({ status, onChange }: Props) {
           e.target.value = ''
         }}
       />
+    </SettingsPane>
+  )
+}
+
+type GitHubState = { configured: boolean; connected: boolean; login?: string }
+type Device = { user_code: string; verification_uri: string; interval: number; expires_in: number }
+
+// GitHub account, connected with the device flow: Refract shows a code, you
+// enter it on github.com, and the token stays sealed on the server.
+function Integrations() {
+  const [gh, setGh] = useState<GitHubState | null>(null)
+  const [device, setDevice] = useState<Device | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const load = () => api<GitHubState>('/api/github').then(setGh, (e) => toast.error(errorText(e)))
+  useEffect(() => {
+    load()
+  }, [])
+
+  // Poll while a code is shown, at GitHub's interval.
+  useEffect(() => {
+    if (!device) return
+    let stop = false
+    const tick = async () => {
+      if (stop) return
+      try {
+        const r = await api<{ status: string; login?: string; error?: string }>('/api/github/device/poll', { method: 'POST' })
+        if (r.status === 'connected') {
+          setDevice(null)
+          toast.success(t('Connected to GitHub as @{login}', { login: r.login ?? '' }))
+          load()
+          return
+        }
+        if (r.status !== 'pending') {
+          setDevice(null)
+          toast.error(r.error ?? t('The code expired: start again'))
+          return
+        }
+      } catch (e) {
+        toast.error(errorText(e))
+      }
+      setTimeout(tick, Math.max(device.interval, 5) * 1000)
+    }
+    const first = setTimeout(tick, Math.max(device.interval, 5) * 1000)
+    return () => {
+      stop = true
+      clearTimeout(first)
+    }
+  }, [device])
+
+  async function connect() {
+    setBusy(true)
+    try {
+      const d = await api<Device>('/api/github/device', { method: 'POST' })
+      setDevice(d)
+      window.open(d.verification_uri, '_blank', 'noopener')
+    } catch (e) {
+      toast.error(errorText(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function disconnect() {
+    await api('/api/github', { method: 'DELETE' }).catch((e) => toast.error(errorText(e)))
+    load()
+  }
+
+  return (
+    <SettingsPane value="integrations" title={t('Integrations')} description={t('Accounts Refract can use for your projects.')}>
+      <SettingsGroup title="GitHub">
+        {!gh ? (
+          <SettingsRow label={t('Loading…')} />
+        ) : !gh.configured ? (
+          <SettingsRow
+            stacked
+            label={t('Not set up on this server')}
+            description={t(
+              'Create a GitHub OAuth App with device flow enabled and set its client ID in REFRACT_GITHUB_CLIENT_ID. You can still use any remote with a token in each project.',
+            )}
+          />
+        ) : gh.connected ? (
+          <SettingsRow
+            label={
+              <span className="flex items-center gap-2">
+                <CheckCircle2 className="size-4 text-success" /> @{gh.login}
+              </span>
+            }
+            description={t(
+              'Projects can push to and pull from your repositories. To revoke access completely, also remove Refract in GitHub → Settings → Applications.',
+            )}
+          >
+            <Button size="sm" variant="ghost" onClick={disconnect}>
+              {t('Disconnect')}
+            </Button>
+          </SettingsRow>
+        ) : device ? (
+          <SettingsRow stacked label={t('Enter this code on GitHub')} description={t('Waiting for you to approve Refract on github.com…')}>
+            <span className="flex items-center gap-2">
+              <code className="rounded-md border bg-muted px-3 py-1.5 font-mono text-lg tracking-widest">{device.user_code}</code>
+              <Button size="icon-sm" variant="ghost" aria-label={t('Copy code')} onClick={() => navigator.clipboard.writeText(device.user_code)}>
+                <Copy />
+              </Button>
+              <Button size="sm" variant="secondary" render={<a href={device.verification_uri} target="_blank" rel="noreferrer" />} nativeButton={false}>
+                github.com/login/device <ExternalLink />
+              </Button>
+              <Loader2 className="size-4 animate-spin text-muted-foreground" />
+            </span>
+          </SettingsRow>
+        ) : (
+          <SettingsRow label={t('Not connected')} description={t('Connect to push projects to your repositories, or create new ones.')}>
+            <Button size="sm" disabled={busy} onClick={connect}>
+              <GitBranch /> {t('Connect GitHub')}
+            </Button>
+          </SettingsRow>
+        )}
+      </SettingsGroup>
     </SettingsPane>
   )
 }

@@ -22,6 +22,7 @@ import (
 	"github.com/ponytojas/Refract/internal/auth"
 	"github.com/ponytojas/Refract/internal/cite"
 	"github.com/ponytojas/Refract/internal/compile"
+	"github.com/ponytojas/Refract/internal/github"
 	"github.com/ponytojas/Refract/internal/openalex"
 	"github.com/ponytojas/Refract/internal/projects"
 	"github.com/ponytojas/Refract/internal/siwc"
@@ -85,7 +86,7 @@ func run() error {
 	}
 
 	pa := &projectsAPI{
-		svc: &projects.Service{DB: db, Dir: filepath.Join(dataDir, "projects"), Limits: projects.DefaultLimits},
+		svc: &projects.Service{DB: db, Dir: filepath.Join(dataDir, "projects"), Limits: projects.DefaultLimits, Key: key},
 		tmp: filepath.Join(dataDir, "tmp"),
 	}
 
@@ -132,6 +133,13 @@ func run() error {
 	pa.routes(app)
 	ca.routes(app)
 	asa.routes(app)
+	ra := &remoteAPI{svc: pa.svc, db: db, key: key}
+	if id := os.Getenv("REFRACT_GITHUB_CLIENT_ID"); id != "" {
+		ra.github = &github.Client{HTTP: outbound, ClientID: id, Web: "https://github.com", API: "https://api.github.com"}
+	}
+	pa.svc.OnCommit = ra.AutoPush
+	pa.svc.GitHubToken = ra.Token
+	ra.routes(app)
 	(&papersAPI{papers: papers, projects: pa.svc, choose: func(ctx context.Context, want assistant.Choice) (assistant.Choice, error) {
 		return a.choose(ctx, want, a.quick)
 	}}).routes(app)

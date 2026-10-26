@@ -3,6 +3,8 @@
 package projects
 
 import (
+	"github.com/ponytojas/Refract/internal/store"
+
 	"archive/zip"
 	"context"
 	"crypto/rand"
@@ -40,9 +42,13 @@ type ImportResult struct {
 
 // Service manages projects.
 type Service struct {
-	DB     *sql.DB
-	Dir    string // <data>/projects
-	Limits Limits
+	DB       *sql.DB
+	Dir      string // <data>/projects
+	Limits   Limits
+	Key      []byte          // seals remote tokens
+	OnCommit func(id string) // called (in its own goroutine) after commits on the main branch
+	// GitHubToken returns the connected GitHub account's token, for remotes that use it.
+	GitHubToken func(ctx context.Context) (string, error)
 }
 
 // Path returns a project's directory.
@@ -196,6 +202,7 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 	if _, err := s.DB.ExecContext(ctx, `DELETE FROM projects WHERE id = ?`, id); err != nil {
 		return err
 	}
+	store.SetSetting(ctx, s.DB, remoteKey(id), "") // its remote and token
 	return os.RemoveAll(s.Path(id))
 }
 

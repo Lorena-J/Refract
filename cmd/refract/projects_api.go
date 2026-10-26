@@ -300,6 +300,12 @@ func projectError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, projects.ErrNotFound), errors.Is(err, fs.ErrNotExist):
 		httpError(w, err, http.StatusNotFound)
+	case errors.Is(err, projects.ErrNoRemote):
+		httpError(w, err, http.StatusNotFound)
+	case errors.Is(err, projects.ErrBehind):
+		httpError(w, err, http.StatusConflict)
+	case errors.Is(err, projects.ErrBadRemote):
+		httpError(w, err, http.StatusBadRequest)
 	case errors.Is(err, fs.ErrExist):
 		httpError(w, err, http.StatusConflict)
 	case errors.Is(err, projects.ErrUnsafePath), errors.Is(err, projects.ErrBadPath), errors.Is(err, projects.ErrBadRevision), errors.Is(err, projects.ErrTooLarge), errors.Is(err, zip.ErrFormat):
