@@ -1,0 +1,127 @@
+package agent
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"refract/internal/ai"
+	"refract/internal/compile"
+)
+
+// Agent runs one assistant turn.
+type Agent struct {
+	Provider      ai.Provider
+	Compiler      compile.Compiler
+	Model         string
+	MaxIterations int           // model calls per turn (PLAN.md §4.6: default 25)
+	Timeout       time.Duration // whole turn
+}
+
+// Message is one earlier exchange replayed as context.
+type Message struct {
+	Role string `json:"role"` // user | assistant
+	Text string `json:"content"`
+}
+
+// Input is everything a turn needs.
+type Input struct {
+	Dir      string // the turn's worktree
+	MainFile string
+	History  []Message
+	Message  string // the user's request, with the open file and selection attached
+}
+
+// Event is streamed to the chat panel.
+type Event struct {
+	Type     string    `json:"type"` // text | activity
+	Text     string    `json:"text,omitempty"`
+	Activity string    `json:"activity,omitempty"`
+	Error    *ai.Error `json:"error,omitempty"`
+}
+
+// ErrTooManySteps ends a turn that hit MaxIterations.
+var ErrTooManySteps = errors.New("the assistant used too many steps and was stopped")
+
+const instructions = `You are a LaTeX research-writing assistant working inside the user's project.
+
+Rules:
+- Make minimal, targeted edits. Keep the author's voice, structure and macros.
+- Never invent citations, bibliography entries, references, data or results. If something needs a source you don't have, say so.
+- Read files before editing them. Use edit_file for changes to existing files; old_text must match exactly once.
+- After non-trivial edits, compile and fix any errors you introduced. Don't try to fix pre-existing problems unless asked.
+- Your changes are proposed to the user as a diff; they decide whether to apply them.
+- Finish with a short summary of what you changed and why. Reply in the language the user writes in.
+
+The project's main file is %s.
+Project files:
+%s`
+
+// Run executes the turn: model calls and tool calls until the model answers
+// without calling tools. It returns everything the model said.
+func (a *Agent) Run(ctx context.Context, in Input, emit func(Event)) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, a.Timeout)
+	defer cancel()
+	tools := &Tools{Dir: in.Dir, MainFile: in.MainFile, Compiler: a.Compiler}
+	tree, _ := tools.listFiles()
+
+	req := ai.Request{
+		Model:        a.Model,
+		Instructions: fmt.Sprintf(instructions, cmpOr(in.MainFile, "(not set)"), tree),
+		Tools:        tools.Definitions(),
+	}
+	for _, m := range in.History {
+		b, _ := json.Marshal(m)
+		req.Input = append(req.Input, b)
+	}
+	req.Input = append(req.Input, ai.UserMessage(in.Message))
+
+	var reply strings.Builder
+	for range a.MaxIterations {
+		ch, err := a.Provider.Stream(ctx, req)
+		if err != nil {
+			return reply.String(), err
+		}
+		var calls []*ai.FunctionCall
+		for ev := range ch {
+			switch ev.Type {
+			case ai.EventText:
+				reply.WriteString(ev.Text)
+				emit(Event{Type: "text", Text: ev.Text})
+			case ai.EventItem:
+				req.Input = append(req.Input, ev.Item) // replayed: the route is stateless
+				if ev.Call != nil {
+					calls = append(calls, ev.Call)
+				}
+			case ai.EventError:
+				return reply.String(), ev.Err
+			}
+		}
+		if ctx.Err() != nil {
+			return reply.String(), ctx.Err()
+		}
+		if len(calls) == 0 {
+			return reply.String(), nil
+		}
+		if reply.Len() > 0 && !strings.HasSuffix(reply.String(), "\n") {
+			reply.WriteString("\n")
+			emit(Event{Type: "text", Text: "\n"})
+		}
+		for _, c := range calls {
+			out, act := tools.Call(ctx, c.Name, c.Arguments)
+			emit(Event{Type: "activity", Activity: act})
+			req.Input = append(req.Input, ai.FunctionOutput(c.CallID, out))
+		}
+	}
+	return reply.String(), ErrTooManySteps
+}
+
+func cmpOr(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
+}

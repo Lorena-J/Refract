@@ -19,6 +19,28 @@ var migrations = []string{
 		created_at INTEGER NOT NULL,
 		updated_at INTEGER NOT NULL
 	)`,
+	`CREATE TABLE chats (
+		id         TEXT PRIMARY KEY,
+		project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+		title      TEXT NOT NULL,
+		created_at INTEGER NOT NULL,
+		updated_at INTEGER NOT NULL
+	);
+	CREATE TABLE turns (
+		id          TEXT PRIMARY KEY,
+		chat_id     TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+		message     TEXT NOT NULL,            -- what the user asked (with attached context)
+		reply       TEXT NOT NULL DEFAULT '', -- the assistant's final text
+		activity    TEXT NOT NULL DEFAULT '[]', -- JSON: compact tool log
+		status      TEXT NOT NULL,            -- running | review | accepted | rejected | failed | stopped
+		error       TEXT NOT NULL DEFAULT '', -- JSON ai.Error when failed
+		base        TEXT NOT NULL DEFAULT '', -- commit the turn started from
+		files       TEXT NOT NULL DEFAULT '[]', -- JSON: changed files still pending review
+		commits     TEXT NOT NULL DEFAULT '[]', -- JSON: commits created by accepting
+		created_at  INTEGER NOT NULL,
+		updated_at  INTEGER NOT NULL
+	);
+	CREATE INDEX turns_chat ON turns(chat_id, created_at)`,
 }
 
 // Open opens (creating if needed) the database at path and applies pending migrations.

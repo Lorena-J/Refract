@@ -15,7 +15,9 @@ import (
 	"syscall"
 	"time"
 
+	"refract/internal/agent"
 	"refract/internal/ai"
+	"refract/internal/assistant"
 	"refract/internal/auth"
 	"refract/internal/compile"
 	"refract/internal/projects"
@@ -97,10 +99,39 @@ func run() error {
 		Timeout:  timeout,
 	}}}
 
+	asa := &assistantAPI{svc: &assistant.Service{
+		DB:       db,
+		Projects: pa.svc,
+		Agent: agent.Agent{
+			Provider:      a.provider,
+			Compiler:      ca.runner.Compiler,
+			MaxIterations: 25,
+			Timeout:       15 * time.Minute,
+		},
+		ModelFor: func(ctx context.Context) (string, error) {
+			if a.model != "" {
+				return a.model, nil
+			}
+			// No model configured: use the first one the plan offers.
+			ms, err := a.provider.Models(ctx)
+			if err != nil {
+				return "", err
+			}
+			if len(ms) == 0 {
+				return "", errors.New("no models available on this ChatGPT plan; set REFRACT_MODEL_AGENT")
+			}
+			return ms[0].Slug, nil
+		},
+	}}
+	if err := asa.svc.Recover(ctx); err != nil {
+		return err
+	}
+
 	app := http.NewServeMux()
 	a.routes(app, os.Getenv("REFRACT_DEV") == "1")
 	pa.routes(app)
 	ca.routes(app)
+	asa.routes(app)
 	app.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 	app.Handle("/", web.Handler())
 

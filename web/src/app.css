@@ -170,3 +170,29 @@ button.link { border: none; background: none; padding: 0 4px; color: inherit; te
 @media (prefers-reduced-motion: reduce) { .sync-highlight { animation: none; } }
 :root { --pdf-bg: #f0f0f0; }
 @media (prefers-color-scheme: dark) { :root { --pdf-bg: #0d0d0d; } }
+
+.right-tabs { display: flex; border-bottom: 1px solid var(--border); }
+.right-tabs button { border: none; border-radius: 0; background: none; padding: 9px 14px; color: var(--muted); border-bottom: 2px solid transparent; }
+.right-tabs button.active { color: var(--fg); border-bottom-color: var(--fg); }
+.right-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.right-body[hidden] { display: none; }
+
+.assistant { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.assistant-bar { display: flex; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.assistant-bar select { flex: 1; min-width: 0; }
+.turns { flex: 1; overflow: auto; padding: 12px; }
+.turn { margin-bottom: 20px; }
+.turn-user { background: var(--active-line); border-radius: 8px; padding: 8px 10px; white-space: pre-wrap; }
+.turn-activity { list-style: none; padding: 0; margin: 8px 0; font-size: 0.85em; color: var(--muted); font-family: ui-monospace, monospace; }
+.turn-reply { white-space: pre-wrap; margin-top: 8px; line-height: 1.5; }
+.turn-status { margin-top: 6px; display: flex; gap: 8px; align-items: baseline; }
+.assistant .composer { border-top: 1px solid var(--border); padding: 8px 12px 12px; }
+
+.review { height: 100%; display: flex; flex-direction: column; }
+.review-bar { display: flex; gap: 8px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.review-message { padding: 0 12px; }
+.review-files { flex: 1; overflow: auto; }
+.review-file { border-bottom: 1px solid var(--border); }
+.review-file-bar { display: flex; gap: 8px; align-items: center; padding: 6px 12px; background: var(--active-line); position: sticky; top: 0; z-index: 1; }
+.diff-view .cm-editor { max-height: none; }
+.assistant > .error { padding: 0 12px; }

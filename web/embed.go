@@ -19,6 +19,9 @@ func Handler() http.Handler {
 		name := strings.TrimPrefix(r.URL.Path, "/")
 		if name != "" {
 			if info, err := fs.Stat(root, name); err == nil && !info.IsDir() {
+				if strings.HasPrefix(name, "assets/") { // content-hashed by Vite
+					w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+				}
 				files.ServeHTTP(w, r)
 				return
 			}
@@ -29,6 +32,7 @@ func Handler() http.Handler {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache") // always pick up a new build
 		w.Write(index)
 	})
 }

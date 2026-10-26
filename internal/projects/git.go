@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 )
 
 // git runs the git CLI in dir, isolated from any system/global config and
@@ -19,6 +20,11 @@ func git(ctx context.Context, dir string, args ...string) (string, error) {
 		"-c", "commit.gpgsign=false",
 		"-c", "init.defaultBranch=main",
 	}
+	// Never killed half-way: an interrupted `git add`/`commit` leaves
+	// .git/index.lock behind and blocks the repo. Git ops are local and short;
+	// the timeout only guards against a hang.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
+	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", append(base, args...)...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_TERMINAL_PROMPT=0")

@@ -31,7 +31,8 @@ export default function PdfViewer({ projectId, version, highlight, onInverse }: 
 
   const fitScale = () => {
     const el = scroller.current
-    return el && sizes[0] ? (el.clientWidth - 32) / sizes[0].w : 1
+    // A hidden tab has no width: keep a sane scale until it is shown again.
+    return el && sizes[0] && el.clientWidth > 64 ? (el.clientWidth - 32) / sizes[0].w : 1
   }
   const s = scale === 'fit' ? fitScale() : scale
 

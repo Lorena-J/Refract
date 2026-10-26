@@ -23,7 +23,7 @@ export default function App() {
       ) : path === '/dev' ? (
         <Dev status={status} refresh={refresh} />
       ) : path.startsWith('/p/') ? (
-        <Workspace id={path.slice(3)} />
+        <Workspace id={path.slice(3)} status={status} />
       ) : (
         <Projects />
       )}

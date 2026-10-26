@@ -1,0 +1,466 @@
+// Package assistant runs chats: each user message is a turn executed by the
+// agent in its own git worktree, then reviewed (accept/reject) by the user.
+package assistant
+
+import (
+	"context"
+	"crypto/rand"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log/slog"
+	"slices"
+	"strings"
+	"sync"
+	"time"
+	"unicode/utf8"
+
+	"refract/internal/agent"
+	"refract/internal/ai"
+	"refract/internal/projects"
+)
+
+var (
+	ErrNotFound = errors.New("not found")
+	ErrBusy     = errors.New("the assistant is already working on this project")
+	ErrState    = errors.New("this turn is not waiting for review")
+)
+
+// Chat is a conversation within a project.
+type Chat struct {
+	ID        string    `json:"id"`
+	ProjectID string    `json:"project_id"`
+	Title     string    `json:"title"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// Turn is one request and what the assistant did about it.
+type Turn struct {
+	ID        string            `json:"id"`
+	ChatID    string            `json:"chat_id"`
+	Message   string            `json:"message"`
+	Reply     string            `json:"reply"`
+	Activity  []string          `json:"activity"`
+	Status    string            `json:"status"` // running | review | done | accepted | rejected | failed | stopped
+	Error     *ai.Error         `json:"error,omitempty"`
+	Base      string            `json:"-"`
+	Files     []projects.Change `json:"files"`   // changes still pending review
+	Commits   []string          `json:"commits"` // created by accepting
+	CreatedAt time.Time         `json:"created_at"`
+}
+
+// Context is what the editor attaches to a request.
+type Context struct {
+	OpenFile  string `json:"open_file"`
+	Selection string `json:"selection"`
+	FromLine  int    `json:"from_line"`
+	ToLine    int    `json:"to_line"`
+}
+
+// Service owns chats and turns.
+type Service struct {
+	DB       *sql.DB
+	Projects *projects.Service
+	Agent    agent.Agent                           // template; Model is filled by ModelFor
+	ModelFor func(context.Context) (string, error) // model for the agent loop
+
+	mu      sync.Mutex
+	running map[string]bool // project id → a turn is running
+}
+
+const maxHistoryTurns = 10
+
+// Recover marks turns left running by a restart as stopped and removes their worktrees.
+func (s *Service) Recover(ctx context.Context) error {
+	rows, err := s.DB.QueryContext(ctx, `SELECT t.id, c.project_id FROM turns t JOIN chats c ON c.id = t.chat_id WHERE t.status = 'running'`)
+	if err != nil {
+		return err
+	}
+	type stale struct{ turn, project string }
+	var list []stale
+	for rows.Next() {
+		var st stale
+		if err := rows.Scan(&st.turn, &st.project); err != nil {
+			rows.Close()
+			return err
+		}
+		list = append(list, st)
+	}
+	rows.Close()
+	for _, st := range list {
+		s.Projects.EndTurn(ctx, st.project, st.turn)
+		if _, err := s.DB.ExecContext(ctx, `UPDATE turns SET status = 'stopped', updated_at = ? WHERE id = ?`, time.Now().Unix(), st.turn); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Service) CreateChat(ctx context.Context, projectID string) (*Chat, error) {
+	if _, err := s.Projects.Get(ctx, projectID); err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	c := &Chat{ID: newID(), ProjectID: projectID, Title: "New chat", CreatedAt: now, UpdatedAt: now}
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO chats (id, project_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		c.ID, c.ProjectID, c.Title, now.Unix(), now.Unix())
+	return c, err
+}
+
+func (s *Service) Chats(ctx context.Context, projectID string) ([]Chat, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT id, project_id, title, created_at, updated_at FROM chats WHERE project_id = ? ORDER BY updated_at DESC`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Chat{}
+	for rows.Next() {
+		var c Chat
+		var created, updated int64
+		if err := rows.Scan(&c.ID, &c.ProjectID, &c.Title, &created, &updated); err != nil {
+			return nil, err
+		}
+		c.CreatedAt, c.UpdatedAt = time.Unix(created, 0), time.Unix(updated, 0)
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+func (s *Service) chat(ctx context.Context, id string) (*Chat, error) {
+	var c Chat
+	var created, updated int64
+	err := s.DB.QueryRowContext(ctx, `SELECT id, project_id, title, created_at, updated_at FROM chats WHERE id = ?`, id).
+		Scan(&c.ID, &c.ProjectID, &c.Title, &created, &updated)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	c.CreatedAt, c.UpdatedAt = time.Unix(created, 0), time.Unix(updated, 0)
+	return &c, err
+}
+
+const turnCols = `id, chat_id, message, reply, activity, status, error, base, files, commits, created_at`
+
+func scanTurn(row interface{ Scan(...any) error }) (*Turn, error) {
+	var t Turn
+	var activity, errJSON, files, commits string
+	var created int64
+	if err := row.Scan(&t.ID, &t.ChatID, &t.Message, &t.Reply, &activity, &t.Status, &errJSON, &t.Base, &files, &commits, &created); err != nil {
+		return nil, err
+	}
+	json.Unmarshal([]byte(activity), &t.Activity)
+	json.Unmarshal([]byte(files), &t.Files)
+	json.Unmarshal([]byte(commits), &t.Commits)
+	if errJSON != "" {
+		t.Error = &ai.Error{}
+		json.Unmarshal([]byte(errJSON), t.Error)
+	}
+	t.CreatedAt = time.Unix(created, 0)
+	return &t, nil
+}
+
+// Turns lists a chat's turns, oldest first.
+func (s *Service) Turns(ctx context.Context, chatID string) ([]Turn, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT `+turnCols+` FROM turns WHERE chat_id = ? ORDER BY created_at, rowid`, chatID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Turn{}
+	for rows.Next() {
+		t, err := scanTurn(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *t)
+	}
+	return out, rows.Err()
+}
+
+func (s *Service) turn(ctx context.Context, id string) (*Turn, *Chat, error) {
+	t, err := scanTurn(s.DB.QueryRowContext(ctx, `SELECT `+turnCols+` FROM turns WHERE id = ?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	c, err := s.chat(ctx, t.ChatID)
+	return t, c, err
+}
+
+func (s *Service) save(ctx context.Context, t *Turn) error {
+	activity, _ := json.Marshal(t.Activity)
+	files, _ := json.Marshal(t.Files)
+	commits, _ := json.Marshal(t.Commits)
+	errJSON := ""
+	if t.Error != nil {
+		b, _ := json.Marshal(t.Error)
+		errJSON = string(b)
+	}
+	now := time.Now().Unix()
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO turns (`+turnCols+`, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (id) DO UPDATE SET reply = excluded.reply, activity = excluded.activity, status = excluded.status,
+		error = excluded.error, base = excluded.base, files = excluded.files, commits = excluded.commits, updated_at = excluded.updated_at`,
+		t.ID, t.ChatID, t.Message, t.Reply, string(activity), t.Status, errJSON, t.Base, string(files), string(commits), t.CreatedAt.Unix(), now)
+	if err != nil {
+		return err
+	}
+	_, err = s.DB.ExecContext(ctx, `UPDATE chats SET updated_at = ? WHERE id = ?`, now, t.ChatID)
+	return err
+}
+
+// Ask runs a turn. emit streams agent events while it runs. Cancelling ctx
+// (the user pressed Stop or left) stops the turn; nothing is applied.
+func (s *Service) Ask(ctx context.Context, chatID, text string, ec Context, emit func(agent.Event)) (*Turn, error) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil, errors.New("empty message")
+	}
+	c, err := s.chat(ctx, chatID)
+	if err != nil {
+		return nil, err
+	}
+	p, err := s.Projects.Get(ctx, c.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	if s.running == nil {
+		s.running = map[string]bool{}
+	}
+	if s.running[p.ID] {
+		s.mu.Unlock()
+		return nil, ErrBusy
+	}
+	s.running[p.ID] = true
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		delete(s.running, p.ID)
+		s.mu.Unlock()
+	}()
+
+	history, err := s.history(ctx, chatID)
+	if err != nil {
+		return nil, err
+	}
+	if len(history) == 0 {
+		s.DB.ExecContext(ctx, `UPDATE chats SET title = ? WHERE id = ?`, title(text), chatID)
+	}
+	t := &Turn{ID: newID(), ChatID: chatID, Message: withContext(text, ec), Status: "running", Activity: []string{}, Files: []projects.Change{}, Commits: []string{}, CreatedAt: time.Now()}
+	if err := s.save(ctx, t); err != nil {
+		return nil, err
+	}
+	// Whatever happens to the request, the turn's outcome is recorded.
+	bg := context.WithoutCancel(ctx)
+	fail := func(status string, err error) (*Turn, error) {
+		if ctx.Err() != nil {
+			status = "stopped" // whatever failed, the user stopped it
+		}
+		t.Status = status
+		var ae *ai.Error
+		if !errors.As(err, &ae) {
+			ae = &ai.Error{Kind: ai.ErrOther, Message: err.Error()}
+		}
+		if status == "failed" {
+			t.Error = ae
+		}
+		s.Projects.EndTurn(bg, p.ID, t.ID) // nothing partial is kept
+		t.Files = []projects.Change{}
+		return t, s.save(bg, t)
+	}
+
+	model, err := s.ModelFor(ctx)
+	if err != nil {
+		return fail("failed", err)
+	}
+	base, dir, err := s.Projects.StartTurn(ctx, p.ID, t.ID)
+	if err != nil {
+		return fail("failed", err)
+	}
+	t.Base = base
+
+	a := s.Agent
+	a.Model = model
+	t.Reply, err = a.Run(ctx, agent.Input{Dir: dir, MainFile: p.MainFile, History: history, Message: t.Message}, func(e agent.Event) {
+		if e.Type == "activity" {
+			t.Activity = append(t.Activity, e.Activity)
+		}
+		emit(e)
+	})
+	switch {
+	case ctx.Err() != nil:
+		return fail("stopped", ctx.Err())
+	case err != nil:
+		return fail("failed", err)
+	}
+
+	files, err := s.Projects.FinishTurn(bg, p.ID, t.ID, base, "ai: "+title(text))
+	if err != nil {
+		return fail("failed", err)
+	}
+	t.Files = files
+	t.Status = "review"
+	if len(files) == 0 {
+		t.Status = "done" // an answer without changes
+		s.Projects.EndTurn(bg, p.ID, t.ID)
+	}
+	return t, s.save(bg, t)
+}
+
+// history replays earlier turns as plain messages (tool calls are not resent).
+func (s *Service) history(ctx context.Context, chatID string) ([]agent.Message, error) {
+	turns, err := s.Turns(ctx, chatID)
+	if err != nil {
+		return nil, err
+	}
+	turns = turns[max(0, len(turns)-maxHistoryTurns):]
+	var out []agent.Message
+	for _, t := range turns {
+		if t.Status == "running" {
+			continue
+		}
+		out = append(out, agent.Message{Role: "user", Text: t.Message})
+		reply := t.Reply
+		if reply == "" {
+			reply = "(no answer: " + t.Status + ")"
+		}
+		switch t.Status {
+		case "rejected":
+			reply += "\n\n[The user rejected these changes.]"
+		case "accepted":
+			reply += "\n\n[The user accepted these changes.]"
+		}
+		out = append(out, agent.Message{Role: "assistant", Text: reply})
+	}
+	return out, nil
+}
+
+// FileDiff is one pending file's before/after content for the review view.
+type FileDiff struct {
+	projects.Change
+	Before string `json:"before"`
+	After  string `json:"after"`
+	Binary bool   `json:"binary"`
+}
+
+func (s *Service) Diff(ctx context.Context, turnID string) ([]FileDiff, error) {
+	t, c, err := s.turn(ctx, turnID)
+	if err != nil {
+		return nil, err
+	}
+	out := []FileDiff{}
+	for _, f := range t.Files {
+		before, after, err := s.Projects.TurnFile(ctx, c.ProjectID, t.ID, t.Base, f.Path)
+		if err != nil {
+			return nil, err
+		}
+		d := FileDiff{Change: f}
+		if utf8.Valid(before) && utf8.Valid(after) && !slices.Contains(before, 0) && !slices.Contains(after, 0) {
+			d.Before, d.After = string(before), string(after)
+		} else {
+			d.Binary = true
+		}
+		out = append(out, d)
+	}
+	return out, nil
+}
+
+// Accept applies files (all pending if empty). On conflict nothing is applied
+// and the conflicting files are returned.
+func (s *Service) Accept(ctx context.Context, turnID string, files []string) (*Turn, []string, error) {
+	t, c, err := s.turn(ctx, turnID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if t.Status != "review" {
+		return nil, nil, ErrState
+	}
+	pending := map[string]bool{}
+	for _, f := range t.Files {
+		pending[f.Path] = true
+	}
+	if len(files) == 0 {
+		for _, f := range t.Files {
+			files = append(files, f.Path)
+		}
+	}
+	for _, f := range files {
+		if !pending[f] {
+			return nil, nil, fmt.Errorf("%s is not pending in this turn", f)
+		}
+	}
+	commit, conflicts, err := s.Projects.AcceptTurn(ctx, c.ProjectID, t.ID, t.Base, files, "ai: "+title(firstLine(t.Message)))
+	if err != nil || len(conflicts) > 0 {
+		return t, conflicts, err
+	}
+	if commit != "" {
+		t.Commits = append(t.Commits, commit)
+	}
+	t.Files = slices.DeleteFunc(t.Files, func(f projects.Change) bool { return slices.Contains(files, f.Path) })
+	if len(t.Files) == 0 {
+		t.Status = "accepted"
+		if err := s.Projects.EndTurn(ctx, c.ProjectID, t.ID); err != nil {
+			slog.Error("end turn", "turn", t.ID, "err", err)
+		}
+	}
+	return t, nil, s.save(ctx, t)
+}
+
+// Reject discards the turn's pending changes.
+func (s *Service) Reject(ctx context.Context, turnID string) (*Turn, error) {
+	t, c, err := s.turn(ctx, turnID)
+	if err != nil {
+		return nil, err
+	}
+	if t.Status != "review" {
+		return nil, ErrState
+	}
+	if err := s.Projects.EndTurn(ctx, c.ProjectID, t.ID); err != nil {
+		return nil, err
+	}
+	t.Status, t.Files = "rejected", []projects.Change{}
+	if len(t.Commits) > 0 {
+		t.Status = "accepted" // some files were accepted before; the rest is dropped
+	}
+	return t, s.save(ctx, t)
+}
+
+// withContext attaches the open file and selection to the request.
+func withContext(text string, ec Context) string {
+	var b strings.Builder
+	b.WriteString(text)
+	if ec.OpenFile != "" {
+		fmt.Fprintf(&b, "\n\n[Open file: %s]", ec.OpenFile)
+	}
+	if ec.Selection != "" {
+		sel := ec.Selection
+		if len(sel) > 20000 {
+			sel = sel[:20000] + "\n… (selection truncated)"
+		}
+		fmt.Fprintf(&b, "\n[Selected text, lines %d-%d of %s:]\n%s", ec.FromLine, ec.ToLine, ec.OpenFile, sel)
+	}
+	return b.String()
+}
+
+func title(text string) string {
+	t := firstLine(text)
+	if utf8.RuneCountInString(t) > 60 {
+		t = string([]rune(t)[:60]) + "…"
+	}
+	return t
+}
+
+func firstLine(s string) string {
+	s, _, _ = strings.Cut(strings.TrimSpace(s), "\n")
+	return s
+}
+
+func newID() string {
+	b := make([]byte, 8)
+	rand.Read(b)
+	return hex.EncodeToString(b)
+}

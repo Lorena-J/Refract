@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { EditorState } from '@codemirror/state'
-import { api, errorText, mkdir, move, readFile, removeFile, writeFile, type FileEntry, type OpenedFile, type Project } from './api'
+import { api, errorText, mkdir, move, readFile, removeFile, writeFile, type ChatGPTStatus, type FileEntry, type OpenedFile, type Project } from './api'
+import Assistant, { type EditorContext, type Turn } from './Assistant'
+import Review from './Review'
 import { Autosaver, type SaveStatus } from './autosave'
 import CompilePanel, { type CompileResult } from './CompilePanel'
 import Editor from './Editor'
@@ -17,7 +19,7 @@ const statusText: Record<SaveStatus, string> = {
   error: 'Save failed, retrying…',
 }
 
-export default function Workspace({ id }: { id: string }) {
+export default function Workspace({ id, status }: { id: string; status: ChatGPTStatus | null }) {
   const [project, setProject] = useState<Project | null>(null)
   const [files, setFiles] = useState<FileEntry[]>([])
   const [tabs, setTabs] = useState<string[]>([])
@@ -31,6 +33,10 @@ export default function Workspace({ id }: { id: string }) {
   const [pdfVersion, setPdfVersion] = useState(0)
   const [highlight, setHighlight] = useState<Highlight | undefined>()
   const [syncMessage, setSyncMessage] = useState('')
+  const [rightTab, setRightTab] = useState<'pdf' | 'assistant'>('pdf')
+  const [review, setReview] = useState<Turn | null>(null)
+  const [turnUpdate, setTurnUpdate] = useState<Turn | undefined>()
+  const [editorKey, setEditorKey] = useState(0) // bump to reload open files from disk
 
   // Outside React state: content loaded from the server and live editor states per open file.
   const loaded = useRef(new Map<string, OpenedFile>())
@@ -114,6 +120,52 @@ export default function Workspace({ id }: { id: string }) {
     } catch (e) {
       setSyncMessage(errorText(e))
     }
+  }
+
+  // What the assistant sees of the editor: the open file and the selection.
+  function editorContext(): EditorContext {
+    const st = active ? states.current.get(active) : undefined
+    if (!active || !st) return { open_file: active ?? '', selection: '', from_line: 0, to_line: 0 }
+    const sel = st.selection.main
+    return {
+      open_file: active,
+      selection: st.sliceDoc(sel.from, sel.to),
+      from_line: st.doc.lineAt(sel.from).number,
+      to_line: st.doc.lineAt(sel.to).number,
+    }
+  }
+
+  // Accepted AI changes rewrote files on disk: reload any that are open.
+  async function reloadFromDisk(paths: string[]) {
+    for (const p of paths) {
+      if (!loaded.current.has(p)) continue
+      states.current.delete(p)
+      try {
+        loaded.current.set(p, await readFile(id, p))
+      } catch {
+        forget([p]) // deleted by the change
+      }
+    }
+    setEditorKey((k) => k + 1)
+    await loadFiles()
+  }
+
+  async function acceptTurn(files: string[] | null): Promise<string[] | null> {
+    if (!review) return null
+    await autosave.flushAll()
+    const res = await api<{ turn: Turn; conflicts: string[] | null }>(`/api/turns/${review.id}/accept`, { method: 'POST', body: { files } })
+    if (res.conflicts?.length) return res.conflicts
+    await reloadFromDisk(files ?? review.files.map((f) => f.path))
+    setTurnUpdate(res.turn)
+    setReview(res.turn.status === 'review' ? res.turn : null)
+    return null
+  }
+
+  async function rejectTurn() {
+    if (!review) return
+    const res = await api<{ turn: Turn }>(`/api/turns/${review.id}/reject`, { method: 'POST' })
+    setTurnUpdate(res.turn)
+    setReview(null)
   }
 
   async function jumpTo(path: string, line: number) {
@@ -257,8 +309,12 @@ export default function Workspace({ id }: { id: string }) {
         </div>
         {error && <p className="error">{error}</p>}
         <div className="editor-body">
-          {active && current?.text && (
+          {review && (
+            <Review turn={review} onAccept={acceptTurn} onReject={rejectTurn} onClose={() => setReview(null)} />
+          )}
+          {!review && active && current?.text && (
             <Editor
+              key={editorKey}
               path={active}
               states={states.current}
               initial={(p) => {
@@ -272,12 +328,32 @@ export default function Workspace({ id }: { id: string }) {
               jump={jump}
             />
           )}
-          {active && current && !current.text && <BinaryView file={current} path={active} />}
-          {!active && <p className="hint empty">Open a file from the tree.</p>}
+          {!review && active && current && !current.text && <BinaryView file={current} path={active} />}
+          {!review && !active && <p className="hint empty">Open a file from the tree.</p>}
         </div>
-        {active && current?.text && <div className="status hint">{statusText[statuses[active] ?? 'saved']}</div>}
+        {!review && active && current?.text && <div className="status hint">{statusText[statuses[active] ?? 'saved']}</div>}
       </main>
       <section className="pane preview">
+        <div className="right-tabs" role="tablist">
+          <button role="tab" aria-selected={rightTab === 'pdf'} className={rightTab === 'pdf' ? 'active' : ''} onClick={() => setRightTab('pdf')}>
+            PDF
+          </button>
+          <button role="tab" aria-selected={rightTab === 'assistant'} className={rightTab === 'assistant' ? 'active' : ''} onClick={() => setRightTab('assistant')}>
+            Assistant
+          </button>
+        </div>
+        <div className="right-body" hidden={rightTab !== 'assistant'}>
+          <Assistant
+            projectId={id}
+            status={status}
+            getContext={editorContext}
+            beforeSend={() => autosave.flushAll()}
+            onReview={setReview}
+            reviewing={review?.id}
+            turnUpdate={turnUpdate}
+          />
+        </div>
+        <div className="right-body" hidden={rightTab !== 'pdf'}>
         {project && (
           <CompilePanel
             project={project}
@@ -292,6 +368,7 @@ export default function Workspace({ id }: { id: string }) {
         )}
         {syncMessage && <p className="error sync-message">{syncMessage}</p>}
         <PdfViewer projectId={id} version={pdfVersion} highlight={highlight} onInverse={syncToSource} />
+        </div>
       </section>
     </div>
   )
