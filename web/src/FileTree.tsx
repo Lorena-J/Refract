@@ -2,13 +2,7 @@ import { useState, type DragEvent } from 'react'
 import { ChevronRight, File, FileImage, FileText, Folder, FolderOpen, FolderPlus, MoreHorizontal, Pencil, Plus, Trash2, Upload } from 'lucide-react'
 import type { FileEntry } from './api'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 
 type Node = { name: string; path: string; dir: boolean; children: Node[] }
@@ -102,34 +96,32 @@ export default function FileTree(p: Props) {
               <span className="truncate">{n.name}</span>
               {!n.dir && p.dirty(n.path) && <span className="ml-1 size-1.5 shrink-0 rounded-full bg-warning" aria-label="unsaved changes" />}
             </button>
-            <span className="flex items-center opacity-0 transition-opacity duration-100 group-hover/row:opacity-100 group-focus-within/row:opacity-100 has-[[data-state=open]]:opacity-100">
+            <span className="flex items-center opacity-0 transition-opacity duration-100 group-hover/row:opacity-100 group-focus-within/row:opacity-100 has-data-popup-open:opacity-100">
               {n.dir && (
                 <Button variant="ghost" size="icon-xs" aria-label={`New file in ${n.path}`} onClick={() => p.onNew(n.path, 'file')}>
                   <Plus />
                 </Button>
               )}
               <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon-xs" aria-label={`Actions for ${n.path}`}>
-                    <MoreHorizontal />
-                  </Button>
+                <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`Actions for ${n.path}`} />}>
+                  <MoreHorizontal />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-48">
                   {n.dir && (
                     <>
-                      <DropdownMenuItem onSelect={() => p.onNew(n.path, 'file')}>
+                      <DropdownMenuItem onClick={() => p.onNew(n.path, 'file')}>
                         <Plus /> New file
                       </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => p.onNew(n.path, 'folder')}>
+                      <DropdownMenuItem onClick={() => p.onNew(n.path, 'folder')}>
                         <FolderPlus /> New folder
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                     </>
                   )}
-                  <DropdownMenuItem onSelect={() => p.onRename(n.path)}>
+                  <DropdownMenuItem onClick={() => p.onRename(n.path)}>
                     <Pencil /> Rename or move
                   </DropdownMenuItem>
-                  <DropdownMenuItem variant="destructive" onSelect={() => p.onDelete(n.path, n.dir)}>
+                  <DropdownMenuItem variant="destructive" onClick={() => p.onDelete(n.path, n.dir)}>
                     <Trash2 /> Delete
                   </DropdownMenuItem>
                 </DropdownMenuContent>

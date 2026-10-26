@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1254 1254" role="img" aria-labelledby="title desc">
+  <title id="title">Refract</title>
+  <desc id="desc">Two offset, softly rounded, translucent folded planes in cyan, blue and violet, joined by a warm coral refraction.</desc>
+  <defs>
+    <linearGradient id="back" x1="0.05" y1="0.08" x2="0.98" y2="0.87" objectBoundingBox="true">
+      <stop offset="0" stop-color="#60f3e6"/>
+      <stop offset=".34" stop-color="#25c9f1"/>
+      <stop offset=".69" stop-color="#4089f2"/>
+      <stop offset="1" stop-color="#bd9ff6"/>
+    </linearGradient>
+    <linearGradient id="fold" x1=".14" y1=".79" x2=".93" y2=".17" objectBoundingBox="true">
+      <stop offset="0" stop-color="#0dd9ee"/>
+      <stop offset=".34" stop-color="#58d9e7"/>
+      <stop offset=".73" stop-color="#a8bdf9"/>
+      <stop offset="1" stop-color="#e6bcf5"/>
+    </linearGradient>
+    <linearGradient id="under" x1=".17" y1=".9" x2=".88" y2=".2" objectBoundingBox="true">
+      <stop offset="0" stop-color="#0e78f0"/>
+      <stop offset=".5" stop-color="#4b35d9"/>
+      <stop offset="1" stop-color="#8b62e5"/>
+    </linearGradient>
+    <linearGradient id="coral" x1=".11" y1=".91" x2=".83" y2=".1" objectBoundingBox="true">
+      <stop offset="0" stop-color="#a944c7"/>
+      <stop offset=".3" stop-color="#fa6474"/>
+      <stop offset=".68" stop-color="#ff9c65"/>
+      <stop offset="1" stop-color="#ffd88f"/>
+    </linearGradient>
+    <linearGradient id="front" x1=".03" y1=".78" x2=".99" y2=".16" objectBoundingBox="true">
+      <stop offset="0" stop-color="#50baff"/>
+      <stop offset=".27" stop-color="#326cf1"/>
+      <stop offset=".56" stop-color="#756efa"/>
+      <stop offset="1" stop-color="#e0d8fb"/>
+    </linearGradient>
+    <linearGradient id="frontSheen" x1=".17" y1=".36" x2=".85" y2=".84" objectBoundingBox="true">
+      <stop offset="0" stop-color="#ecdcff" stop-opacity=".94"/>
+      <stop offset=".45" stop-color="#c6b6ff" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#9d9cff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Upper page: a single smooth contour, not a traced bitmap. -->
+  <path fill="url(#back)" d="M 261 196 C 261 138 295 106 344 122 C 430 149 749 275 829 322 C 859 339 869 365 852 390 C 741 531 532 704 399 817 C 374 839 350 835 328 822 L 288 797 C 267 785 261 763 261 737 Z"/>
+
+  <!-- Continuous dark underside prevents pinholes between the folded layers. -->
+  <path fill="url(#under)" d="M 288 752 L 853 353 L 882 477 L 406 920 Z"/>
+
+  <!-- Folded underside at the crossing. -->
+  <path fill="url(#under)" d="M 304 777 C 362 800 421 845 471 881 L 619 673 L 399 817 C 371 839 348 827 304 777 Z"/>
+
+  <!-- Top plane folds diagonally across itself. -->
+  <path fill="url(#fold)" d="M 269 706 C 275 665 299 631 335 608 C 465 529 689 423 852 358 C 858 375 850 391 833 410 C 709 553 539 686 392 811 C 357 837 326 842 297 816 C 275 795 259 751 269 706 Z"/>
+
+  <!-- Warm slit of refracted color, partially covered by the front plane. -->
+  <path fill="url(#coral)" d="M 531 714 C 659 600 773 483 852 378 C 866 370 874 381 875 407 L 875 453 C 781 535 670 623 531 714 Z"/>
+
+  <!-- Foreground page. Its rounded silhouette is an independently editable path. -->
+  <path fill="url(#front)" d="M 443 864 C 499 743 735 530 902 427 C 926 411 944 407 960 422 C 973 434 978 454 978 477 L 978 1106 C 978 1155 944 1182 899 1163 L 449 977 C 406 960 394 924 414 886 C 423 870 432 869 443 864 Z"/>
+
+  <!-- A gently translucent upper face defines the diagonal fold. -->
+  <path fill="url(#frontSheen)" d="M 443 864 C 499 743 735 530 902 427 C 926 411 944 407 960 422 C 973 434 978 454 978 477 L 978 611 C 806 706 617 798 429 898 C 432 884 437 874 443 864 Z"/>
+</svg>

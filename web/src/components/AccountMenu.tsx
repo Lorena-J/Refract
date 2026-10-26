@@ -2,6 +2,7 @@ import { Check, ChevronsUpDown, ExternalLink, Monitor, Moon, Settings, Sun } fro
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -33,29 +34,27 @@ export default function AccountMenu({ status, compact }: { status: ChatGPTStatus
             <span className="flex items-center gap-1 truncate text-sm font-medium">
               {email ?? 'Not signed in'} <ChevronsUpDown className="size-3 shrink-0 text-muted-foreground" />
             </span>
-            <span className="block truncate text-xs text-muted-foreground">
-              {status?.status.plan_granted ? 'Using ChatGPT plan' : 'ChatGPT not connected'}
-            </span>
+            <span className="block truncate text-xs text-muted-foreground">{status?.status.plan_granted ? 'Using ChatGPT plan' : 'ChatGPT not connected'}</span>
           </span>
         )}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="top" className="w-60">
-        <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Theme</DropdownMenuLabel>
-        {themes.map((t) => (
-          <DropdownMenuItem key={t.value} onSelect={() => setTheme(t.value)}>
-            <t.icon /> {t.label}
-            <Check className={cn('ml-auto', theme !== t.value && 'invisible')} />
-          </DropdownMenuItem>
-        ))}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Theme</DropdownMenuLabel>
+          {themes.map((t) => (
+            <DropdownMenuItem key={t.value} onClick={() => setTheme(t.value)}>
+              <t.icon /> {t.label}
+              <Check className={cn('ml-auto', theme !== t.value && 'invisible')} />
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => openSettings()}>
+        <DropdownMenuItem onClick={() => openSettings()}>
           <Settings /> Settings
         </DropdownMenuItem>
         {status && (
-          <DropdownMenuItem asChild>
-            <a href={status.manage_usage} target="_blank" rel="noreferrer">
-              <ExternalLink /> Manage ChatGPT usage
-            </a>
+          <DropdownMenuItem render={<a href={status.manage_usage} target="_blank" rel="noreferrer" />}>
+            <ExternalLink /> Manage ChatGPT usage
           </DropdownMenuItem>
         )}
       </DropdownMenuContent>

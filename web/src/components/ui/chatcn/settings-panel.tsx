@@ -1,4 +1,5 @@
-import { Switch, Tabs } from "radix-ui"
+import { Switch } from "@base-ui/react/switch"
+import { Tabs } from "@base-ui/react/tabs"
 import * as React from "react"
 import { cn } from "@/lib/utils"
 
@@ -51,7 +52,6 @@ function SettingsPanel({
 
   return (
     <Tabs.Root
-      activationMode="manual"
       ref={ref}
       value={value}
       defaultValue={defaultValue}
@@ -125,7 +125,7 @@ function SettingsNav({
   )
 }
 
-interface SettingsNavItemProps extends Omit<React.ComponentProps<typeof Tabs.Trigger>, "value"> {
+interface SettingsNavItemProps extends Omit<React.ComponentProps<typeof Tabs.Tab>, "value"> {
   value: string
   icon?: React.ReactNode
   /** A short fact after the label: a count, or "Off". Tabular. */
@@ -141,7 +141,7 @@ function SettingsNavItem({
   ...props
 }: SettingsNavItemProps) {
   return (
-    <Tabs.Trigger
+    <Tabs.Tab
       value={value}
       data-slot="settings-nav-item"
       className={cn(
@@ -149,7 +149,7 @@ function SettingsNavItem({
         "chatcn-text-13 text-chatcn-fg-muted @2xl/settings:chatcn-text-14 @2xl/settings:px-2",
         // Frequent and keyboard driven: color only, no movement, no transition on the active fill.
         "hover:bg-chatcn-fill-hover hover:text-chatcn-fg transition-colors duration-150",
-        "data-[state=active]:bg-chatcn-fill data-[state=active]:text-chatcn-fg data-[state=active]:transition-none",
+        "data-[active]:bg-chatcn-fill data-[active]:text-chatcn-fg data-[active]:transition-none",
         "disabled:pointer-events-none disabled:opacity-50 pointer-coarse:h-11",
         className,
       )}
@@ -160,7 +160,7 @@ function SettingsNavItem({
           aria-hidden="true"
           className={cn(
             "text-chatcn-fg-subtle grid size-4 shrink-0 place-items-center [&_svg]:size-4",
-            "group-hover/nav-item:text-chatcn-fg-muted group-data-[state=active]/nav-item:text-chatcn-fg",
+            "group-hover/nav-item:text-chatcn-fg-muted group-data-[active]/nav-item:text-chatcn-fg",
           )}
         >
           {icon}
@@ -172,7 +172,7 @@ function SettingsNavItem({
           {meta}
         </span>
       ) : null}
-    </Tabs.Trigger>
+    </Tabs.Tab>
   )
 }
 
@@ -193,7 +193,7 @@ function SettingsNavSeparator({ className, ...props }: React.ComponentProps<"div
  * -----------------------------------------------------------------------------------------------*/
 
 interface SettingsPaneProps
-  extends Omit<React.ComponentProps<typeof Tabs.Content>, "value" | "title"> {
+  extends Omit<React.ComponentProps<typeof Tabs.Panel>, "value" | "title"> {
   value: string
   title?: React.ReactNode
   description?: React.ReactNode
@@ -214,7 +214,7 @@ function SettingsPane({
   ...props
 }: SettingsPaneProps) {
   return (
-    <Tabs.Content
+    <Tabs.Panel
       value={value}
       data-slot="settings-pane"
       className={cn(
@@ -249,7 +249,7 @@ function SettingsPane({
         ) : null}
         {children}
       </div>
-    </Tabs.Content>
+    </Tabs.Panel>
   )
 }
 
@@ -414,7 +414,7 @@ function SettingsSwitch({ className, disabled, ...props }: SettingsSwitchProps) 
       data-slot="settings-switch"
       className={cn(
         "chatcn-focus relative inline-flex h-[1.125rem] w-8 shrink-0 cursor-pointer items-center rounded-full p-0.5",
-        "bg-chatcn-fill-active data-[state=checked]:bg-chatcn-accent",
+        "bg-chatcn-fill-active data-[checked]:bg-chatcn-accent",
         "ease-chatcn-standard transition-[background-color] duration-150",
         "data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50",
         // 44 px of hit area on touch without changing the drawing.
@@ -428,7 +428,7 @@ function SettingsSwitch({ className, disabled, ...props }: SettingsSwitchProps) 
         className={cn(
           "bg-chatcn-card shadow-chatcn-xs block size-3.5 rounded-full",
           "ease-chatcn-out transition-[translate,background-color] duration-150 motion-reduce:transition-none",
-          "data-[state=checked]:bg-chatcn-accent-fg data-[state=checked]:translate-x-3.5 rtl:data-[state=checked]:-translate-x-3.5",
+          "data-[checked]:bg-chatcn-accent-fg data-[checked]:translate-x-3.5 rtl:data-[checked]:-translate-x-3.5",
         )}
       />
     </Switch.Root>
@@ -507,12 +507,11 @@ function SettingsSegmented({
                 : "chatcn-text-13 rounded-chatcn-sm h-7 px-2.5 [&_svg]:size-4",
               option.iconOnly && (size === "xs" ? "w-6 px-0" : "w-8 px-0"),
               "text-chatcn-fg-muted hover:text-chatcn-fg transition-colors duration-150",
-              // Fixed: the label sets data-checked, not data-state (upstream chatcn bug).
-              "data-checked:bg-chatcn-card data-checked:text-chatcn-fg data-checked:shadow-chatcn-xs data-checked:transition-none",
+              "data-[checked]:bg-chatcn-card data-[checked]:text-chatcn-fg data-[checked]:shadow-chatcn-xs data-[checked]:transition-none",
               "has-[:focus-visible]:outline-chatcn-accent has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-1",
               "has-[:disabled]:pointer-events-none has-[:disabled]:opacity-50",
               "pointer-coarse:min-h-11",
-              "forced-colors:data-checked:outline-1 forced-colors:data-checked:outline-solid",
+              "forced-colors:data-[checked]:outline-1 forced-colors:data-[checked]:outline-solid",
             )}
           >
             <input

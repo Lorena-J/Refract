@@ -157,10 +157,8 @@ function AssistantPane({ status, onChange }: Props) {
               </Button>
             </SettingsRow>
             <SettingsRow label="Usage" description="Limits and remaining usage are managed by ChatGPT.">
-              <Button size="sm" variant="ghost" asChild>
-                <a href={status.manage_usage} target="_blank" rel="noreferrer">
-                  Manage usage <ExternalLink />
-                </a>
+              <Button size="sm" variant="ghost" render={<a href={status.manage_usage} target="_blank" rel="noreferrer" />} nativeButton={false}>
+                Manage usage <ExternalLink />
               </Button>
             </SettingsRow>
           </>

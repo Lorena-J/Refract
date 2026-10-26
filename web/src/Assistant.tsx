@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -160,7 +161,11 @@ export default function Assistant(p: Props) {
       await stream(
         `/api/chats/${id}/turns`,
         // Unresolved (models not loaded yet): send the stored pick, the server validates it.
-        { message, context: p.getContext(), choice: choice.model ? { model: choice.model.slug, effort: choice.effort } : { model: prefs.model, effort: prefs.effort } },
+        {
+          message,
+          context: p.getContext(),
+          choice: choice.model ? { model: choice.model.slug, effort: choice.effort } : { model: prefs.model, effort: prefs.effort },
+        },
         (ev) => {
           if (ev.type === 'text') update((t) => ({ ...t, reply: t.reply + ev.text }))
           if (ev.type === 'activity') update((t) => ({ ...t, activity: [...t.activity, ev.activity] }))
@@ -224,17 +229,21 @@ export default function Assistant(p: Props) {
     return (
       <div className="pointer-events-none absolute inset-0 z-20 flex items-end justify-end p-4">
         <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              onClick={() => p.onOpen(true)}
-              aria-label="Open assistant"
-              className="pointer-events-auto relative flex size-11 origin-bottom-right items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-[scale,opacity] duration-200 ease-out starting:scale-90 starting:opacity-0 hover:scale-105 active:scale-95"
-            >
-              <Sparkles className="size-5" />
-              {(running || pendingReview) && (
-                <span className={cn('absolute top-0 right-0 size-3 rounded-full border-2 border-card', running ? 'animate-pulse bg-muted-foreground' : 'bg-warning')} />
-              )}
-            </button>
+          <TooltipTrigger
+            render={
+              <button
+                onClick={() => p.onOpen(true)}
+                aria-label="Open assistant"
+                className="pointer-events-auto relative flex size-11 origin-bottom-right items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-[scale,opacity] duration-200 ease-out starting:scale-90 starting:opacity-0 hover:scale-105 active:scale-95"
+              />
+            }
+          >
+            <Sparkles className="size-5" />
+            {(running || pendingReview) && (
+              <span
+                className={cn('absolute top-0 right-0 size-3 rounded-full border-2 border-card', running ? 'animate-pulse bg-muted-foreground' : 'bg-warning')}
+              />
+            )}
           </TooltipTrigger>
           <TooltipContent side="left">{running ? 'Assistant is working…' : pendingReview ? 'Changes ready to review' : 'Assistant'}</TooltipContent>
         </Tooltip>
@@ -271,63 +280,65 @@ export default function Assistant(p: Props) {
             </div>
             <div className="enter flex h-11 shrink-0 items-center gap-1 px-2 pt-1">
               <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" className="text-muted-foreground" onClick={() => p.onOpen(false)} aria-label="Collapse assistant">
-                    <ChevronDown />
-                  </Button>
+                <TooltipTrigger
+                  render={
+                    <Button variant="ghost" size="icon-sm" className="text-muted-foreground" onClick={() => p.onOpen(false)} aria-label="Collapse assistant" />
+                  }
+                >
+                  <ChevronDown />
                 </TooltipTrigger>
                 <TooltipContent>
                   Collapse <kbd className="ml-1 opacity-70">Esc</kbd>
                 </TooltipContent>
               </Tooltip>
               <DropdownMenu>
-                <DropdownMenuTrigger asChild disabled={running}>
-                  <Button variant="ghost" size="sm" className="min-w-0 gap-1 font-medium">
-                    <span className="truncate">{title}</span> <ChevronDown className="opacity-50" />
-                  </Button>
+                <DropdownMenuTrigger disabled={running} render={<Button variant="ghost" size="sm" className="min-w-0 gap-1 font-medium" />}>
+                  <span className="truncate">{title}</span> <ChevronDown className="opacity-50" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="max-h-80 w-72">
-                  <DropdownMenuItem onSelect={newChat}>
+                  <DropdownMenuItem onClick={newChat}>
                     <MessageSquarePlus /> New chat
                   </DropdownMenuItem>
-                  {p.chats.length > 0 && (
-                    <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Recent chats</DropdownMenuLabel>
-                    </>
-                  )}
-                  {p.chats.map((c) => (
-                    <DropdownMenuItem key={c.id} onSelect={() => p.onChatId(c.id)}>
-                      <span className="truncate">{c.title}</span>
-                      <span className="ml-auto shrink-0 text-xs text-muted-foreground">{ago(c.updated_at)}</span>
-                      <Check className={cn(c.id !== p.chatId && 'hidden')} />
-                    </DropdownMenuItem>
-                  ))}
+                  {p.chats.length > 0 && <DropdownMenuSeparator />}
+                  <DropdownMenuGroup>
+                    {p.chats.length > 0 && <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Recent chats</DropdownMenuLabel>}
+                    {p.chats.map((c) => (
+                      <DropdownMenuItem key={c.id} onClick={() => p.onChatId(c.id)}>
+                        <span className="truncate">{c.title}</span>
+                        <span className="ml-auto shrink-0 text-xs text-muted-foreground">{ago(c.updated_at)}</span>
+                        <Check className={cn(c.id !== p.chatId && 'hidden')} />
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuGroup>
                 </DropdownMenuContent>
               </DropdownMenu>
               <span className="flex-1" />
               <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" className="text-muted-foreground" onClick={newChat} disabled={running} aria-label="New chat">
-                    <MessageSquarePlus />
-                  </Button>
+                <TooltipTrigger
+                  render={
+                    <Button variant="ghost" size="icon-sm" className="text-muted-foreground" onClick={newChat} disabled={running} aria-label="New chat" />
+                  }
+                >
+                  <MessageSquarePlus />
                 </TooltipTrigger>
                 <TooltipContent>New chat</TooltipContent>
               </Tooltip>
               <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="text-muted-foreground"
-                    onClick={() => {
-                      setPref('chatBubble', !prefs.chatBubble)
-                      p.onOpen(false)
-                    }}
-                    aria-label={prefs.chatBubble ? 'Collapse to input bar' : 'Minimize to bubble'}
-                  >
-                    {prefs.chatBubble ? <PanelBottom /> : <Minimize2 />}
-                  </Button>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="text-muted-foreground"
+                      onClick={() => {
+                        setPref('chatBubble', !prefs.chatBubble)
+                        p.onOpen(false)
+                      }}
+                      aria-label={prefs.chatBubble ? 'Collapse to input bar' : 'Minimize to bubble'}
+                    />
+                  }
+                >
+                  {prefs.chatBubble ? <PanelBottom /> : <Minimize2 />}
                 </TooltipTrigger>
                 <TooltipContent>{prefs.chatBubble ? 'Collapse to input bar' : 'Minimize to bubble'}</TooltipContent>
               </Tooltip>
@@ -422,7 +433,10 @@ export default function Assistant(p: Props) {
               {p.open && (
                 <>
                   {p.contextLabel && (
-                    <span className="flex min-w-0 items-center gap-1 rounded-md bg-foreground/[0.05] px-1.5 py-0.5 text-xs text-muted-foreground" title="Sent with your message">
+                    <span
+                      className="flex min-w-0 items-center gap-1 rounded-md bg-foreground/[0.05] px-1.5 py-0.5 text-xs text-muted-foreground"
+                      title="Sent with your message"
+                    >
                       <FileText className="size-3 shrink-0" />
                       <span className="truncate">{p.contextLabel}</span>
                     </span>
@@ -434,20 +448,28 @@ export default function Assistant(p: Props) {
               <ModelPicker models={models} model={choice.model} effort={choice.effort} compact={!p.open} />
               {!p.open && turns.length > 0 && (
                 <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon-sm" className="text-muted-foreground" onClick={() => p.onOpen(true)} aria-label="Show chat">
-                      <ChevronUp />
-                    </Button>
+                  <TooltipTrigger
+                    render={<Button variant="ghost" size="icon-sm" className="text-muted-foreground" onClick={() => p.onOpen(true)} aria-label="Show chat" />}
+                  >
+                    <ChevronUp />
                   </TooltipTrigger>
                   <TooltipContent>Show chat</TooltipContent>
                 </Tooltip>
               )}
               {!p.open && (
                 <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon-sm" className="text-muted-foreground" onClick={() => setPref('chatBubble', true)} aria-label="Minimize to bubble">
-                      <Minimize2 />
-                    </Button>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-muted-foreground"
+                        onClick={() => setPref('chatBubble', true)}
+                        aria-label="Minimize to bubble"
+                      />
+                    }
+                  >
+                    <Minimize2 />
                   </TooltipTrigger>
                   <TooltipContent>Minimize to bubble</TooltipContent>
                 </Tooltip>
@@ -476,7 +498,11 @@ function TurnView({ turn: t, status, reviewing, onReview }: { turn: Turn; status
   const done = finished[t.status]
   return (
     <div className="flex flex-col gap-3">
-      <div data-slot="message" data-role="user" className="enter ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md bg-secondary px-3.5 py-2 text-sm whitespace-pre-wrap">
+      <div
+        data-slot="message"
+        data-role="user"
+        className="enter ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md bg-secondary px-3.5 py-2 text-sm whitespace-pre-wrap"
+      >
         {request}
       </div>
 
@@ -571,18 +597,20 @@ function CopyButton({ text }: { text: string }) {
   }, [copied])
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          className="mt-1 text-muted-foreground opacity-60 transition-opacity duration-150 group-hover/reply:opacity-100 focus-visible:opacity-100"
-          aria-label="Copy reply"
-          onClick={() => navigator.clipboard.writeText(text).then(() => setCopied(true))}
-        >
-          <span key={String(copied)} className="grid animate-[chatcn-swap_150ms_var(--ease-out)] place-items-center">
-            {copied ? <Check /> : <Copy />}
-          </span>
-        </Button>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="mt-1 text-muted-foreground opacity-60 transition-opacity duration-150 group-hover/reply:opacity-100 focus-visible:opacity-100"
+            aria-label="Copy reply"
+            onClick={() => navigator.clipboard.writeText(text).then(() => setCopied(true))}
+          />
+        }
+      >
+        <span key={String(copied)} className="grid animate-[chatcn-swap_150ms_var(--ease-out)] place-items-center">
+          {copied ? <Check /> : <Copy />}
+        </span>
       </TooltipTrigger>
       <TooltipContent>{copied ? 'Copied' : 'Copy'}</TooltipContent>
     </Tooltip>

@@ -79,15 +79,21 @@ export default function CompileStatus({ projectId, compiling, result, error, onJ
   return (
     <>
       <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button variant="ghost" size="sm" className="min-w-0 shrink gap-1.5 rounded-full px-2.5 font-normal" aria-label="Compile status and problems">
-            {/* key: a soft crossfade when the state changes */}
-            <span key={label} className="enter flex min-w-0 items-center gap-1.5 [&_svg]:size-4">
-              {icon}
-              <span className="truncate tabular-nums">{label}</span>
+        <PopoverTrigger
+          render={
+            <Button variant="ghost" size="sm" className="min-w-0 shrink gap-1.5 rounded-full px-2.5 font-normal" aria-label="Compile status and problems" />
+          }
+        >
+          {/* key: a soft crossfade when the state changes */}
+          <span key={label} className="enter flex min-w-0 items-center gap-1.5 [&_svg]:size-4">
+            {icon}
+            <span className="truncate tabular-nums">{label}</span>
+          </span>
+          {warnings > 0 && !compiling && errors === 0 && result && (
+            <span className="text-xs text-muted-foreground">
+              · {warnings} warning{warnings > 1 ? 's' : ''}
             </span>
-            {warnings > 0 && !compiling && errors === 0 && result && <span className="text-xs text-muted-foreground">· {warnings} warning{warnings > 1 ? 's' : ''}</span>}
-          </Button>
+          )}
         </PopoverTrigger>
         <PopoverContent align="start" className="max-h-[60vh] w-[26rem] overflow-auto p-0">
           <div className="flex items-center justify-between border-b px-3 py-2">
@@ -169,7 +175,10 @@ function ProblemRow({ problem: x, onJump }: { problem: Problem; onJump: (file: s
   return (
     <li>
       {x.file ? (
-        <button className="flex w-full gap-2.5 px-3 py-2.5 text-left transition-colors duration-100 hover:bg-accent/60" onClick={() => onJump(x.file!, x.line ?? 1)}>
+        <button
+          className="flex w-full gap-2.5 px-3 py-2.5 text-left transition-colors duration-100 hover:bg-accent/60"
+          onClick={() => onJump(x.file!, x.line ?? 1)}
+        >
           {body}
         </button>
       ) : (

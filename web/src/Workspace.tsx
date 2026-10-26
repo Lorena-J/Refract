@@ -18,6 +18,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/componen
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -391,35 +392,31 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
           <aside className="flex h-full min-w-0 flex-col pr-1">
             <div className="flex h-11 items-center gap-1 px-1">
               <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="min-w-0 flex-1 justify-start gap-1.5 px-2">
-                    <span className="truncate font-semibold">{project?.name ?? '…'}</span>
-                    <ChevronDown className="opacity-50" />
-                  </Button>
+                <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="min-w-0 flex-1 justify-start gap-1.5 px-2" />}>
+                  <span className="truncate font-semibold">{project?.name ?? '…'}</span>
+                  <ChevronDown className="opacity-50" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-64">
-                  <DropdownMenuItem asChild>
-                    <a href="/">
-                      <ChevronLeft /> All projects
-                    </a>
+                  <DropdownMenuItem render={<a href="/" />}>
+                    <ChevronLeft /> All projects
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Recent</DropdownMenuLabel>
-                  {projects.slice(0, 8).map((p) => (
-                    <DropdownMenuItem key={p.id} asChild>
-                      <a href={`/p/${p.id}`}>
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Recent</DropdownMenuLabel>
+                    {projects.slice(0, 8).map((p) => (
+                      <DropdownMenuItem key={p.id} render={<a href={`/p/${p.id}`} />}>
                         <span className="truncate">{p.name}</span>
                         {p.id === id && <Check className="ml-auto" />}
-                      </a>
-                    </DropdownMenuItem>
-                  ))}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuGroup>
                 </DropdownMenuContent>
               </DropdownMenu>
               <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" onClick={toggleSidebar} aria-label="Hide sidebar" className="text-muted-foreground">
-                    <PanelLeft />
-                  </Button>
+                <TooltipTrigger
+                  render={<Button variant="ghost" size="icon-sm" onClick={toggleSidebar} aria-label="Hide sidebar" className="text-muted-foreground" />}
+                >
+                  <PanelLeft />
                 </TooltipTrigger>
                 <TooltipContent>Hide sidebar</TooltipContent>
               </Tooltip>
@@ -437,19 +434,17 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
               <span className="flex-1" />
               {sideTab === 'files' && (
                 <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon-sm" aria-label="Add" className="text-muted-foreground">
-                      <Plus />
-                    </Button>
+                  <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Add" className="text-muted-foreground" />}>
+                    <Plus />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-44">
-                    <DropdownMenuItem onSelect={() => create('', 'file')}>
+                    <DropdownMenuItem onClick={() => create('', 'file')}>
                       <FileText /> New file
                     </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => create('', 'folder')}>
+                    <DropdownMenuItem onClick={() => create('', 'folder')}>
                       <FolderPlus /> New folder
                     </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => uploadInput.current?.click()}>
+                    <DropdownMenuItem onClick={() => uploadInput.current?.click()}>
                       <Upload /> Upload files…
                     </DropdownMenuItem>
                   </DropdownMenuContent>
@@ -525,10 +520,10 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
             <div className="flex h-11 shrink-0 items-center gap-1.5 border-b px-2">
               {sidebarCollapsed && (
                 <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon-sm" onClick={toggleSidebar} aria-label="Show sidebar" className="text-muted-foreground">
-                      <PanelLeft />
-                    </Button>
+                  <TooltipTrigger
+                    render={<Button variant="ghost" size="icon-sm" onClick={toggleSidebar} aria-label="Show sidebar" className="text-muted-foreground" />}
+                  >
+                    <PanelLeft />
                   </TooltipTrigger>
                   <TooltipContent>Show sidebar</TooltipContent>
                 </Tooltip>
@@ -544,7 +539,9 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                       aria-selected={on}
                       className={cn(
                         'group/tab flex h-7 shrink-0 items-center rounded-md border text-xs transition-colors duration-100',
-                        on ? 'border-border bg-background text-foreground shadow-xs' : 'border-transparent text-muted-foreground hover:bg-accent/60 hover:text-foreground',
+                        on
+                          ? 'border-border bg-background text-foreground shadow-xs'
+                          : 'border-transparent text-muted-foreground hover:bg-accent/60 hover:text-foreground',
                       )}
                     >
                       <button
@@ -566,7 +563,13 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                       >
                         {/* unsaved: a dot that turns into × on hover */}
                         {dirty && <span className="absolute size-1.5 rounded-full bg-warning group-hover/tab:hidden" />}
-                        <X className={cn('size-3', dirty ? 'hidden group-hover/tab:block' : 'opacity-0 group-hover/tab:opacity-100', on && !dirty && 'opacity-60')} />
+                        <X
+                          className={cn(
+                            'size-3',
+                            dirty ? 'hidden group-hover/tab:block' : 'opacity-0 group-hover/tab:opacity-100',
+                            on && !dirty && 'opacity-60',
+                          )}
+                        />
                       </button>
                     </div>
                   )
@@ -579,31 +582,31 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
               </div>
               <div className="flex shrink-0 items-center">
                 <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button size="sm" className="rounded-r-none" onClick={compile} disabled={compiling || !project?.main_file}>
-                      {compiling ? <Loader2 className="animate-spin" /> : <Play className="fill-current" />}
-                      Compile
-                    </Button>
+                  <TooltipTrigger render={<Button size="sm" className="rounded-r-none" onClick={compile} disabled={compiling || !project?.main_file} />}>
+                    {compiling ? <Loader2 className="animate-spin" /> : <Play className="fill-current" />}
+                    Compile
                   </TooltipTrigger>
                   <TooltipContent>
                     Compile <kbd className="ml-1 opacity-70">{mod}↵</kbd>
                   </TooltipContent>
                 </Tooltip>
                 <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button size="icon-sm" className="rounded-l-none border-l border-primary-foreground/20" aria-label="Compile options">
-                      <ChevronDown />
-                    </Button>
+                  <DropdownMenuTrigger
+                    render={<Button size="icon-sm" className="rounded-l-none border-l border-primary-foreground/20" aria-label="Compile options" />}
+                  >
+                    <ChevronDown />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="max-h-80 w-64">
-                    <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Main file</DropdownMenuLabel>
-                    {texFiles.map((f) => (
-                      <DropdownMenuItem key={f} onSelect={() => setMainFile(f)}>
-                        <span className="truncate font-mono text-xs">{f}</span>
-                        <Check className={cn('ml-auto', project?.main_file !== f && 'invisible')} />
-                      </DropdownMenuItem>
-                    ))}
-                    {texFiles.length === 0 && <p className="px-2 py-1.5 text-xs text-muted-foreground">No .tex files yet.</p>}
+                    <DropdownMenuGroup>
+                      <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Main file</DropdownMenuLabel>
+                      {texFiles.map((f) => (
+                        <DropdownMenuItem key={f} onClick={() => setMainFile(f)}>
+                          <span className="truncate font-mono text-xs">{f}</span>
+                          <Check className={cn('ml-auto', project?.main_file !== f && 'invisible')} />
+                        </DropdownMenuItem>
+                      ))}
+                      {texFiles.length === 0 && <p className="px-2 py-1.5 text-xs text-muted-foreground">No .tex files yet.</p>}
+                    </DropdownMenuGroup>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -751,7 +754,10 @@ function Segmented({ value, onChange, options }: { value: string; onChange: (v: 
           key={o.value}
           role="tab"
           aria-selected={o.value === value}
-          className={cn('relative px-3 py-1 font-medium transition-colors duration-150', o.value === value ? 'text-foreground' : 'text-muted-foreground hover:text-foreground')}
+          className={cn(
+            'relative px-3 py-1 font-medium transition-colors duration-150',
+            o.value === value ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
+          )}
           onClick={() => onChange(o.value)}
         >
           {o.label}

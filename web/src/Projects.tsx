@@ -4,13 +4,7 @@ import { toast } from 'sonner'
 import { api, download, errorText, type ChatGPTStatus, type ImportResult, type Project } from './api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   AlertDialog,
@@ -157,29 +151,25 @@ export default function Projects({ status }: { status: ChatGPTStatus | null }) {
             <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search" aria-label="Search projects" className="rounded-full pl-9" />
           </div>
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="secondary" className="rounded-full" disabled={busy}>
-                {busy ? 'Importing…' : 'Import'} <ChevronDown className="text-muted-foreground" />
-              </Button>
+            <DropdownMenuTrigger render={<Button variant="secondary" className="rounded-full" disabled={busy} />}>
+              {busy ? 'Importing…' : 'Import'} <ChevronDown className="text-muted-foreground" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuItem onSelect={() => zipInput.current?.click()}>
+              <DropdownMenuItem onClick={() => zipInput.current?.click()}>
                 <FileArchive /> Zip files…
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => folderInput.current?.click()}>
+              <DropdownMenuItem onClick={() => folderInput.current?.click()}>
                 <FolderUp /> Folder…
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button className="rounded-full">
-                <Plus /> New <ChevronDown className="opacity-60" />
-              </Button>
+            <DropdownMenuTrigger render={<Button className="rounded-full" />}>
+              <Plus /> New <ChevronDown className="opacity-60" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
               <DropdownMenuItem
-                onSelect={() => {
+                onClick={() => {
                   setName('')
                   setNaming({ mode: 'new' })
                 }}
@@ -187,7 +177,7 @@ export default function Projects({ status }: { status: ChatGPTStatus | null }) {
                 <Plus /> Blank project
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => zipInput.current?.click()}>
+              <DropdownMenuItem onClick={() => zipInput.current?.click()}>
                 <Upload /> From a Prism export…
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -221,25 +211,25 @@ export default function Projects({ status }: { status: ChatGPTStatus | null }) {
                   {ago(p.updated_at)}
                 </span>
                 <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon-sm" aria-label={`Actions for ${p.name}`} className="text-muted-foreground">
-                      <MoreHorizontal />
-                    </Button>
+                  <DropdownMenuTrigger
+                    render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${p.name}`} className="text-muted-foreground" />}
+                  >
+                    <MoreHorizontal />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-44">
                     <DropdownMenuItem
-                      onSelect={() => {
+                      onClick={() => {
                         setName(p.name)
                         setNaming({ mode: 'rename', project: p })
                       }}
                     >
                       <Pencil /> Rename
                     </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => download(`/api/projects/${p.id}/export`, `${p.name}.zip`).catch((e) => toast.error(errorText(e)))}>
+                    <DropdownMenuItem onClick={() => download(`/api/projects/${p.id}/export`, `${p.name}.zip`).catch((e) => toast.error(errorText(e)))}>
                       <Download /> Export .zip
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem variant="destructive" onSelect={() => setDeleting(p)}>
+                    <DropdownMenuItem variant="destructive" onClick={() => setDeleting(p)}>
                       <Trash2 /> Delete
                     </DropdownMenuItem>
                   </DropdownMenuContent>
@@ -330,8 +320,9 @@ function ImportNotes({ result: r, onMainFile }: { result: ImportResult; onMainFi
         <div className="flex items-center gap-2 text-sm">
           <span className="text-muted-foreground">Main file not found. Choose it:</span>
           <Select
-            value={main || undefined}
+            value={main || null}
             onValueChange={(v) =>
+              v &&
               api(`/api/projects/${r.project.id}`, { method: 'PATCH', body: { main_file: v } })
                 .then(() => {
                   setMain(v)

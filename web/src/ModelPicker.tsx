@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -21,29 +22,33 @@ export default function ModelPicker({ models, model, effort, compact }: { models
   if (!model) return null
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-7 min-w-0 gap-1 px-2 text-xs font-normal text-muted-foreground" aria-label="Model and reasoning">
-          <span className="truncate text-foreground">{model.display_name}</span>
-          {effort && !compact && <span className="truncate">{effortLabel(effort)}</span>}
-          <ChevronDown className="size-3 opacity-60" />
-        </Button>
+      <DropdownMenuTrigger
+        render={
+          <Button variant="ghost" size="sm" className="h-7 min-w-0 gap-1 px-2 text-xs font-normal text-muted-foreground" aria-label="Model and reasoning" />
+        }
+      >
+        <span className="truncate text-foreground">{model.display_name}</span>
+        {effort && !compact && <span className="truncate">{effortLabel(effort)}</span>}
+        <ChevronDown className="size-3 opacity-60" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" side="top" className="w-64">
         {model.efforts.length > 0 && (
           <>
-            <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Reasoning</DropdownMenuLabel>
-            {model.efforts.map((e) => (
-              <DropdownMenuItem key={e.effort} onSelect={() => setPref('effort', e.effort)} className="items-start">
-                <span className="min-w-0 flex-1">
-                  <span className="block">
-                    {effortLabel(e.effort)}
-                    {e.effort === model.default_effort && <span className="ml-1.5 text-xs text-muted-foreground">default</span>}
+            <DropdownMenuGroup>
+              <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Reasoning</DropdownMenuLabel>
+              {model.efforts.map((e) => (
+                <DropdownMenuItem key={e.effort} onClick={() => setPref('effort', e.effort)} className="items-start">
+                  <span className="min-w-0 flex-1">
+                    <span className="block">
+                      {effortLabel(e.effort)}
+                      {e.effort === model.default_effort && <span className="ml-1.5 text-xs text-muted-foreground">default</span>}
+                    </span>
+                    {e.description && <span className="block text-xs text-muted-foreground">{e.description}</span>}
                   </span>
-                  {e.description && <span className="block text-xs text-muted-foreground">{e.description}</span>}
-                </span>
-                <Check className={cn('mt-0.5', e.effort !== effort && 'invisible')} />
-              </DropdownMenuItem>
-            ))}
+                  <Check className={cn('mt-0.5', e.effort !== effort && 'invisible')} />
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuGroup>
             <DropdownMenuSeparator />
           </>
         )}
@@ -54,7 +59,7 @@ export default function ModelPicker({ models, model, effort, compact }: { models
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent className="max-h-[min(70vh,520px)] w-72">
             {models.map((m) => (
-              <DropdownMenuItem key={m.slug} onSelect={() => setPref('model', m.slug)} className="items-start">
+              <DropdownMenuItem key={m.slug} onClick={() => setPref('model', m.slug)} className="items-start">
                 <span className="min-w-0 flex-1">
                   <span className="block">{m.display_name}</span>
                   {m.description && <span className="block text-xs text-muted-foreground">{m.description}</span>}

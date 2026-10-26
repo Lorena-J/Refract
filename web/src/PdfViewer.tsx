@@ -142,27 +142,25 @@ export default function PdfViewer({ projectId, version, highlight, onInverse, to
   const zoomLabel = scale === 'fit' ? 'Fit' : `${Math.round(s * 100)}%`
   const bar = (
     <>
-        {toolbar}
-        <span className="flex-1" />
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="gap-1 font-normal tabular-nums" disabled={!doc}>
-              <Maximize2 /> {zoomLabel} <ChevronDown className="opacity-60" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-40">
-            <DropdownMenuItem onSelect={() => zoom('fit')}>
-              Zoom to fit <Check className={cn('ml-auto', scale !== 'fit' && 'invisible')} />
+      {toolbar}
+      <span className="flex-1" />
+      <DropdownMenu>
+        <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="gap-1 font-normal tabular-nums" disabled={!doc} />}>
+          <Maximize2 /> {zoomLabel} <ChevronDown className="opacity-60" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-40">
+          <DropdownMenuItem onClick={() => zoom('fit')}>
+            Zoom to fit <Check className={cn('ml-auto', scale !== 'fit' && 'invisible')} />
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          {[0.5, 0.75, 1, 1.25, 1.5, 2].map((z) => (
+            <DropdownMenuItem key={z} onClick={() => zoom(z)}>
+              {z * 100}% <Check className={cn('ml-auto', scale !== z && 'invisible')} />
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            {[0.5, 0.75, 1, 1.25, 1.5, 2].map((z) => (
-              <DropdownMenuItem key={z} onSelect={() => zoom(z)}>
-                {z * 100}% <Check className={cn('ml-auto', scale !== z && 'invisible')} />
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-        {actions}
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {actions}
     </>
   )
   return (
@@ -173,21 +171,20 @@ export default function PdfViewer({ projectId, version, highlight, onInverse, to
           {message && <p className="enter mt-24 text-center text-sm text-muted-foreground">{message}</p>}
           {doc &&
             sizes.map((size, i) => (
-              <Page
-                key={i}
-                doc={doc}
-                n={i + 1}
-                size={size}
-                scale={s}
-                highlight={highlight?.page === i + 1 ? highlight : undefined}
-                onInverse={onInverse}
-              />
+              <Page key={i} doc={doc} n={i + 1} size={size} scale={s} highlight={highlight?.page === i + 1 ? highlight : undefined} onInverse={onInverse} />
             ))}
         </div>
         {doc && sizes.length > 0 && (
           // Floating pager: page navigation without leaving the document.
           <div className="enter absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center whitespace-nowrap gap-0.5 rounded-full border bg-popover/90 p-1 text-sm shadow-lg backdrop-blur">
-            <Button variant="ghost" size="icon-sm" className="rounded-full" onClick={() => goTo(current - 1)} disabled={current <= 1} aria-label="Previous page">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="rounded-full"
+              onClick={() => goTo(current - 1)}
+              disabled={current <= 1}
+              aria-label="Previous page"
+            >
               <ChevronLeft />
             </Button>
             <input
@@ -200,7 +197,14 @@ export default function PdfViewer({ projectId, version, highlight, onInverse, to
               }}
             />
             <span className="pr-1 whitespace-nowrap text-muted-foreground tabular-nums">/ {sizes.length}</span>
-            <Button variant="ghost" size="icon-sm" className="rounded-full" onClick={() => goTo(current + 1)} disabled={current >= sizes.length} aria-label="Next page">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="rounded-full"
+              onClick={() => goTo(current + 1)}
+              disabled={current >= sizes.length}
+              aria-label="Next page"
+            >
               <ChevronRight />
             </Button>
             <span className="mx-0.5 h-4 w-px bg-border" />
@@ -217,7 +221,21 @@ export default function PdfViewer({ projectId, version, highlight, onInverse, to
   )
 }
 
-function Page({ doc, n, size, scale, highlight, onInverse }: { doc: PDFDocumentProxy; n: number; size: Size; scale: number; highlight?: Highlight; onInverse: Props['onInverse'] }) {
+function Page({
+  doc,
+  n,
+  size,
+  scale,
+  highlight,
+  onInverse,
+}: {
+  doc: PDFDocumentProxy
+  n: number
+  size: Size
+  scale: number
+  highlight?: Highlight
+  onInverse: Props['onInverse']
+}) {
   const box = useRef<HTMLDivElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
   const [visible, setVisible] = useState(false)

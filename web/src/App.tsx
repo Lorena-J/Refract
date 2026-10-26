@@ -29,8 +29,8 @@ export default function App() {
   const welcome = !!status && status.status.signed_in && status.status.plan_granted && !status.welcome_seen
 
   return (
-    // After the first tooltip opens, neighbours open instantly (skipDelayDuration).
-    <TooltipProvider delayDuration={500} skipDelayDuration={400}>
+    // After the first tooltip opens, neighbours open instantly (within the provider's 400 ms timeout).
+    <TooltipProvider delay={500}>
       {path === '/dev' ? (
         <Dev status={status} refresh={refresh} />
       ) : path.startsWith('/p/') ? (
