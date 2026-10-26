@@ -1,0 +1,7 @@
+.git
+data
+fixtures
+.env*
+refract
+web/node_modules
+web/dist

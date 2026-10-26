@@ -1,4 +1,4 @@
-.PHONY: dev dev-api dev-web build web test login
+.PHONY: dev dev-api dev-web build web test login docker
 
 # Go API on :8080 + Vite on :5173 (proxies /api). Open http://localhost:5173.
 dev:
@@ -34,3 +34,12 @@ build: web
 test:
 	go vet ./...
 	go test ./...
+
+# Builds and smoke-tests the image for each platform (the foreign one runs emulated).
+# Extra buildx flags: make docker BUILDX_FLAGS="--builder mybuilder"
+PLATFORMS ?= amd64 arm64
+docker:
+	for p in $(PLATFORMS); do \
+		docker buildx build $(BUILDX_FLAGS) --platform linux/$$p --load -t refract:$$p . && \
+		scripts/smoke-docker.sh refract:$$p linux/$$p || exit 1; \
+	done
