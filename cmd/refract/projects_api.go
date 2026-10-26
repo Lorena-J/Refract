@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"io/fs"
 	"log/slog"
 	"mime"
 	"mime/multipart"
@@ -25,10 +26,87 @@ func (a *projectsAPI) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/projects", a.create)
 	mux.HandleFunc("POST /api/projects/import", a.importZip)
 	mux.HandleFunc("POST /api/projects/import-folder", a.importFolder)
+	mux.HandleFunc("GET /api/projects/{id}", a.get)
 	mux.HandleFunc("PATCH /api/projects/{id}", a.update)
 	mux.HandleFunc("DELETE /api/projects/{id}", a.delete)
 	mux.HandleFunc("GET /api/projects/{id}/export", a.export)
 	mux.HandleFunc("GET /api/projects/{id}/checks", a.checks)
+	mux.HandleFunc("GET /api/projects/{id}/files", a.listFiles)
+	mux.HandleFunc("GET /api/projects/{id}/file", a.readFile)
+	mux.HandleFunc("PUT /api/projects/{id}/file", a.writeFile)
+	mux.HandleFunc("DELETE /api/projects/{id}/file", a.removeFile)
+	mux.HandleFunc("POST /api/projects/{id}/mkdir", a.mkdir)
+	mux.HandleFunc("POST /api/projects/{id}/move", a.move)
+}
+
+func (a *projectsAPI) listFiles(w http.ResponseWriter, r *http.Request) {
+	files, err := a.svc.ListFiles(r.Context(), r.PathValue("id"))
+	if err != nil {
+		projectError(w, err)
+		return
+	}
+	writeJSON(w, files)
+}
+
+// readFile returns raw bytes; X-Refract-Text tells the editor whether to open it as text.
+func (a *projectsAPI) readFile(w http.ResponseWriter, r *http.Request) {
+	b, text, err := a.svc.ReadFile(r.Context(), r.PathValue("id"), r.URL.Query().Get("path"))
+	if err != nil {
+		projectError(w, err)
+		return
+	}
+	ct := "text/plain; charset=utf-8"
+	if !text {
+		ct = http.DetectContentType(b)
+		if strings.HasSuffix(strings.ToLower(r.URL.Query().Get("path")), ".svg") {
+			ct = "image/svg+xml"
+		}
+	}
+	w.Header().Set("Content-Type", ct)
+	w.Header().Set("X-Refract-Text", map[bool]string{true: "1", false: "0"}[text])
+	// User content: never sniffed or rendered as an active document.
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "sandbox")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Write(b)
+}
+
+func (a *projectsAPI) writeFile(w http.ResponseWriter, r *http.Request) {
+	body := http.MaxBytesReader(w, r.Body, projects.MaxFileSize)
+	if err := a.svc.WriteFile(r.Context(), r.PathValue("id"), r.URL.Query().Get("path"), body); err != nil {
+		projectError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *projectsAPI) removeFile(w http.ResponseWriter, r *http.Request) {
+	if err := a.svc.Remove(r.Context(), r.PathValue("id"), r.URL.Query().Get("path")); err != nil {
+		projectError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *projectsAPI) mkdir(w http.ResponseWriter, r *http.Request) {
+	if err := a.svc.Mkdir(r.Context(), r.PathValue("id"), r.URL.Query().Get("path")); err != nil {
+		projectError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *projectsAPI) move(w http.ResponseWriter, r *http.Request) {
+	var in struct{ From, To string }
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&in); err != nil {
+		httpError(w, err, http.StatusBadRequest)
+		return
+	}
+	if err := a.svc.Move(r.Context(), r.PathValue("id"), in.From, in.To); err != nil {
+		projectError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a *projectsAPI) list(w http.ResponseWriter, r *http.Request) {
@@ -38,6 +116,15 @@ func (a *projectsAPI) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, ps)
+}
+
+func (a *projectsAPI) get(w http.ResponseWriter, r *http.Request) {
+	p, err := a.svc.Get(r.Context(), r.PathValue("id"))
+	if err != nil {
+		projectError(w, err)
+		return
+	}
+	writeJSON(w, p)
 }
 
 func (a *projectsAPI) create(w http.ResponseWriter, r *http.Request) {
@@ -160,9 +247,11 @@ func (a *projectsAPI) checks(w http.ResponseWriter, r *http.Request) {
 
 func projectError(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, projects.ErrNotFound):
+	case errors.Is(err, projects.ErrNotFound), errors.Is(err, fs.ErrNotExist):
 		httpError(w, err, http.StatusNotFound)
-	case errors.Is(err, projects.ErrUnsafePath), errors.Is(err, projects.ErrTooLarge), errors.Is(err, zip.ErrFormat):
+	case errors.Is(err, fs.ErrExist):
+		httpError(w, err, http.StatusConflict)
+	case errors.Is(err, projects.ErrUnsafePath), errors.Is(err, projects.ErrBadPath), errors.Is(err, projects.ErrTooLarge), errors.Is(err, zip.ErrFormat):
 		httpError(w, err, http.StatusBadRequest)
 	default:
 		var mbe *http.MaxBytesError

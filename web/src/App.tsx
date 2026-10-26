@@ -4,6 +4,7 @@ import Dev from './Dev'
 import Projects from './Projects'
 import Settings from './Settings'
 import Welcome from './Welcome'
+import Workspace from './Workspace'
 
 export default function App() {
   const [status, setStatus] = useState<ChatGPTStatus | null>(null)
@@ -22,16 +23,7 @@ export default function App() {
       ) : path === '/dev' ? (
         <Dev status={status} refresh={refresh} />
       ) : path.startsWith('/p/') ? (
-        <div className="layout">
-          <aside className="pane files">
-            Files
-            <a className="settings-link" href="/">
-              All projects
-            </a>
-          </aside>
-          <main className="pane editor">Editor</main>
-          <section className="pane preview">PDF</section>
-        </div>
+        <Workspace id={path.slice(3)} />
       ) : (
         <Projects />
       )}

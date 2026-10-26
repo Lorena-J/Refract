@@ -99,3 +99,37 @@ export type ImportResult = { project: Project; warnings: Warning[]; skipped?: st
 export function errorText(e: unknown): string {
   return e instanceof RequestError ? describe(e.error) : String(e)
 }
+
+export type FileEntry = { path: string; dir: boolean; size: number; mtime: number }
+export type OpenedFile = { text: true; content: string } | { text: false; blob: Blob; type: string; size: number }
+
+const fileURL = (id: string, path: string) => `/api/projects/${id}/file?path=${encodeURIComponent(path)}`
+
+export async function readFile(id: string, path: string): Promise<OpenedFile> {
+  const res = await fetch(fileURL(id, path), { headers })
+  if (!res.ok) {
+    const data = await res.json().catch(() => null)
+    throw new RequestError(data?.error ?? { kind: 'other', message: `HTTP ${res.status}` })
+  }
+  if (res.headers.get('X-Refract-Text') === '1') return { text: true, content: await res.text() }
+  const blob = await res.blob()
+  return { text: false, blob, type: res.headers.get('Content-Type') ?? '', size: blob.size }
+}
+
+export async function writeFile(id: string, path: string, body: string | Blob) {
+  const size = typeof body === 'string' ? body.length : body.size
+  const res = await fetch(fileURL(id, path), {
+    method: 'PUT',
+    headers,
+    body,
+    keepalive: size < 60_000, // lets a save started while the page unloads still finish
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => null)
+    throw new RequestError(data?.error ?? { kind: 'other', message: `HTTP ${res.status}` })
+  }
+}
+
+export const removeFile = (id: string, path: string) => api(fileURL(id, path), { method: 'DELETE' })
+export const mkdir = (id: string, path: string) => api(`/api/projects/${id}/mkdir?path=${encodeURIComponent(path)}`, { method: 'POST' })
+export const move = (id: string, from: string, to: string) => api(`/api/projects/${id}/move`, { method: 'POST', body: { from, to } })
