@@ -14,12 +14,21 @@ import (
 	"syscall"
 	"time"
 
+	"refract/internal/ai"
 	"refract/internal/auth"
+	"refract/internal/siwc"
 	"refract/internal/store"
 	"refract/web"
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "login" {
+		if err := runLogin(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "login failed:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 	if err := run(); err != nil {
 		slog.Error("fatal", "err", err)
@@ -38,6 +47,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	key, err := store.ParseKey(os.Getenv("REFRACT_SECRET_KEY"))
+	if err != nil {
+		return err
+	}
 
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return err
@@ -48,7 +61,18 @@ func run() error {
 	}
 	defer db.Close()
 
+	session := &siwc.Session{DB: db, Key: key, OAuth: siwc.NewOAuth(ctx), AllowedSubject: os.Getenv("REFRACT_ALLOWED_SUBJECT")}
+	if _, err := session.HostID(ctx); err != nil {
+		return err
+	}
+	a := &api{
+		session:  session,
+		provider: &ai.SIWC{Tokens: session, BaseURL: siwc.Resource, HTTP: &http.Client{}},
+		model:    os.Getenv("REFRACT_MODEL_AGENT"),
+	}
+
 	app := http.NewServeMux()
+	a.routes(app, os.Getenv("REFRACT_DEV") == "1")
 	app.Handle("/", web.Handler())
 
 	mux := http.NewServeMux()
