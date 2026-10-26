@@ -12,6 +12,13 @@ import (
 // Append only: never edit or reorder an entry that has shipped.
 var migrations = []string{
 	`CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
+	`CREATE TABLE projects (
+		id         TEXT PRIMARY KEY,
+		name       TEXT NOT NULL,
+		main_file  TEXT NOT NULL DEFAULT '',
+		created_at INTEGER NOT NULL,
+		updated_at INTEGER NOT NULL
+	)`,
 }
 
 // Open opens (creating if needed) the database at path and applies pending migrations.

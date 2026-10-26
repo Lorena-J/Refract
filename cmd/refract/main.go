@@ -16,6 +16,7 @@ import (
 
 	"refract/internal/ai"
 	"refract/internal/auth"
+	"refract/internal/projects"
 	"refract/internal/siwc"
 	"refract/internal/store"
 	"refract/web"
@@ -71,8 +72,15 @@ func run() error {
 		model:    os.Getenv("REFRACT_MODEL_AGENT"),
 	}
 
+	pa := &projectsAPI{
+		svc: &projects.Service{DB: db, Dir: filepath.Join(dataDir, "projects"), Limits: projects.DefaultLimits},
+		tmp: filepath.Join(dataDir, "tmp"),
+	}
+
 	app := http.NewServeMux()
 	a.routes(app, os.Getenv("REFRACT_DEV") == "1")
+	pa.routes(app)
+	app.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 	app.Handle("/", web.Handler())
 
 	mux := http.NewServeMux()

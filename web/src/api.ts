@@ -9,11 +9,13 @@ export class RequestError extends Error {
   }
 }
 
+// body: an object is sent as JSON; a string, Blob or FormData is sent as is.
 export async function api<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+  const raw = typeof init.body === 'string' || init.body instanceof Blob || init.body instanceof FormData
   const res = await fetch(path, {
     method: init.method ?? 'GET',
-    headers: init.body === undefined ? headers : { ...headers, 'Content-Type': 'application/json' },
-    body: init.body === undefined ? undefined : typeof init.body === 'string' ? init.body : JSON.stringify(init.body),
+    headers: init.body === undefined || raw ? headers : { ...headers, 'Content-Type': 'application/json' },
+    body: init.body === undefined ? undefined : raw ? (init.body as BodyInit) : JSON.stringify(init.body),
   })
   if (res.status === 204) return undefined as T
   const data = await res.json().catch(() => ({ error: { kind: 'other', message: `HTTP ${res.status}` } }))
@@ -76,4 +78,24 @@ export function describe(e: ApiError): string {
     default:
       return e.message
   }
+}
+
+// Downloads a file from an API route (a plain link can't send X-Refract).
+export async function download(path: string, filename: string) {
+  const res = await fetch(path, { headers })
+  if (!res.ok) throw new RequestError({ kind: 'other', message: `Download failed: HTTP ${res.status}` })
+  const url = URL.createObjectURL(await res.blob())
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+export type Project = { id: string; name: string; main_file: string; created_at: string; updated_at: string }
+export type Warning = { file: string; line: number; kind: string; message: string }
+export type ImportResult = { project: Project; warnings: Warning[]; skipped?: string[]; candidates?: string[] }
+
+export function errorText(e: unknown): string {
+  return e instanceof RequestError ? describe(e.error) : String(e)
 }
