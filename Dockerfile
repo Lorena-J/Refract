@@ -29,8 +29,12 @@ RUN apk add --no-cache build-base git zlib-dev zlib-static
 RUN git clone https://github.com/jlaurens/synctex.git /src \
  && git -C /src checkout --detach $SYNCTEX_COMMIT
 WORKDIR /src
-RUN mkdir /out && cc -O2 -static -D__SYNCTEX_WORK__ -I. \
-      synctex_main.c synctex_parser.c synctex_parser_utils.c -lz -o /out/synctex
+# Outside TeX Live, synctex_main.c expects <w2c/c-auto.h>; point it at the
+# repo's own config header. (__SYNCTEX_WORK__ is the author's local setup and
+# hardcodes a zlib path, so it is not used.)
+RUN mkdir -p w2c /out \
+ && echo '#include "synctex_parser_c-auto.h"' > w2c/c-auto.h \
+ && cc -O2 -static -I. synctex_main.c synctex_parser.c synctex_parser_utils.c -lz -o /out/synctex
 
 # --- Tectonic, pinned official static build, checksum verified ---
 FROM --platform=$BUILDPLATFORM alpine:3.24.3 AS tectonic
