@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"refract/internal/compile"
@@ -14,14 +15,63 @@ import (
 )
 
 type compileAPI struct {
-	svc    *projects.Service
-	runner *compile.Runner
+	svc     *projects.Service
+	runner  *compile.Runner
+	synctex *compile.SyncTeX
 }
 
 func (a *compileAPI) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/projects/{id}/compile", a.compile)
 	mux.HandleFunc("GET /api/projects/{id}/pdf", a.output(".pdf", "application/pdf"))
 	mux.HandleFunc("GET /api/projects/{id}/log", a.output(".log", "text/plain; charset=utf-8"))
+	mux.HandleFunc("GET /api/projects/{id}/synctex/forward", a.forward)
+	mux.HandleFunc("GET /api/projects/{id}/synctex/inverse", a.inverse)
+}
+
+// forward: ?file=&line=&col= → boxes on the PDF.
+func (a *compileAPI) forward(w http.ResponseWriter, r *http.Request) {
+	p, err := a.svc.Get(r.Context(), r.PathValue("id"))
+	if err != nil {
+		projectError(w, err)
+		return
+	}
+	q := r.URL.Query()
+	line, _ := strconv.Atoi(q.Get("line"))
+	col, _ := strconv.Atoi(q.Get("col"))
+	boxes, err := a.synctex.Forward(r.Context(), a.svc.Path(p.ID), p.MainFile, q.Get("file"), line, col)
+	if err != nil {
+		syncError(w, err)
+		return
+	}
+	writeJSON(w, map[string]any{"boxes": boxes})
+}
+
+// inverse: ?page=&x=&y= (PDF points from the top-left) → source file and line.
+func (a *compileAPI) inverse(w http.ResponseWriter, r *http.Request) {
+	p, err := a.svc.Get(r.Context(), r.PathValue("id"))
+	if err != nil {
+		projectError(w, err)
+		return
+	}
+	q := r.URL.Query()
+	page, _ := strconv.Atoi(q.Get("page"))
+	x, _ := strconv.ParseFloat(q.Get("x"), 64)
+	y, _ := strconv.ParseFloat(q.Get("y"), 64)
+	file, line, err := a.synctex.Inverse(r.Context(), a.svc.Path(p.ID), p.MainFile, page, x, y)
+	if err != nil {
+		syncError(w, err)
+		return
+	}
+	writeJSON(w, map[string]any{"file": file, "line": line})
+}
+
+func syncError(w http.ResponseWriter, err error) {
+	if errors.Is(err, compile.ErrNoSync) {
+		httpError(w, err, http.StatusNotFound)
+		return
+	}
+	slog.Error("synctex", "err", err)
+	httpError(w, err, http.StatusInternalServerError)
 }
 
 // compile builds the main file. A successful build triggered by the user is

@@ -5,6 +5,7 @@ import { Autosaver, type SaveStatus } from './autosave'
 import CompilePanel, { type CompileResult } from './CompilePanel'
 import Editor from './Editor'
 import FileTree from './FileTree'
+import PdfViewer, { type Highlight } from './PdfViewer'
 
 const under = (p: string, prefix: string) => p === prefix || p.startsWith(prefix + '/')
 const moved = (p: string, from: string, to: string) => (under(p, from) ? to + p.slice(from.length) : p)
@@ -27,6 +28,9 @@ export default function Workspace({ id }: { id: string }) {
   const [result, setResult] = useState<CompileResult | null>(null)
   const [compileError, setCompileError] = useState('')
   const [jump, setJump] = useState<{ path: string; line: number; n: number } | undefined>()
+  const [pdfVersion, setPdfVersion] = useState(0)
+  const [highlight, setHighlight] = useState<Highlight | undefined>()
+  const [syncMessage, setSyncMessage] = useState('')
 
   // Outside React state: content loaded from the server and live editor states per open file.
   const loaded = useRef(new Map<string, OpenedFile>())
@@ -64,7 +68,9 @@ export default function Workspace({ id }: { id: string }) {
     setCompileError('')
     try {
       await autosave.flushAll() // compile what is on screen
-      setResult(await api<CompileResult>(`/api/projects/${id}/compile`, { method: 'POST' }))
+      const res = await api<CompileResult>(`/api/projects/${id}/compile`, { method: 'POST' })
+      setResult(res)
+      if (res.pdf) setPdfVersion((v) => v + 1)
     } catch (e) {
       setCompileError(errorText(e))
     } finally {
@@ -85,6 +91,30 @@ export default function Workspace({ id }: { id: string }) {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
+
+  // Forward sync: editor position → PDF.
+  async function syncToPDF(path: string, line: number, col: number) {
+    setSyncMessage('')
+    try {
+      const { boxes } = await api<{ boxes: Omit<Highlight, 'n'>[] }>(
+        `/api/projects/${id}/synctex/forward?file=${encodeURIComponent(path)}&line=${line}&col=${col}`,
+      )
+      setHighlight((h) => ({ ...boxes[0], n: (h?.n ?? 0) + 1 }))
+    } catch (e) {
+      setSyncMessage(errorText(e))
+    }
+  }
+
+  // Inverse sync: PDF point → editor.
+  async function syncToSource(page: number, x: number, y: number) {
+    setSyncMessage('')
+    try {
+      const r = await api<{ file: string; line: number }>(`/api/projects/${id}/synctex/inverse?page=${page}&x=${x}&y=${y}`)
+      await jumpTo(r.file, r.line)
+    } catch (e) {
+      setSyncMessage(errorText(e))
+    }
+  }
 
   async function jumpTo(path: string, line: number) {
     await open(path)
@@ -238,6 +268,7 @@ export default function Workspace({ id }: { id: string }) {
               onChange={(p, c) => autosave.change(p, c)}
               onSave={() => active && autosave.flush(active)}
               onCompile={compile}
+              onSync={syncToPDF}
               jump={jump}
             />
           )}
@@ -259,6 +290,8 @@ export default function Workspace({ id }: { id: string }) {
             onJump={jumpTo}
           />
         )}
+        {syncMessage && <p className="error sync-message">{syncMessage}</p>}
+        <PdfViewer projectId={id} version={pdfVersion} highlight={highlight} onInverse={syncToSource} />
       </section>
     </div>
   )

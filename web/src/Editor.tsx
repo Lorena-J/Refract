@@ -23,16 +23,17 @@ type Props = {
   onChange: (path: string, content: string) => void
   onSave: () => void
   onCompile: () => void
+  onSync: (path: string, line: number, col: number) => void // forward sync (Mod-J)
   jump?: { path: string; line: number; n: number } // n changes on every request
 }
 
 // One EditorView; each open file keeps its own EditorState, swapped on tab switch.
-export default function Editor({ path, states, initial, onChange, onSave, onCompile, jump }: Props) {
+export default function Editor({ path, states, initial, onChange, onSave, onCompile, onSync, jump }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
   const current = useRef(path)
-  const cb = useRef({ onChange, onSave, onCompile })
-  cb.current = { onChange, onSave, onCompile }
+  const cb = useRef({ onChange, onSave, onCompile, onSync })
+  cb.current = { onChange, onSave, onCompile, onSync }
 
   const extensions = useRef([
     basicSetup,
@@ -53,6 +54,15 @@ export default function Editor({ path, states, initial, onChange, onSave, onComp
           key: 'Mod-Enter',
           run: () => {
             cb.current.onCompile()
+            return true
+          },
+        },
+        {
+          key: 'Mod-j',
+          run: (v) => {
+            const head = v.state.selection.main.head
+            const line = v.state.doc.lineAt(head)
+            cb.current.onSync(current.current, line.number, head - line.from + 1)
             return true
           },
         },

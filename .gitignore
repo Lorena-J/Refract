@@ -7,3 +7,5 @@ node_modules/
 web/dist/*
 !web/dist/.gitkeep
 /refract
+web/test-results/
+web/playwright-report/

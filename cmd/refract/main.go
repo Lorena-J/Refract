@@ -87,7 +87,7 @@ func run() error {
 		}
 		timeout = time.Duration(secs) * time.Second
 	}
-	ca := &compileAPI{svc: pa.svc, runner: &compile.Runner{Compiler: &compile.Tectonic{
+	ca := &compileAPI{svc: pa.svc, synctex: &compile.SyncTeX{}, runner: &compile.Runner{Compiler: &compile.Tectonic{
 		Bundle:   os.Getenv("REFRACT_TECTONIC_BUNDLE"),
 		CacheDir: os.Getenv("TECTONIC_CACHE_DIR"),
 		Timeout:  timeout,

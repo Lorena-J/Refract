@@ -1,4 +1,4 @@
-.PHONY: dev dev-api dev-web build web test login docker
+.PHONY: dev dev-api dev-web build web test login docker e2e
 
 # Go API on :8080 + Vite on :5173 (proxies /api). Open http://localhost:5173.
 dev:
@@ -12,6 +12,10 @@ dev-api: data/dev.key
 data/dev.key:
 	mkdir -p data
 	umask 077 && openssl rand -base64 32 > $@
+
+# Browser smoke test against the built binary (needs tectonic and Google Chrome).
+e2e: build
+	cd web && npx playwright test
 
 login:
 	go run ./cmd/refract login
