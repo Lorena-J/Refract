@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
-import { ArrowDownUp, ChevronDown, Download, FileArchive, FolderUp, MoreHorizontal, Pencil, Plus, Search, Trash2, Upload } from 'lucide-react'
+import { ArrowDownUp, ChevronDown, Download, FileArchive, FolderOpen, FolderUp, MoreHorizontal, Pencil, Plus, Search, Trash2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, download, errorText, type ChatGPTStatus, type ImportResult, type Project } from './api'
 import { Button } from '@/components/ui/button'
@@ -21,6 +21,7 @@ import AccountMenu from '@/components/AccountMenu'
 import PaperIcon from '@/components/PaperIcon'
 import { ago } from '@/lib/time'
 import { cn } from '@/lib/utils'
+import { useCommands } from '@/lib/commands'
 
 type Sort = { key: 'name' | 'updated'; desc: boolean }
 
@@ -36,6 +37,29 @@ export default function Projects({ status }: { status: ChatGPTStatus | null }) {
   const [reports, setReports] = useState<ImportResult[]>([])
   const zipInput = useRef<HTMLInputElement>(null)
   const folderInput = useRef<HTMLInputElement>(null)
+
+  useCommands(() => [
+    {
+      id: 'p:new',
+      group: 'Actions',
+      label: 'New blank project',
+      icon: Plus,
+      run: () => {
+        setName('')
+        setNaming({ mode: 'new' })
+      },
+    },
+    { id: 'p:zip', group: 'Actions', label: 'Import a Prism export (.zip)', icon: FileArchive, keywords: 'upload', run: () => zipInput.current?.click() },
+    { id: 'p:folder', group: 'Actions', label: 'Import a folder', icon: FolderUp, keywords: 'upload', run: () => folderInput.current?.click() },
+    ...(projects ?? []).map((p) => ({
+      id: `project:${p.id}`,
+      group: 'Projects',
+      label: p.name,
+      hint: p.main_file || undefined,
+      icon: FolderOpen,
+      run: () => (window.location.href = `/p/${p.id}`),
+    })),
+  ])
 
   const load = () =>
     api<Project[]>('/api/projects')

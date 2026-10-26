@@ -5,7 +5,9 @@ import { EditorView, keymap } from '@codemirror/view'
 import { latex } from '@/lib/editor'
 import { getPrefs, usePrefs } from '@/lib/prefs'
 import { accept, proposalField, reject } from '@/lib/proposal'
-import QuickActions, { type QuickHandle } from './QuickActions'
+import QuickActions, { actions, type QuickHandle } from './QuickActions'
+import { useCommands } from '@/lib/commands'
+import { MessageSquareText } from 'lucide-react'
 
 const wrapping = new Compartment()
 const wrapExt = (on: boolean) => (on ? EditorView.lineWrapping : [])
@@ -38,6 +40,36 @@ export default function Editor({ path, states, initial, onChange, onSave, onComp
   const [, bump] = useReducer((n: number) => n + 1, 0) // re-render the toolbar (it reads the view)
   const quickRef = useRef<QuickHandle>(null)
 
+  // ⌘K with text selected: the quick actions, and the query as a free instruction.
+  useCommands((query) => {
+    const v = view.current
+    if (!quick || !v || v.state.selection.main.empty) return []
+    const q = query.trim()
+    return [
+      ...(q
+        ? [
+            {
+              id: 'sel:ask',
+              group: 'Selection',
+              label: `Ask: “${q}”`,
+              hint: 'edit the selection',
+              icon: MessageSquareText,
+              pinned: true,
+              run: () => quickRef.current?.run('custom', q),
+            },
+          ]
+        : []),
+      ...actions.map((a) => ({
+        id: `sel:${a.id}`,
+        group: 'Selection',
+        label: a.command,
+        hint: 'selection',
+        icon: a.icon,
+        run: () => quickRef.current?.run(a.id),
+      })),
+    ]
+  })
+
   const { wrap } = usePrefs()
   const extensions = useRef([
     basicSetup,
@@ -49,7 +81,6 @@ export default function Editor({ path, states, initial, onChange, onSave, onComp
       keymap.of([
         { key: 'Tab', run: accept },
         { key: 'Escape', run: (v) => reject(v) || (quickRef.current?.cancel() ?? false) },
-        { key: 'Mod-k', run: () => quickRef.current?.ask() ?? false },
         {
           key: 'Mod-s',
           run: () => {
@@ -79,7 +110,8 @@ export default function Editor({ path, states, initial, onChange, onSave, onComp
       // Keep the map live, so tab switches and renames always see the latest state.
       if (states.has(current.current)) states.set(current.current, u.state)
       if (u.docChanged) cb.current.onChange(current.current, u.state.doc.toString())
-      if (u.selectionSet || u.focusChanged || u.geometryChanged || u.viewportChanged || u.startState.field(proposalField) !== u.state.field(proposalField)) bump()
+      if (u.selectionSet || u.focusChanged || u.geometryChanged || u.viewportChanged || u.startState.field(proposalField) !== u.state.field(proposalField))
+        bump()
       if (u.selectionSet || u.docChanged) {
         const { from, to, empty } = u.state.selection.main
         const a = u.state.doc.lineAt(from).number

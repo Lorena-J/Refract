@@ -7,17 +7,17 @@ import { ShimmerText } from '@/components/ui/chatcn/shimmer-text'
 import Markdown from '@/components/Markdown'
 import { accept, proposal, propose, reject } from '@/lib/proposal'
 import { getPrefs } from '@/lib/prefs'
-import { mod } from '@/lib/shortcuts'
 import { cn } from '@/lib/utils'
 
-type Action = 'improve' | 'shorten' | 'grammar' | 'table' | 'explain' | 'custom'
+export type Action = 'improve' | 'shorten' | 'grammar' | 'table' | 'explain' | 'custom'
 
-const actions: { id: Action; label: string; icon: typeof Sparkles }[] = [
-  { id: 'improve', label: 'Improve', icon: Sparkles },
-  { id: 'shorten', label: 'Shorten', icon: Scissors },
-  { id: 'grammar', label: 'Fix grammar', icon: SpellCheck },
-  { id: 'table', label: 'Table', icon: Table },
-  { id: 'explain', label: 'Explain', icon: BookOpen },
+// label: the toolbar button; command: the same action in the ⌘K palette.
+export const actions: { id: Action; label: string; command: string; icon: typeof Sparkles }[] = [
+  { id: 'improve', label: 'Improve', command: 'Improve the wording', icon: Sparkles },
+  { id: 'shorten', label: 'Shorten', command: 'Make it shorter', icon: Scissors },
+  { id: 'grammar', label: 'Fix grammar', command: 'Fix grammar and spelling', icon: SpellCheck },
+  { id: 'table', label: 'Table', command: 'Convert to a table', icon: Table },
+  { id: 'explain', label: 'Explain', command: 'Explain it', icon: BookOpen },
 ]
 
 const working: Record<Action, string> = {
@@ -34,7 +34,7 @@ const CONTEXT = 2000 // characters of context on each side
 type Job = { from: number; to: number; action: Action; instruction: string }
 
 export type QuickHandle = {
-  ask: () => boolean // Mod-K: open the instruction field
+  run: (action: Action, instruction?: string) => void // from the ⌘K palette
   cancel: () => boolean // Esc: stop a request or close a result
 }
 
@@ -118,11 +118,9 @@ export default function QuickActions({ view, path, dragging, handle }: Props) {
   }
 
   useImperativeHandle(handle, () => ({
-    ask() {
-      if (sel.empty && !pending) return false
-      setAsking(true)
-      requestAnimationFrame(() => input.current?.focus())
-      return true
+    run(action, text = '') {
+      if (action === 'custom') setInstruction(text)
+      run(action, text)
     },
     cancel() {
       if (!job && !asking) return false
@@ -230,12 +228,26 @@ export default function QuickActions({ view, path, dragging, handle }: Props) {
         ) : (
           <>
             {actions.map((x) => (
-              <Button key={x.id} size="xs" variant="ghost" className={cn('text-muted-foreground hover:text-foreground', x.id === 'explain' && 'ml-0.5')} onClick={() => run(x.id)}>
+              <Button
+                key={x.id}
+                size="xs"
+                variant="ghost"
+                className={cn('text-muted-foreground hover:text-foreground', x.id === 'explain' && 'ml-0.5')}
+                onClick={() => run(x.id)}
+              >
                 <x.icon /> {x.label}
               </Button>
             ))}
             <span className="mx-0.5 h-4 w-px bg-border" />
-            <Button size="xs" variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => setAsking(true)} title={`${mod}K`}>
+            <Button
+              size="xs"
+              variant="ghost"
+              className="text-muted-foreground hover:text-foreground"
+              onClick={() => {
+                setAsking(true)
+                requestAnimationFrame(() => input.current?.focus())
+              }}
+            >
               <Pencil /> Ask…
             </Button>
           </>

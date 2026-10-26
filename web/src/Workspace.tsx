@@ -1,7 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { EditorState } from '@codemirror/state'
 import { usePanelRef } from 'react-resizable-panels'
-import { Check, ChevronDown, ChevronLeft, FileText, FolderPlus, Loader2, MessageSquare, PanelLeft, Play, Plus, Upload, X } from 'lucide-react'
+import {
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  File,
+  FileText,
+  FolderOpen,
+  FolderPlus,
+  Loader2,
+  MessageSquare,
+  MessageSquarePlus,
+  PanelLeft,
+  Play,
+  Plus,
+  Sparkles,
+  Upload,
+  X,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { api, errorText, mkdir, move, readFile, removeFile, writeFile, type ChatGPTStatus, type FileEntry, type OpenedFile, type Project } from './api'
 import Assistant, { type Chat, type EditorContext, type Turn } from './Assistant'
@@ -37,7 +54,8 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ago } from '@/lib/time'
-import { mod, shortcuts } from '@/lib/shortcuts'
+import { useCommands } from '@/lib/commands'
+import { editorShortcuts, mod } from '@/lib/shortcuts'
 import { cn } from '@/lib/utils'
 
 const under = (p: string, prefix: string) => p === prefix || p.startsWith(prefix + '/')
@@ -372,6 +390,62 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
     else p.collapse()
   }
 
+  useCommands(() => [
+    { id: 'ws:compile', group: 'Actions', label: 'Compile', icon: Play, shortcut: `${mod}↵`, run: compile },
+    {
+      id: 'ws:chat',
+      group: 'Actions',
+      label: 'New chat',
+      icon: MessageSquarePlus,
+      keywords: 'assistant ai ask',
+      run: () => {
+        setChatId('')
+        setChatOpen(true)
+        setChatFocus((n) => n + 1)
+      },
+    },
+    {
+      id: 'ws:assistant',
+      group: 'Actions',
+      label: chatOpen ? 'Collapse the assistant' : 'Open the assistant',
+      icon: Sparkles,
+      keywords: 'chat ai',
+      run: () => setChatOpen(!chatOpen),
+    },
+    { id: 'ws:newfile', group: 'Actions', label: 'New file', icon: FileText, run: () => create('', 'file') },
+    { id: 'ws:newfolder', group: 'Actions', label: 'New folder', icon: FolderPlus, run: () => create('', 'folder') },
+    { id: 'ws:upload', group: 'Actions', label: 'Upload files', icon: Upload, run: () => uploadInput.current?.click() },
+    { id: 'ws:sidebar', group: 'Actions', label: sidebarCollapsed ? 'Show the sidebar' : 'Hide the sidebar', icon: PanelLeft, run: toggleSidebar },
+    ...files
+      .filter((f) => !f.dir)
+      .map((f) => {
+        const slash = f.path.lastIndexOf('/')
+        return {
+          id: `file:${f.path}`,
+          group: 'Files',
+          label: f.path.slice(slash + 1),
+          hint: slash > 0 ? f.path.slice(0, slash) : undefined,
+          icon: File,
+          keywords: f.path,
+          run: () => open(f.path),
+        }
+      }),
+    ...chats.map((c) => ({
+      id: `chat:${c.id}`,
+      group: 'Chats',
+      label: c.title,
+      hint: ago(c.updated_at),
+      icon: MessageSquare,
+      run: () => {
+        setChatId(c.id)
+        setChatOpen(true)
+      },
+    })),
+    ...projects
+      .filter((p) => p.id !== id)
+      .map((p) => ({ id: `project:${p.id}`, group: 'Projects', label: p.name, icon: FolderOpen, run: () => (window.location.href = `/p/${p.id}`) })),
+  ])
+
   const current = active ? loaded.current.get(active) : undefined
   const texFiles = files.filter((f) => !f.dir && f.path.toLowerCase().endsWith('.tex')).map((f) => f.path)
   const saving = active ? saveState[statuses[active] ?? 'saved'] : null
@@ -392,7 +466,11 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
           <aside className="flex h-full min-w-0 flex-col pr-1">
             <div className="flex h-11 items-center gap-1 px-1">
               <Tooltip>
-                <TooltipTrigger render={<a href="/" aria-label="All projects" className="shrink-0 rounded-md p-1 transition-transform duration-150 ease-out active:scale-[0.94]" />}>
+                <TooltipTrigger
+                  render={
+                    <a href="/" aria-label="All projects" className="shrink-0 rounded-md p-1 transition-transform duration-150 ease-out active:scale-[0.94]" />
+                  }
+                >
                   <img src="/logo.svg" alt="" className="size-6" />
                 </TooltipTrigger>
                 <TooltipContent>All projects</TooltipContent>
@@ -775,7 +853,7 @@ function Segmented({ value, onChange, options }: { value: string; onChange: (v: 
 }
 
 function EmptyEditor() {
-  const rows = shortcuts.slice(0, 4)
+  const rows = editorShortcuts
   return (
     <div className="enter flex h-full flex-col items-center justify-center gap-5 pb-16 text-center">
       <div>

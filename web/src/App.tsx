@@ -7,6 +7,11 @@ import Projects from './Projects'
 import SettingsDialog from './Settings'
 import { openSettings } from '@/lib/prefs'
 import Welcome from './Welcome'
+import CommandPalette from './CommandPalette'
+import ShortcutsOverlay from './ShortcutsOverlay'
+import { getOverlay, setOverlay, useCommands } from '@/lib/commands'
+import { setTheme } from '@/lib/theme'
+import { FolderOpen, Keyboard, Monitor, Moon, Settings, Sun } from 'lucide-react'
 import Workspace from './Workspace'
 
 export default function App() {
@@ -25,7 +30,27 @@ export default function App() {
     }
   }, [])
 
+  // ⌘K anywhere, also from inputs and the editor.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setOverlay(getOverlay() === 'palette' ? null : 'palette')
+      }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [])
+
   const path = window.location.pathname
+  useCommands(() => [
+    ...(path !== '/' ? [{ id: 'nav:projects', group: 'Navigate', label: 'All projects', icon: FolderOpen, run: () => (window.location.href = '/') }] : []),
+    { id: 'app:settings', group: 'General', label: 'Settings', icon: Settings, keywords: 'preferences account chatgpt', run: () => openSettings() },
+    { id: 'app:shortcuts', group: 'General', label: 'Keyboard shortcuts', icon: Keyboard, shortcut: '?', run: () => setOverlay('shortcuts') },
+    { id: 'theme:light', group: 'General', label: 'Light theme', icon: Sun, keywords: 'appearance', run: () => setTheme('light') },
+    { id: 'theme:dark', group: 'General', label: 'Dark theme', icon: Moon, keywords: 'appearance', run: () => setTheme('dark') },
+    { id: 'theme:system', group: 'General', label: 'System theme', icon: Monitor, keywords: 'appearance', run: () => setTheme('system') },
+  ])
   const welcome = !!status && status.status.signed_in && status.status.plan_granted && !status.welcome_seen
 
   return (
@@ -40,6 +65,8 @@ export default function App() {
       )}
       {status && <Welcome open={welcome} manageUsage={status.manage_usage} onClose={() => setStatus({ ...status, welcome_seen: true })} />}
       <SettingsDialog status={status} onChange={setStatus} />
+      <CommandPalette />
+      <ShortcutsOverlay />
       <Toaster position="bottom-right" />
     </TooltipProvider>
   )

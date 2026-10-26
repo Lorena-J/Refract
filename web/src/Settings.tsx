@@ -15,7 +15,7 @@ import {
   SettingsSwitch,
 } from '@/components/ui/chatcn/settings-panel'
 import { openSettings, setPref, usePrefs, useSettingsSection, type Prefs } from '@/lib/prefs'
-import { shortcuts } from '@/lib/shortcuts'
+import { shortcutGroups } from '@/lib/shortcuts'
 import { setTheme, useTheme, type Theme } from '@/lib/theme'
 import PlanBadge from './PlanBadge'
 
@@ -47,14 +47,16 @@ export default function SettingsDialog({ status, onChange }: Props) {
           <General />
           <EditorPane />
           <AssistantPane status={status} onChange={onChange} />
-          <SettingsPane value="shortcuts" title="Keyboard shortcuts">
-            <SettingsGroup>
-              {shortcuts.map(([k, v]) => (
-                <SettingsRow key={k} label={v}>
-                  <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">{k}</kbd>
-                </SettingsRow>
-              ))}
-            </SettingsGroup>
+          <SettingsPane value="shortcuts" title="Keyboard shortcuts" description="Hold ⌘ (Ctrl) anywhere, or press ?, to see them over the page.">
+            {shortcutGroups.map((g) => (
+              <SettingsGroup key={g.title} title={g.title}>
+                {g.items.map(([k, v]) => (
+                  <SettingsRow key={k + v} label={v}>
+                    <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">{k}</kbd>
+                  </SettingsRow>
+                ))}
+              </SettingsGroup>
+            ))}
           </SettingsPane>
         </SettingsPanel>
       </DialogContent>
