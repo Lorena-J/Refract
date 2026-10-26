@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"testing/fstest"
-	"time"
+
+	"github.com/ponytojas/Refract/internal/refs"
 )
 
 func fixture(t *testing.T) []Paper {
@@ -41,57 +41,13 @@ func TestParse(t *testing.T) {
 
 func TestBibTeX(t *testing.T) {
 	p := fixture(t)[1]
-	if k := Key(p); k != "vaswani2017attention" {
+	if k := refs.Key(p.Ref()); k != "vaswani2017attention" {
 		t.Errorf("key = %q", k)
 	}
 	b := BibTeX(p, "k")
 	for _, want := range []string{"@misc{k,\n", "title = {Attention Is All You Need}", "author = {Ashish Vaswani and Noam Shazeer", "year = {2017}", "eprint = {1706.03762}", "archivePrefix = {arXiv}", "primaryClass = {cs.CL}", "url = {https://arxiv.org/abs/1706.03762}"} {
 		if !strings.Contains(b, want) {
 			t.Errorf("missing %q in\n%s", want, b)
-		}
-	}
-	if got := escape(`R&D at 50% & more, \& kept`); got != `R\&D at 50\% \& more, \& kept` {
-		t.Errorf("escape = %q", got)
-	}
-	if k := Key(Paper{Authors: []string{"José Ñúñez"}, Title: "On the Theory", Published: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)}); k != "nunez2020theory" {
-		t.Errorf("accented key = %q", k)
-	}
-}
-
-func TestAddEntry(t *testing.T) {
-	p := fixture(t)[1]
-	bib, key, added := AddEntry("", p)
-	if !added || key != "vaswani2017attention" || !strings.HasPrefix(bib, "@misc{vaswani2017attention,") {
-		t.Fatalf("first add = %q %v\n%s", key, added, bib)
-	}
-	// Same paper again (any version): not duplicated, existing key returned.
-	again, key2, added := AddEntry(bib+"@book{other, title={X}}\n", p)
-	if added || key2 != key || strings.Count(again, "1706.03762}") != 2 { // eprint + url
-		t.Errorf("re-add = %q %v", key2, added)
-	}
-	// Key taken by another paper: suffix.
-	taken := "@article{vaswani2017attention,\n  title = {Something else},\n}"
-	out, key3, added := AddEntry(taken, p)
-	if !added || key3 != "vaswani2017attentiona" || !strings.HasPrefix(out, taken+"\n\n@misc{vaswani2017attentiona,") {
-		t.Errorf("collision = %q\n%s", key3, out)
-	}
-}
-
-func TestBibTarget(t *testing.T) {
-	for name, c := range map[string]struct {
-		files      fstest.MapFS
-		want       string
-		needsSetup bool
-	}{
-		"bibliography in main": {fstest.MapFS{"main.tex": {Data: []byte(`\bibliography{refs,extra}`)}, "other.bib": {}}, "refs.bib", false},
-		"biblatex resource":    {fstest.MapFS{"main.tex": {Data: []byte(`\addbibresource[label=x]{bib/library.bib}`)}}, "bib/library.bib", false},
-		"main file first":      {fstest.MapFS{"a.tex": {Data: []byte(`\bibliography{a}`)}, "main.tex": {Data: []byte(`\bibliography{m}`)}}, "m.bib", false},
-		"only a .bib":          {fstest.MapFS{"main.tex": {Data: []byte(`x`)}, "lit.bib": {}}, "lit.bib", true},
-		"nothing yet":          {fstest.MapFS{"main.tex": {Data: []byte(`x`)}}, "references.bib", true},
-	} {
-		got, setup := BibTarget(c.files, "main.tex")
-		if got != c.want || setup != c.needsSetup {
-			t.Errorf("%s: %q %v, want %q %v", name, got, setup, c.want, c.needsSetup)
 		}
 	}
 }

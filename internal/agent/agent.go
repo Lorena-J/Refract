@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/ponytojas/Refract/internal/ai"
-	"github.com/ponytojas/Refract/internal/arxiv"
+	"github.com/ponytojas/Refract/internal/cite"
 	"github.com/ponytojas/Refract/internal/compile"
 )
 
@@ -21,7 +21,7 @@ type Agent struct {
 	Effort        string        // reasoning effort; empty: the model's default
 	MaxIterations int           // model calls per turn (default 25)
 	Timeout       time.Duration // whole turn
-	Arxiv         *arxiv.Client // enables arxiv_search and cite_arxiv; nil to leave them out
+	Papers        *cite.Service // enables search_papers and cite; nil to leave them out
 }
 
 // Message is one earlier exchange replayed as context.
@@ -54,7 +54,7 @@ const instructions = `You are a LaTeX research-writing assistant working inside 
 Rules:
 - Make minimal, targeted edits. Keep the author's voice, structure and macros.
 - Never invent citations, bibliography entries, references, data or results. If something needs a source you don't have, say so.
-- To cite a paper, find it with arxiv_search and add it with cite_arxiv, which writes the BibTeX from arXiv's metadata; then use the key it returns. Never write a BibTeX entry for an arXiv paper yourself.
+- To cite a paper, find it with search_papers and add it with cite, which writes the BibTeX from the publisher's or arXiv's metadata; then use the key it returns. Never write a bibliography entry yourself, and only cite papers whose abstract supports the claim.
 - Read files before editing them. Use edit_file for changes to existing files; old_text must match exactly once.
 - After non-trivial edits, compile and fix any errors you introduced. Don't try to fix pre-existing problems unless asked.
 - Your changes are proposed to the user as a diff; they decide whether to apply them.
@@ -69,7 +69,7 @@ Project files:
 func (a *Agent) Run(ctx context.Context, in Input, emit func(Event)) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, a.Timeout)
 	defer cancel()
-	tools := &Tools{Dir: in.Dir, MainFile: in.MainFile, Compiler: a.Compiler, Arxiv: a.Arxiv}
+	tools := &Tools{Dir: in.Dir, MainFile: in.MainFile, Compiler: a.Compiler, Papers: a.Papers}
 	tree, _ := tools.listFiles()
 
 	req := ai.Request{

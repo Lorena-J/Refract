@@ -49,7 +49,6 @@ export default {
   'Open the assistant': 'Abrir el asistente',
   'Upload files': 'Subir archivos',
   'Project history': 'Historial del proyecto',
-  'Cite from arXiv…': 'Citar de arXiv…',
   'Show the sidebar': 'Mostrar la barra lateral',
   'Hide the sidebar': 'Ocultar la barra lateral',
   'All projects': 'Todos los proyectos',
@@ -179,4 +178,12 @@ export default {
   '{delta} lines': '{delta} líneas',
   'Accept file': 'Aceptar archivo',
   'Binary file changed.': 'Archivo binario cambiado.',
+  'Find a citation for it': 'Buscar una cita que lo respalde',
+  'Find a citation…': 'Buscar una cita…',
+  'Find a citation': 'Buscar una cita',
+  'Citation placed: review it in the editor.': 'Cita colocada: revísala en el editor.',
+  'Citation added at the end of the selection: review it in the editor.': 'Cita añadida al final de la selección: revísala en el editor.',
+  'Add a reference…': 'Añadir una referencia…',
+  'The text changed in the meantime: the citation was added to the bibliography only.':
+    'El texto cambió mientras tanto: la cita solo se añadió a la bibliografía.',
 } as Record<string, string>

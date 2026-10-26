@@ -91,14 +91,7 @@ export default {
   'Binary file.': 'Archivo binario.',
 
   // CiteArxiv
-  'Cite from arXiv': 'Citar desde arXiv',
-  'The entry is added to your .bib from arXiv’s own metadata, and \\cite is inserted at the cursor.':
-    'La entrada se añade a tu .bib a partir de los metadatos de arXiv, y se inserta \\cite en el cursor.',
-  'Title words, au:surname, or an arXiv id like 1706.03762': 'Palabras del título, au:apellido o un id de arXiv como 1706.03762',
-  'Search arXiv': 'Buscar en arXiv',
   Search: 'Buscar',
-  'No papers found.': 'No se encontraron artículos.',
-  'Search by title, author or id.': 'Busca por título, autor o id.',
   Cite: 'Citar',
 
   // api.ts
@@ -114,4 +107,18 @@ export default {
   unknown: 'desconocido',
   'ChatGPT is temporarily unavailable. Try again shortly. ({message})': 'ChatGPT no está disponible temporalmente. Vuelve a intentarlo en breve. ({message})',
   'Download failed: HTTP {status}': 'Error en la descarga: HTTP {status}',
+  'Add a reference': 'Añadir una referencia',
+  'Find a paper that supports the selected text, or paste a DOI, arXiv id or URL. The citation is placed in your selection for you to review.':
+    'Busca un artículo que respalde el texto seleccionado, o pega un DOI, un id de arXiv o una URL. La cita se coloca en tu selección para que la revises.',
+  'Search published papers and arXiv, or paste a DOI, arXiv id or URL. \\cite is inserted at the cursor.':
+    'Busca artículos publicados y en arXiv, o pega un DOI, un id de arXiv o una URL. Se inserta \\cite en el cursor.',
+  'Find supporting papers': 'Buscar artículos que lo respalden',
+  'Keywords, a title, a DOI, an arXiv id or a URL': 'Palabras clave, un título, un DOI, un id de arXiv o una URL',
+  'Search papers': 'Buscar artículos',
+  'Looking for papers that support it…': 'Buscando artículos que lo respalden…',
+  'No suitable papers found. Try a search with your own keywords.':
+    'No se encontraron artículos adecuados. Prueba una búsqueda con tus propias palabras clave.',
+  'Search by keywords, title, author or id.': 'Busca por palabras clave, título, autor o id.',
+  'cited {n} time': 'citado {n} vez',
+  'cited {n} times': 'citado {n} veces',
 } as Record<string, string>

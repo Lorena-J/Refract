@@ -17,9 +17,10 @@ import (
 	"unicode/utf8"
 
 	"github.com/ponytojas/Refract/internal/ai"
-	"github.com/ponytojas/Refract/internal/arxiv"
+	"github.com/ponytojas/Refract/internal/cite"
 	"github.com/ponytojas/Refract/internal/compile"
 	"github.com/ponytojas/Refract/internal/projects"
+	"github.com/ponytojas/Refract/internal/refs"
 )
 
 const (
@@ -34,7 +35,7 @@ type Tools struct {
 	Dir      string
 	MainFile string
 	Compiler compile.Compiler
-	Arxiv    *arxiv.Client // nil: no arXiv tools
+	Papers   *cite.Service // nil: no paper tools
 }
 
 func schema(props string, required ...string) json.RawMessage {
@@ -63,11 +64,11 @@ func (t *Tools) Definitions() []ai.Tool {
 		fn("compile", "Compile the project's main file. Returns errors and warnings with file and line. Set include_log to also get Tectonic's output.",
 			schema(`"include_log":{"type":["boolean","null"]}`, "include_log")),
 	}
-	if t.Arxiv != nil {
+	if t.Papers != nil {
 		defs = append(defs,
-			fn("arxiv_search", "Search arXiv. Returns matching papers: id, title, authors, year and the start of the abstract. Every word must match; ti: and au: limit a word to the title or the authors.",
+			fn("search_papers", "Search published papers (OpenAlex) and arXiv preprints. Returns id (doi:… or arxiv:…), title, authors, year, venue and the start of the abstract.",
 				schema(`"query":{"type":"string"}`, "query")),
-			fn("cite_arxiv", "Add an arXiv paper to the project's bibliography (.bib), built from arXiv's metadata, and return its citation key. Does nothing if it is already there.",
+			fn("cite", "Add a paper to the project's bibliography (.bib), built from the publisher's or arXiv's metadata, and return its citation key. id is a DOI or an arXiv id (as returned by search_papers). Does nothing if it is already there.",
 				schema(`"id":{"type":"string"}`, "id")),
 		)
 	}
@@ -118,15 +119,15 @@ func (t *Tools) call(ctx context.Context, name, args string) (string, string, er
 		return "Wrote " + a.Path + ".", "wrote " + a.Path, t.writeFile(a.Path, a.Content)
 	case "compile":
 		return t.compile(ctx, a.IncludeLog != nil && *a.IncludeLog)
-	case "arxiv_search":
-		if t.Arxiv != nil {
-			out, err := t.arxivSearch(ctx, a.Query)
-			return out, fmt.Sprintf("searched arXiv for %q", a.Query), err
+	case "search_papers":
+		if t.Papers != nil {
+			out, err := t.searchPapers(ctx, a.Query)
+			return out, fmt.Sprintf("searched papers for %q", a.Query), err
 		}
-	case "cite_arxiv":
-		if t.Arxiv != nil {
-			out, err := t.citeArxiv(ctx, a.ID)
-			return out, "cited arXiv:" + a.ID, err
+	case "cite":
+		if t.Papers != nil {
+			out, err := t.cite(ctx, a.ID)
+			return out, "cited " + a.ID, err
 		}
 	}
 	return "", name, fmt.Errorf("unknown tool %q", name)
@@ -326,32 +327,36 @@ func (t *Tools) compile(ctx context.Context, includeLog bool) (string, string, e
 	return b.String(), act, nil
 }
 
-func (t *Tools) arxivSearch(ctx context.Context, query string) (string, error) {
-	ps, err := t.Arxiv.Search(ctx, query, 8)
+func (t *Tools) searchPapers(ctx context.Context, query string) (string, error) {
+	cs, err := t.Papers.Search(ctx, query)
 	if err != nil {
 		return "", err
 	}
-	if len(ps) == 0 {
+	if len(cs) == 0 {
 		return "No papers found.", nil
 	}
 	var b strings.Builder
-	for _, p := range ps {
-		authors := strings.Join(p.Authors, ", ")
-		if len(p.Authors) > 4 {
-			authors = strings.Join(p.Authors[:3], ", ") + " et al."
+	for _, c := range cs {
+		authors := strings.Join(c.Authors, ", ")
+		if len(c.Authors) > 4 {
+			authors = strings.Join(c.Authors[:3], ", ") + " et al."
 		}
-		summary := p.Summary
-		if len(summary) > 300 {
-			summary = summary[:300] + "…"
+		abstract := c.Abstract
+		if len(abstract) > 300 {
+			abstract = abstract[:300] + "…"
 		}
-		fmt.Fprintf(&b, "%s — %s (%s, %d)\n  %s\n", p.ID, p.Title, authors, p.Published.Year(), summary)
+		fmt.Fprintf(&b, "%s — %s (%s, %d). %s\n  %s\n", c.ID, c.Title, authors, c.Year, c.Venue, abstract)
 	}
 	return b.String(), nil
 }
 
-// citeArxiv appends the paper to the bibliography the project uses (see arxiv.BibTarget).
-func (t *Tools) citeArxiv(ctx context.Context, id string) (string, error) {
-	p, err := t.Arxiv.Get(ctx, id)
+// cite appends the paper to the bibliography the project uses (see refs.BibTarget).
+func (t *Tools) cite(ctx context.Context, id string) (string, error) {
+	parsed, ok := cite.ParseID(id)
+	if !ok {
+		return "", fmt.Errorf("%q is not a DOI or an arXiv id", id)
+	}
+	ref, c, err := t.Papers.Resolve(ctx, parsed)
 	if err != nil {
 		return "", err
 	}
@@ -360,16 +365,16 @@ func (t *Tools) citeArxiv(ctx context.Context, id string) (string, error) {
 		return "", err
 	}
 	defer root.Close()
-	c, err := arxiv.Cite(root, t.MainFile, *p)
+	got, err := refs.Cite(root, t.MainFile, ref)
 	if err != nil {
 		return "", err
 	}
-	if !c.Added {
-		return fmt.Sprintf("Already in %s as %s. Cite it with \\cite{%s}.", c.Path, c.Key, c.Key), nil
+	if !got.Added {
+		return fmt.Sprintf("Already in %s as %s. Cite it with \\cite{%s}.", got.Path, got.Key, got.Key), nil
 	}
-	msg := fmt.Sprintf("Added %q to %s as %s. Cite it with \\cite{%s}.", p.Title, c.Path, c.Key, c.Key)
-	if c.NeedsSetup {
-		msg += fmt.Sprintf(" No .tex file loads a bibliography yet: add \\bibliographystyle{plain} and \\bibliography{%s} where the references should appear (or \\addbibresource{%s} with biblatex).", strings.TrimSuffix(c.Path, ".bib"), c.Path)
+	msg := fmt.Sprintf("Added %q to %s as %s. Cite it with \\cite{%s}.", c.Title, got.Path, got.Key, got.Key)
+	if got.NeedsSetup {
+		msg += fmt.Sprintf(" No .tex file loads a bibliography yet: add \\bibliographystyle{plain} and \\bibliography{%s} where the references should appear (or \\addbibresource{%s} with biblatex).", strings.TrimSuffix(got.Path, ".bib"), got.Path)
 	}
 	return msg, nil
 }

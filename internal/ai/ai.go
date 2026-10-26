@@ -4,7 +4,9 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 )
 
 // Provider streams Responses API calls. How credentials are obtained is the
@@ -118,4 +120,27 @@ type Error struct {
 
 func (e *Error) Error() string {
 	return fmt.Sprintf("%s (%s %d): %s", e.Kind, e.Code, e.Status, e.Message)
+}
+
+// Complete runs one request without tools and returns the model's text.
+func Complete(ctx context.Context, p Provider, req Request) (string, error) {
+	ch, err := p.Stream(ctx, req)
+	if err != nil {
+		return "", err
+	}
+	var text strings.Builder
+	for ev := range ch {
+		switch ev.Type {
+		case EventText:
+			text.WriteString(ev.Text)
+		case EventError:
+			return "", ev.Err
+		case EventCompleted:
+			return text.String(), nil
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	return "", errors.New("the model stopped before finishing")
 }

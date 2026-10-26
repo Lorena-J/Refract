@@ -4,10 +4,11 @@ import { Compartment, EditorSelection, EditorState, Prec } from '@codemirror/sta
 import { EditorView, keymap } from '@codemirror/view'
 import { latex } from '@/lib/editor'
 import { getPrefs, usePrefs } from '@/lib/prefs'
-import { accept, proposalField, reject } from '@/lib/proposal'
+import { accept, proposalField, propose, reject } from '@/lib/proposal'
+import type { CiteTarget } from './CiteDialog'
 import QuickActions, { actions, type QuickHandle } from './QuickActions'
 import { useCommands } from '@/lib/commands'
-import { ClipboardPaste, Copy, FileSearch, MessageSquareText, Pencil, Play, Scissors, TextSelect } from 'lucide-react'
+import { BookMarked, ClipboardPaste, Copy, FileSearch, MessageSquareText, Pencil, Play, Scissors, TextSelect } from 'lucide-react'
 import { WithContextMenu, type MenuEntry } from '@/components/Menu'
 import { mod } from '@/lib/shortcuts'
 import { t } from '@/lib/i18n'
@@ -30,10 +31,29 @@ type Props = {
   insert?: { path: string; text: string } // replace the selection with text, then onInserted
   onInserted?: () => void
   quick?: boolean // show the quick-actions toolbar on selections (AI available)
+  onCite?: (target: CiteTarget, suggest: boolean) => void // find/add a reference for the selection
+  proposal?: { path: string; from: number; to: number; original: string; text: string } // show as an inline diff
+  onProposed?: (ok: boolean) => void // false: the text there changed meanwhile
 }
 
 // One EditorView; each open file keeps its own EditorState, swapped on tab switch.
-export default function Editor({ path, states, initial, onChange, onSave, onCompile, onSync, onSelect, jump, insert, onInserted, quick }: Props) {
+export default function Editor({
+  path,
+  states,
+  initial,
+  onChange,
+  onSave,
+  onCompile,
+  onSync,
+  onSelect,
+  jump,
+  insert,
+  onInserted,
+  quick,
+  onCite,
+  proposal,
+  onProposed,
+}: Props) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
   const current = useRef(path)
@@ -72,8 +92,30 @@ export default function Editor({ path, states, initial, onChange, onSave, onComp
         icon: a.icon,
         run: () => quickRef.current?.run(a.id),
       })),
+      ...(onCite
+        ? [{ id: 'sel:cite', group: 'Selection', label: t('Find a citation for it'), hint: t('selection'), icon: BookMarked, run: () => cite(true) }]
+        : []),
     ]
   })
+
+  // The selection as a citation target: the dialog suggests papers and places \cite in it.
+  function cite(suggest: boolean) {
+    const v = view.current
+    if (!v || !onCite) return
+    const { from, to } = v.state.selection.main
+    const doc = v.state.doc
+    onCite(
+      {
+        path: current.current,
+        from,
+        to,
+        text: doc.sliceString(from, to),
+        before: doc.sliceString(Math.max(0, from - 2000), from),
+        after: doc.sliceString(to, Math.min(doc.length, to + 2000)),
+      },
+      suggest && from !== to,
+    )
+  }
 
   const { wrap } = usePrefs()
   const extensions = useRef([
@@ -185,6 +227,15 @@ export default function Editor({ path, states, initial, onChange, onSave, onComp
     onInserted?.()
   }, [insert, path])
 
+  useEffect(() => {
+    const v = view.current!
+    if (!proposal || proposal.path !== path) return
+    const ok = proposal.to <= v.state.doc.length && v.state.sliceDoc(proposal.from, proposal.to) === proposal.original
+    if (ok) propose(v, proposal.from, proposal.to, proposal.text)
+    v.focus()
+    onProposed?.(ok)
+  }, [proposal, path])
+
   // Right click: clipboard, AI actions on the selection, sync and compile.
   const menu = (): MenuEntry[] => {
     const v = view.current
@@ -219,6 +270,7 @@ export default function Editor({ path, states, initial, onChange, onSave, onComp
         ? [
             ...actions.map((a) => ({ label: a.command, icon: a.icon, onSelect: () => quickRef.current?.run(a.id) })),
             { label: t('Ask the assistant…'), icon: Pencil, onSelect: () => quickRef.current?.ask() },
+            ...(onCite ? [{ label: t('Find a citation…'), icon: BookMarked, onSelect: () => cite(true) }] : []),
             '-' as const,
           ]
         : []),
@@ -240,7 +292,7 @@ export default function Editor({ path, states, initial, onChange, onSave, onComp
       <WithContextMenu items={menu} className="h-full select-text">
         <div className="h-full" ref={host} />
       </WithContextMenu>
-      {quick && mounted && <QuickActions view={mounted} path={path} dragging={dragging} handle={quickRef} />}
+      {quick && mounted && <QuickActions view={mounted} path={path} dragging={dragging} handle={quickRef} onCite={onCite ? () => cite(true) : undefined} />}
     </div>
   )
 }

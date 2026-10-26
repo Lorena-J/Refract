@@ -127,26 +127,12 @@ func Run(ctx context.Context, p ai.Provider, model, effort string, r Request) (s
 	if effort != "" {
 		req.Reasoning = &ai.Reasoning{Effort: effort}
 	}
-	ch, err := p.Stream(ctx, req)
+	text, err := ai.Complete(ctx, p, req)
 	if err != nil {
 		return "", err
 	}
-	var text strings.Builder
-	for ev := range ch {
-		switch ev.Type {
-		case ai.EventText:
-			text.WriteString(ev.Text)
-		case ai.EventError:
-			return "", ev.Err
-		case ai.EventCompleted:
-			if r.Explain() {
-				return strings.TrimSpace(text.String()), nil
-			}
-			return Clean(r.Selection, text.String()), nil
-		}
+	if r.Explain() {
+		return strings.TrimSpace(text), nil
 	}
-	if err := ctx.Err(); err != nil {
-		return "", err
-	}
-	return "", errors.New("the model stopped before finishing")
+	return Clean(r.Selection, text), nil
 }

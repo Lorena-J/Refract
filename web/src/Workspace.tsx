@@ -42,7 +42,7 @@ import {
 import Assistant, { type Chat, type EditorContext, type Turn } from './Assistant'
 import Review from './Review'
 import History from './History'
-import CiteArxiv, { type Citation } from './CiteArxiv'
+import CiteDialog, { type Citation, type CiteTarget } from './CiteDialog'
 import { Autosaver, type SaveStatus } from './autosave'
 import CompileStatus, { type CompileResult, type Problem } from './CompileStatus'
 import Editor from './Editor'
@@ -109,7 +109,8 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
   const [chatOpen, setChatOpen] = useState(false)
   const [chatFocus, setChatFocus] = useState(0)
   const [historyOpen, setHistoryOpen] = useState(false)
-  const [citeOpen, setCiteOpen] = useState(false)
+  const [citing, setCiting] = useState<{ target: CiteTarget | null; suggest: boolean } | null>(null)
+  const [proposal, setProposal] = useState<{ path: string; from: number; to: number; original: string; text: string } | undefined>()
   const [insert, setInsert] = useState<{ path: string; text: string } | undefined>()
   const [aiRequest, setAiRequest] = useState<{ text: string; n: number } | undefined>()
   const [selLines, setSelLines] = useState('')
@@ -284,8 +285,22 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
     setReview(null)
   }
 
-  async function cited(c: Citation) {
+  async function cited(c: Citation, sel: CiteTarget | null) {
     await reloadFromDisk([c.path]) // the .bib may be open
+    const setup = c.needs_setup
+      ? t('No .tex file loads a bibliography yet: add \\bibliography{{base}} (or \\addbibresource{{path}}).', {
+          base: c.path.replace(/\.bib$/, ''),
+          path: c.path,
+        })
+      : undefined
+    if (sel && c.text) {
+      // Placed by the assistant in the selection: shown as a diff to accept (Tab) or reject (Esc).
+      setProposal({ path: sel.path, from: sel.from, to: sel.to, original: sel.text, text: c.text })
+      toast.success(c.placed ? t('Citation placed: review it in the editor.') : t('Citation added at the end of the selection: review it in the editor.'), {
+        description: setup,
+      })
+      return
+    }
     const target = active && active.endsWith('.tex') && loaded.current.get(active)?.text ? active : undefined
     if (target) setInsert({ path: target, text: `\\cite{${c.key}}` })
     const where = c.added ? t('Added to {path}', { path: c.path }) : t('Already in {path}', { path: c.path })
@@ -504,10 +519,10 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
     {
       id: 'ws:cite',
       group: 'Actions',
-      label: t('Cite from arXiv…'),
+      label: t('Add a reference…'),
       icon: BookMarked,
       keywords: 'bibliography bibtex reference paper',
-      run: () => setCiteOpen(true),
+      run: () => setCiting({ target: null, suggest: false }),
     },
     { id: 'ws:sidebar', group: 'Actions', label: sidebarCollapsed ? t('Show the sidebar') : t('Hide the sidebar'), icon: PanelLeft, run: toggleSidebar },
     ...files
@@ -586,8 +601,8 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                   <DropdownMenuItem onClick={() => setHistoryOpen(true)}>
                     <HistoryIcon /> {t('History')}
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setCiteOpen(true)}>
-                    <BookMarked /> {t('Cite from arXiv…')}
+                  <DropdownMenuItem onClick={() => setCiting({ target: null, suggest: false })}>
+                    <BookMarked /> {t('Add a reference…')}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuGroup>
@@ -825,6 +840,12 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                   onSelect={setSelLines}
                   insert={insert}
                   onInserted={() => setInsert(undefined)}
+                  onCite={(target, suggest) => setCiting({ target, suggest })}
+                  proposal={proposal}
+                  onProposed={(ok) => {
+                    setProposal(undefined)
+                    if (!ok) toast.error(t('The text changed in the meantime: the citation was added to the bibliography only.'))
+                  }}
                   quick={aiReady}
                   jump={jump}
                 />
@@ -927,7 +948,14 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
           setReview(null)
         }}
       />
-      <CiteArxiv projectId={id} open={citeOpen} onClose={() => setCiteOpen(false)} onCited={cited} />
+      <CiteDialog
+        projectId={id}
+        open={!!citing}
+        target={citing?.target ?? null}
+        suggest={citing?.suggest ?? false}
+        onClose={() => setCiting(null)}
+        onCited={cited}
+      />
 
       <AlertDialog open={!!confirm} onOpenChange={(o) => !o && setConfirm(null)}>
         <AlertDialogContent>

@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/ponytojas/Refract/internal/refs"
 )
 
 // Paper is one arXiv record.
@@ -58,7 +60,7 @@ func IsID(s string) bool { return idPattern.MatchString(strings.TrimSpace(s)) }
 func (c *Client) Search(ctx context.Context, query string, limit int) ([]Paper, error) {
 	var words []string
 	for _, w := range strings.Fields(query) {
-		if !stopwords[strings.ToLower(w)] {
+		if !refs.Stopword(strings.ToLower(w)) {
 			words = append(words, w)
 		}
 	}

@@ -1,6 +1,6 @@
 import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref } from 'react'
 import type { EditorView } from '@codemirror/view'
-import { ArrowUp, BookOpen, Check, Pencil, RotateCcw, Scissors, Sparkles, SpellCheck, Square, Table, X } from 'lucide-react'
+import { ArrowUp, BookMarked, BookOpen, Check, Pencil, RotateCcw, Scissors, Sparkles, SpellCheck, Square, Table, X } from 'lucide-react'
 import { api, errorText } from './api'
 import { Button } from '@/components/ui/button'
 import { ShimmerText } from '@/components/ui/chatcn/shimmer-text'
@@ -46,11 +46,12 @@ type Props = {
   path: string
   dragging: boolean
   handle: Ref<QuickHandle>
+  onCite?: () => void // open "Add a reference" for the selection
 }
 
 // Floating toolbar over the editor selection: one-shot AI edits (§4.7), shown
 // as an inline diff to accept (Tab) or reject (Esc).
-export default function QuickActions({ view, path, dragging, handle }: Props) {
+export default function QuickActions({ view, path, dragging, handle, onCite }: Props) {
   const [job, setJob] = useState<Job | null>(null) // running, or finished with an error/explanation
   const [running, setRunning] = useState(false)
   const [error, setError] = useState('')
@@ -253,6 +254,18 @@ export default function QuickActions({ view, path, dragging, handle }: Props) {
                 <x.icon /> {!compact && x.label}
               </Button>
             ))}
+            {onCite && (
+              <Button
+                size="xs"
+                variant="ghost"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={onCite}
+                title={compact ? t('Cite') : undefined}
+                aria-label={t('Find a citation')}
+              >
+                <BookMarked /> {!compact && t('Cite')}
+              </Button>
+            )}
             <span className="mx-0.5 h-4 w-px bg-border" />
             <Button
               title={compact ? t('Ask…') : undefined}

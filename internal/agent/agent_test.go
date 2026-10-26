@@ -13,7 +13,9 @@ import (
 
 	"github.com/ponytojas/Refract/internal/ai"
 	"github.com/ponytojas/Refract/internal/arxiv"
+	"github.com/ponytojas/Refract/internal/cite"
 	"github.com/ponytojas/Refract/internal/compile"
+	"github.com/ponytojas/Refract/internal/openalex"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -238,7 +240,7 @@ func TestEffortIsSent(t *testing.T) {
 	}
 }
 
-func TestCiteArxiv(t *testing.T) {
+func TestCitePaper(t *testing.T) {
 	body, err := os.ReadFile("../arxiv/testdata/search.xml") // a real arXiv answer; Get uses its first paper
 	if err != nil {
 		t.Fatal(err)
@@ -247,12 +249,13 @@ func TestCiteArxiv(t *testing.T) {
 	defer srv.Close()
 	dir := setup(t)
 	os.WriteFile(filepath.Join(dir, "main.tex"), []byte("\\bibliography{refs}\n"), 0o644)
-	tl := &Tools{Dir: dir, MainFile: "main.tex", Arxiv: &arxiv.Client{HTTP: srv.Client(), BaseURL: srv.URL}}
+	papers := &cite.Service{Arxiv: &arxiv.Client{HTTP: srv.Client(), BaseURL: srv.URL}, OpenAlex: &openalex.Client{HTTP: srv.Client(), BaseURL: srv.URL}}
+	tl := &Tools{Dir: dir, MainFile: "main.tex", Papers: papers}
 
-	if !slices.ContainsFunc(tl.Definitions(), func(d ai.Tool) bool { return d.Name == "cite_arxiv" }) {
-		t.Fatal("cite_arxiv not offered")
+	if !slices.ContainsFunc(tl.Definitions(), func(d ai.Tool) bool { return d.Name == "cite" }) {
+		t.Fatal("cite not offered")
 	}
-	out, _ := tl.Call(context.Background(), "cite_arxiv", `{"id":"2604.21816"}`)
+	out, _ := tl.Call(context.Background(), "cite", `{"id":"https://arxiv.org/abs/2604.21816v1"}`)
 	if !strings.Contains(out, `\cite{sadani2026tool}`) || !strings.Contains(out, "refs.bib") {
 		t.Fatalf("cite = %q", out)
 	}
@@ -260,13 +263,13 @@ func TestCiteArxiv(t *testing.T) {
 	if !strings.Contains(string(bib), "@misc{sadani2026tool,") || !strings.Contains(string(bib), "eprint = {2604.21816}") {
 		t.Errorf("refs.bib =\n%s", bib)
 	}
-	if out, _ := tl.Call(context.Background(), "cite_arxiv", `{"id":"2604.21816"}`); !strings.HasPrefix(out, "Already in refs.bib") {
+	if out, _ := tl.Call(context.Background(), "cite", `{"id":"2604.21816"}`); !strings.HasPrefix(out, "Already in refs.bib") {
 		t.Errorf("second cite = %q", out)
 	}
-	if out, _ := tl.Call(context.Background(), "cite_arxiv", `{"id":"../../etc"}`); !strings.HasPrefix(out, "Error:") {
+	if out, _ := tl.Call(context.Background(), "cite", `{"id":"../../etc"}`); !strings.HasPrefix(out, "Error:") {
 		t.Errorf("bad id = %q", out)
 	}
-	if slices.ContainsFunc((&Tools{Dir: dir}).Definitions(), func(d ai.Tool) bool { return d.Name == "arxiv_search" }) {
-		t.Error("arXiv tools offered without a client")
+	if slices.ContainsFunc((&Tools{Dir: dir}).Definitions(), func(d ai.Tool) bool { return d.Name == "search_papers" }) {
+		t.Error("paper tools offered without a service")
 	}
 }
