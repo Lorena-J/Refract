@@ -145,7 +145,10 @@ export default function Projects({ status }: { status: ChatGPTStatus | null }) {
     >
       <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-card shadow-xs">
         <header className="flex flex-wrap items-center gap-2 px-5 py-4">
-          <h1 className="mr-auto text-lg font-semibold tracking-tight">All projects</h1>
+          <h1 className="mr-auto flex items-center gap-2.5 text-lg font-semibold tracking-tight">
+            <img src="/logo.svg" alt="Refract" className="size-7" />
+            All projects
+          </h1>
           <div className="relative w-full max-w-72 sm:w-72">
             <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search" aria-label="Search projects" className="rounded-full pl-9" />

@@ -12,6 +12,7 @@ export default function Welcome({ open, manageUsage, onClose }: { open: boolean;
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
+          <img src="/logo.svg" alt="" className="mb-1 size-10" />
           <DialogTitle>You're using your ChatGPT plan</DialogTitle>
           <DialogDescription>
             Eligible AI requests in Refract use your ChatGPT plan. You can review and manage this usage in{' '}

@@ -391,6 +391,12 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
         >
           <aside className="flex h-full min-w-0 flex-col pr-1">
             <div className="flex h-11 items-center gap-1 px-1">
+              <Tooltip>
+                <TooltipTrigger render={<a href="/" aria-label="All projects" className="shrink-0 rounded-md p-1 transition-transform duration-150 ease-out active:scale-[0.94]" />}>
+                  <img src="/logo.svg" alt="" className="size-6" />
+                </TooltipTrigger>
+                <TooltipContent>All projects</TooltipContent>
+              </Tooltip>
               <DropdownMenu>
                 <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="min-w-0 flex-1 justify-start gap-1.5 px-2" />}>
                   <span className="truncate font-semibold">{project?.name ?? '…'}</span>
