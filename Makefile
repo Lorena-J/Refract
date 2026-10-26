@@ -38,7 +38,7 @@ build: web
 test:
 	go vet ./...
 	go test ./...
-	node --test web/src/lib/*.test.ts
+	node --test web/src/*.test.ts web/src/lib/*.test.ts
 
 # Builds and smoke-tests the image for each platform (the foreign one runs emulated).
 # Extra buildx flags: make docker BUILDX_FLAGS="--builder mybuilder"
