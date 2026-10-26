@@ -41,6 +41,121 @@
   /* Motion (Emil Kowalski): strong custom curves, short durations. */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --chatcn-duration-instant: 0ms;
+  --chatcn-duration-press: 100ms;
+  --chatcn-duration-tooltip: 125ms;
+  --chatcn-duration-fast: 150ms;
+  --chatcn-duration-popover: 180ms;
+  --chatcn-duration-dialog: 220ms;
+  --chatcn-duration-panel: 280ms;
+  --chatcn-duration-toast: 400ms;
+  --chatcn-duration-sheet: 500ms;
+  --chatcn-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --chatcn-ease-out-soft: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --chatcn-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --chatcn-ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --chatcn-ease-standard: ease;
+  --chatcn-press-scale: 0.97;
+  --chatcn-press-scale-icon: 0.94;
+  --chatcn-enter-scale: 0.96;
+  --chatcn-exit-scale: 0.98;
+  --chatcn-radius-xs: 4px;
+  --chatcn-radius-sm: 6px;
+  --chatcn-radius-md: 8px;
+  --chatcn-radius-lg: 12px;
+  --chatcn-radius-xl: 16px;
+  --chatcn-radius-2xl: 24px;
+  --chatcn-bg: oklch(1 0 0);
+  --chatcn-bg-subtle: oklch(0.985 0 0);
+  --chatcn-surface: oklch(1 0 0);
+  --chatcn-card: oklch(1 0 0);
+  --chatcn-inset: oklch(0.975 0 0);
+  --chatcn-on-media: oklch(1 0 0);
+  --chatcn-on-media-shadow: oklch(0 0 0 / 0.55);
+  --chatcn-scrim: oklch(0 0 0 / 0.32);
+  --chatcn-red: oklch(0.560 0.200 27);
+  --chatcn-amber: oklch(0.555 0.125 60);
+  --chatcn-green: oklch(0.530 0.130 150);
+  --chatcn-blue: oklch(0.550 0.180 258);
+  --chatcn-purple: oklch(0.530 0.190 300);
+  --chatcn-teal: oklch(0.540 0.095 195);
+  --chatcn-red-bg: oklch(0.970 0.016 20);
+  --chatcn-red-border: oklch(0.890 0.055 20);
+  --chatcn-amber-bg: oklch(0.975 0.028 85);
+  --chatcn-amber-border: oklch(0.890 0.075 80);
+  --chatcn-green-bg: oklch(0.970 0.024 155);
+  --chatcn-green-border: oklch(0.880 0.065 155);
+  --chatcn-blue-bg: oklch(0.970 0.016 250);
+  --chatcn-blue-border: oklch(0.880 0.055 255);
+  --chatcn-purple-bg: oklch(0.972 0.018 300);
+  --chatcn-purple-border: oklch(0.890 0.055 300);
+  --chatcn-teal-bg: oklch(0.972 0.018 195);
+  --chatcn-teal-border: oklch(0.880 0.045 195);
+  --chatcn-diff-add-bg: oklch(0.720 0.170 150 / 0.13);
+  --chatcn-diff-add-word-bg: oklch(0.720 0.170 150 / 0.32);
+  --chatcn-diff-add-gutter: oklch(0.720 0.170 150 / 0.22);
+  --chatcn-diff-add-fg: oklch(0.500 0.130 150);
+  --chatcn-diff-del-bg: oklch(0.660 0.200 25 / 0.10);
+  --chatcn-diff-del-word-bg: oklch(0.660 0.200 25 / 0.26);
+  --chatcn-diff-del-gutter: oklch(0.660 0.200 25 / 0.18);
+  --chatcn-diff-del-fg: oklch(0.540 0.200 27);
+  --chatcn-chart-1: oklch(0.560 0.170 255);
+  --chatcn-chart-2: oklch(0.700 0.150 70);
+  --chatcn-chart-3: oklch(0.600 0.120 170);
+  --chatcn-chart-4: oklch(0.580 0.200 340);
+  --chatcn-chart-5: oklch(0.640 0.170 40);
+  --chatcn-chart-6: oklch(0.540 0.160 295);
+  --chatcn-syntax-keyword: oklch(0.540 0.190 25);
+  --chatcn-syntax-string: oklch(0.400 0.120 255);
+  --chatcn-syntax-constant: oklch(0.480 0.160 255);
+  --chatcn-syntax-function: oklch(0.500 0.200 300);
+  --chatcn-syntax-type: oklch(0.500 0.120 55);
+  --chatcn-syntax-tag: oklch(0.480 0.120 150);
+  --chatcn-syntax-comment: oklch(0.525 0 0);
+  --chatcn-syntax-plain: var(--chatcn-fg);
+  --chatcn-syntax-punctuation: var(--chatcn-fg-muted);
+  --chatcn-syntax-attribute: var(--chatcn-syntax-constant);
+  --chatcn-gray-100: oklch(0.970 0 0);
+  --chatcn-gray-200: oklch(0.950 0 0);
+  --chatcn-gray-300: oklch(0.930 0 0);
+  --chatcn-gray-400: oklch(0.910 0 0);
+  --chatcn-gray-500: oklch(0.860 0 0);
+  --chatcn-gray-600: oklch(0.800 0 0);
+  --chatcn-gray-700: oklch(0.700 0 0);
+  --chatcn-gray-800: oklch(0.525 0 0);
+  --chatcn-gray-900: oklch(0.440 0 0);
+  --chatcn-gray-1000: oklch(0.145 0 0);
+  --chatcn-alpha-100: oklch(0 0 0 / 0.03);
+  --chatcn-alpha-200: oklch(0 0 0 / 0.05);
+  --chatcn-alpha-300: oklch(0 0 0 / 0.08);
+  --chatcn-alpha-400: oklch(0 0 0 / 0.1);
+  --chatcn-alpha-500: oklch(0 0 0 / 0.14);
+  --chatcn-alpha-600: oklch(0 0 0 / 0.2);
+  --chatcn-fg: var(--chatcn-gray-1000);
+  --chatcn-fg-muted: var(--chatcn-gray-900);
+  --chatcn-fg-subtle: var(--chatcn-gray-800);
+  --chatcn-fg-faint: var(--chatcn-gray-700);
+  --chatcn-border: var(--chatcn-gray-400);
+  --chatcn-border-hover: var(--chatcn-gray-500);
+  --chatcn-border-strong: var(--chatcn-gray-600);
+  --chatcn-fill: var(--chatcn-gray-100);
+  --chatcn-fill-hover: var(--chatcn-gray-200);
+  --chatcn-fill-active: var(--chatcn-gray-300);
+  --chatcn-scrollbar: var(--chatcn-alpha-500);
+  --chatcn-scrollbar-hover: var(--chatcn-alpha-600);
+  --chatcn-accent: var(--chatcn-gray-1000);
+  --chatcn-accent-fg: var(--chatcn-bg);
+  --chatcn-primary: var(--chatcn-gray-1000);
+  --chatcn-primary-fg: var(--chatcn-bg);
+  --chatcn-primary-hover: var(--chatcn-gray-900);
+  --chatcn-shadow-border: 0 0 0 1px oklch(0 0 0 / 0.08);
+  --chatcn-shadow-xs: 0 0 0 1px oklch(0 0 0 / 0.08), 0 1px 2px oklch(0 0 0 / 0.04);
+  --chatcn-shadow-sm: 0 0 0 1px oklch(0 0 0 / 0.06), 0 1px 2px -1px oklch(0 0 0 / 0.06), 0 2px 4px oklch(0 0 0 / 0.04);
+  --chatcn-shadow-sm-hover: 0 0 0 1px oklch(0 0 0 / 0.08), 0 1px 2px -1px oklch(0 0 0 / 0.08), 0 2px 4px oklch(0 0 0 / 0.06);
+  --chatcn-shadow-md: 0 0 0 1px oklch(0 0 0 / 0.06), 0 2px 4px -1px oklch(0 0 0 / 0.06), 0 8px 16px -4px oklch(0 0 0 / 0.08);
+  --chatcn-shadow-lg: 0 0 0 1px oklch(0 0 0 / 0.06), 0 4px 8px -2px oklch(0 0 0 / 0.06), 0 16px 32px -8px oklch(0 0 0 / 0.12);
+  --chatcn-shadow-xl: 0 0 0 1px oklch(0 0 0 / 0.06), 0 8px 16px -4px oklch(0 0 0 / 0.08), 0 32px 64px -12px oklch(0 0 0 / 0.18);
+  --chatcn-shadow-input-focus: 0 0 0 1px var(--chatcn-gray-900), 0 0 0 4px var(--chatcn-alpha-300);
 }
 
 /* Dark: near-black frame, slightly lifted panels (Prism-like). */
@@ -75,6 +190,97 @@
   --syn-math: oklch(0.8 0.12 60);
   --syn-comment: oklch(0.55 0 0);
   --syn-string: oklch(0.78 0.1 310);
+  --chatcn-bg: oklch(0.145 0 0);
+  --chatcn-bg-subtle: oklch(0.178 0 0);
+  --chatcn-surface: oklch(0.205 0 0);
+  --chatcn-card: oklch(0.175 0 0);
+  --chatcn-inset: oklch(0.155 0 0);
+  --chatcn-on-media: oklch(1 0 0);
+  --chatcn-on-media-shadow: oklch(0 0 0 / 0.55);
+  --chatcn-scrim: oklch(0 0 0 / 0.6);
+  --chatcn-red: oklch(0.700 0.175 22);
+  --chatcn-amber: oklch(0.800 0.140 74);
+  --chatcn-green: oklch(0.760 0.150 152);
+  --chatcn-blue: oklch(0.710 0.140 252);
+  --chatcn-purple: oklch(0.740 0.140 305);
+  --chatcn-teal: oklch(0.770 0.100 190);
+  --chatcn-red-bg: oklch(0.660 0.190 22 / 0.13);
+  --chatcn-red-border: oklch(0.660 0.190 22 / 0.34);
+  --chatcn-amber-bg: oklch(0.780 0.150 74 / 0.12);
+  --chatcn-amber-border: oklch(0.780 0.150 74 / 0.32);
+  --chatcn-green-bg: oklch(0.740 0.160 152 / 0.12);
+  --chatcn-green-border: oklch(0.740 0.160 152 / 0.32);
+  --chatcn-blue-bg: oklch(0.690 0.150 252 / 0.14);
+  --chatcn-blue-border: oklch(0.690 0.150 252 / 0.36);
+  --chatcn-purple-bg: oklch(0.700 0.160 305 / 0.14);
+  --chatcn-purple-border: oklch(0.700 0.160 305 / 0.36);
+  --chatcn-teal-bg: oklch(0.750 0.110 190 / 0.12);
+  --chatcn-teal-border: oklch(0.750 0.110 190 / 0.32);
+  --chatcn-diff-add-bg: oklch(0.700 0.160 152 / 0.12);
+  --chatcn-diff-add-word-bg: oklch(0.700 0.160 152 / 0.30);
+  --chatcn-diff-add-gutter: oklch(0.700 0.160 152 / 0.20);
+  --chatcn-diff-add-fg: oklch(0.780 0.150 152);
+  --chatcn-diff-del-bg: oklch(0.640 0.190 22 / 0.13);
+  --chatcn-diff-del-word-bg: oklch(0.640 0.190 22 / 0.32);
+  --chatcn-diff-del-gutter: oklch(0.640 0.190 22 / 0.22);
+  --chatcn-diff-del-fg: oklch(0.740 0.160 22);
+  --chatcn-chart-1: oklch(0.700 0.150 252);
+  --chatcn-chart-2: oklch(0.800 0.140 74);
+  --chatcn-chart-3: oklch(0.740 0.120 170);
+  --chatcn-chart-4: oklch(0.720 0.170 345);
+  --chatcn-chart-5: oklch(0.740 0.150 45);
+  --chatcn-chart-6: oklch(0.720 0.140 300);
+  --chatcn-syntax-keyword: oklch(0.740 0.150 22);
+  --chatcn-syntax-string: oklch(0.830 0.080 240);
+  --chatcn-syntax-constant: oklch(0.790 0.120 245);
+  --chatcn-syntax-function: oklch(0.800 0.120 300);
+  --chatcn-syntax-type: oklch(0.800 0.110 65);
+  --chatcn-syntax-tag: oklch(0.800 0.130 150);
+  --chatcn-syntax-comment: oklch(0.620 0 0);
+  --chatcn-syntax-plain: var(--chatcn-fg);
+  --chatcn-syntax-punctuation: var(--chatcn-fg-muted);
+  --chatcn-syntax-attribute: var(--chatcn-syntax-constant);
+  --chatcn-gray-100: oklch(0.195 0 0);
+  --chatcn-gray-200: oklch(0.225 0 0);
+  --chatcn-gray-300: oklch(0.255 0 0);
+  --chatcn-gray-400: oklch(0.285 0 0);
+  --chatcn-gray-500: oklch(0.340 0 0);
+  --chatcn-gray-600: oklch(0.410 0 0);
+  --chatcn-gray-700: oklch(0.500 0 0);
+  --chatcn-gray-800: oklch(0.620 0 0);
+  --chatcn-gray-900: oklch(0.720 0 0);
+  --chatcn-gray-1000: oklch(0.970 0 0);
+  --chatcn-alpha-100: oklch(1 0 0 / 0.04);
+  --chatcn-alpha-200: oklch(1 0 0 / 0.06);
+  --chatcn-alpha-300: oklch(1 0 0 / 0.09);
+  --chatcn-alpha-400: oklch(1 0 0 / 0.11);
+  --chatcn-alpha-500: oklch(1 0 0 / 0.16);
+  --chatcn-alpha-600: oklch(1 0 0 / 0.24);
+  --chatcn-fg: var(--chatcn-gray-1000);
+  --chatcn-fg-muted: var(--chatcn-gray-900);
+  --chatcn-fg-subtle: var(--chatcn-gray-800);
+  --chatcn-fg-faint: var(--chatcn-gray-700);
+  --chatcn-border: var(--chatcn-gray-400);
+  --chatcn-border-hover: var(--chatcn-gray-500);
+  --chatcn-border-strong: var(--chatcn-gray-600);
+  --chatcn-fill: var(--chatcn-gray-100);
+  --chatcn-fill-hover: var(--chatcn-gray-200);
+  --chatcn-fill-active: var(--chatcn-gray-300);
+  --chatcn-scrollbar: var(--chatcn-alpha-500);
+  --chatcn-scrollbar-hover: var(--chatcn-alpha-600);
+  --chatcn-accent: var(--chatcn-gray-1000);
+  --chatcn-accent-fg: var(--chatcn-bg);
+  --chatcn-primary: var(--chatcn-gray-1000);
+  --chatcn-primary-fg: var(--chatcn-bg);
+  --chatcn-primary-hover: var(--chatcn-gray-900);
+  --chatcn-shadow-border: 0 0 0 1px oklch(1 0 0 / 0.08);
+  --chatcn-shadow-xs: 0 0 0 1px oklch(1 0 0 / 0.08), 0 1px 2px oklch(0 0 0 / 0.4);
+  --chatcn-shadow-sm: 0 0 0 1px oklch(1 0 0 / 0.08), inset 0 1px 0 oklch(1 0 0 / 0.03), 0 2px 4px oklch(0 0 0 / 0.4);
+  --chatcn-shadow-sm-hover: 0 0 0 1px oklch(1 0 0 / 0.12), inset 0 1px 0 oklch(1 0 0 / 0.04), 0 2px 4px oklch(0 0 0 / 0.4);
+  --chatcn-shadow-md: 0 0 0 1px oklch(1 0 0 / 0.09), inset 0 1px 0 oklch(1 0 0 / 0.04), 0 8px 16px -4px oklch(0 0 0 / 0.5);
+  --chatcn-shadow-lg: 0 0 0 1px oklch(1 0 0 / 0.1), inset 0 1px 0 oklch(1 0 0 / 0.05), 0 16px 32px -8px oklch(0 0 0 / 0.6);
+  --chatcn-shadow-xl: 0 0 0 1px oklch(1 0 0 / 0.1), inset 0 1px 0 oklch(1 0 0 / 0.05), 0 32px 64px -12px oklch(0 0 0 / 0.7);
+  --chatcn-shadow-input-focus: 0 0 0 1px var(--chatcn-gray-800), 0 0 0 4px var(--chatcn-alpha-300);
 }
 
 @theme inline {
@@ -108,6 +314,249 @@
   --ease-in-out: var(--ease-in-out);
   --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', system-ui, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+  --color-chatcn-bg: var(--chatcn-bg);
+  --color-chatcn-bg-subtle: var(--chatcn-bg-subtle);
+  --color-chatcn-surface: var(--chatcn-surface);
+  --color-chatcn-card: var(--chatcn-card);
+  --color-chatcn-inset: var(--chatcn-inset);
+  --color-chatcn-on-media: var(--chatcn-on-media);
+  --color-chatcn-on-media-shadow: var(--chatcn-on-media-shadow);
+  --color-chatcn-scrim: var(--chatcn-scrim);
+  --color-chatcn-red: var(--chatcn-red);
+  --color-chatcn-amber: var(--chatcn-amber);
+  --color-chatcn-green: var(--chatcn-green);
+  --color-chatcn-blue: var(--chatcn-blue);
+  --color-chatcn-purple: var(--chatcn-purple);
+  --color-chatcn-teal: var(--chatcn-teal);
+  --color-chatcn-red-bg: var(--chatcn-red-bg);
+  --color-chatcn-red-border: var(--chatcn-red-border);
+  --color-chatcn-amber-bg: var(--chatcn-amber-bg);
+  --color-chatcn-amber-border: var(--chatcn-amber-border);
+  --color-chatcn-green-bg: var(--chatcn-green-bg);
+  --color-chatcn-green-border: var(--chatcn-green-border);
+  --color-chatcn-blue-bg: var(--chatcn-blue-bg);
+  --color-chatcn-blue-border: var(--chatcn-blue-border);
+  --color-chatcn-purple-bg: var(--chatcn-purple-bg);
+  --color-chatcn-purple-border: var(--chatcn-purple-border);
+  --color-chatcn-teal-bg: var(--chatcn-teal-bg);
+  --color-chatcn-teal-border: var(--chatcn-teal-border);
+  --color-chatcn-diff-add-bg: var(--chatcn-diff-add-bg);
+  --color-chatcn-diff-add-word-bg: var(--chatcn-diff-add-word-bg);
+  --color-chatcn-diff-add-gutter: var(--chatcn-diff-add-gutter);
+  --color-chatcn-diff-add-fg: var(--chatcn-diff-add-fg);
+  --color-chatcn-diff-del-bg: var(--chatcn-diff-del-bg);
+  --color-chatcn-diff-del-word-bg: var(--chatcn-diff-del-word-bg);
+  --color-chatcn-diff-del-gutter: var(--chatcn-diff-del-gutter);
+  --color-chatcn-diff-del-fg: var(--chatcn-diff-del-fg);
+  --color-chatcn-chart-1: var(--chatcn-chart-1);
+  --color-chatcn-chart-2: var(--chatcn-chart-2);
+  --color-chatcn-chart-3: var(--chatcn-chart-3);
+  --color-chatcn-chart-4: var(--chatcn-chart-4);
+  --color-chatcn-chart-5: var(--chatcn-chart-5);
+  --color-chatcn-chart-6: var(--chatcn-chart-6);
+  --color-chatcn-syntax-keyword: var(--chatcn-syntax-keyword);
+  --color-chatcn-syntax-string: var(--chatcn-syntax-string);
+  --color-chatcn-syntax-constant: var(--chatcn-syntax-constant);
+  --color-chatcn-syntax-function: var(--chatcn-syntax-function);
+  --color-chatcn-syntax-type: var(--chatcn-syntax-type);
+  --color-chatcn-syntax-tag: var(--chatcn-syntax-tag);
+  --color-chatcn-syntax-comment: var(--chatcn-syntax-comment);
+  --color-chatcn-syntax-plain: var(--chatcn-syntax-plain);
+  --color-chatcn-syntax-punctuation: var(--chatcn-syntax-punctuation);
+  --color-chatcn-syntax-attribute: var(--chatcn-syntax-attribute);
+  --color-chatcn-gray-100: var(--chatcn-gray-100);
+  --color-chatcn-gray-200: var(--chatcn-gray-200);
+  --color-chatcn-gray-300: var(--chatcn-gray-300);
+  --color-chatcn-gray-400: var(--chatcn-gray-400);
+  --color-chatcn-gray-500: var(--chatcn-gray-500);
+  --color-chatcn-gray-600: var(--chatcn-gray-600);
+  --color-chatcn-gray-700: var(--chatcn-gray-700);
+  --color-chatcn-gray-800: var(--chatcn-gray-800);
+  --color-chatcn-gray-900: var(--chatcn-gray-900);
+  --color-chatcn-gray-1000: var(--chatcn-gray-1000);
+  --color-chatcn-alpha-100: var(--chatcn-alpha-100);
+  --color-chatcn-alpha-200: var(--chatcn-alpha-200);
+  --color-chatcn-alpha-300: var(--chatcn-alpha-300);
+  --color-chatcn-alpha-400: var(--chatcn-alpha-400);
+  --color-chatcn-alpha-500: var(--chatcn-alpha-500);
+  --color-chatcn-alpha-600: var(--chatcn-alpha-600);
+  --color-chatcn-fg: var(--chatcn-fg);
+  --color-chatcn-fg-muted: var(--chatcn-fg-muted);
+  --color-chatcn-fg-subtle: var(--chatcn-fg-subtle);
+  --color-chatcn-fg-faint: var(--chatcn-fg-faint);
+  --color-chatcn-border: var(--chatcn-border);
+  --color-chatcn-border-hover: var(--chatcn-border-hover);
+  --color-chatcn-border-strong: var(--chatcn-border-strong);
+  --color-chatcn-fill: var(--chatcn-fill);
+  --color-chatcn-fill-hover: var(--chatcn-fill-hover);
+  --color-chatcn-fill-active: var(--chatcn-fill-active);
+  --color-chatcn-scrollbar: var(--chatcn-scrollbar);
+  --color-chatcn-scrollbar-hover: var(--chatcn-scrollbar-hover);
+  --color-chatcn-accent: var(--chatcn-accent);
+  --color-chatcn-accent-fg: var(--chatcn-accent-fg);
+  --color-chatcn-primary: var(--chatcn-primary);
+  --color-chatcn-primary-fg: var(--chatcn-primary-fg);
+  --color-chatcn-primary-hover: var(--chatcn-primary-hover);
+  --shadow-chatcn-border: var(--chatcn-shadow-border);
+  --shadow-chatcn-xs: var(--chatcn-shadow-xs);
+  --shadow-chatcn-sm: var(--chatcn-shadow-sm);
+  --shadow-chatcn-sm-hover: var(--chatcn-shadow-sm-hover);
+  --shadow-chatcn-md: var(--chatcn-shadow-md);
+  --shadow-chatcn-lg: var(--chatcn-shadow-lg);
+  --shadow-chatcn-xl: var(--chatcn-shadow-xl);
+  --shadow-chatcn-input-focus: var(--chatcn-shadow-input-focus);
+  --radius-chatcn-xs: var(--chatcn-radius-xs);
+  --radius-chatcn-sm: var(--chatcn-radius-sm);
+  --radius-chatcn-md: var(--chatcn-radius-md);
+  --radius-chatcn-lg: var(--chatcn-radius-lg);
+  --radius-chatcn-xl: var(--chatcn-radius-xl);
+  --radius-chatcn-2xl: var(--chatcn-radius-2xl);
+  --ease-chatcn-out: var(--chatcn-ease-out);
+  --ease-chatcn-out-soft: var(--chatcn-ease-out-soft);
+  --ease-chatcn-in-out: var(--chatcn-ease-in-out);
+  --ease-chatcn-drawer: var(--chatcn-ease-drawer);
+  --ease-chatcn-standard: var(--chatcn-ease-standard);
+  --chatcn-shadow-input-focus: var(--chatcn-shadow-input-focus);
+  --chatcn-shadow-xl: var(--chatcn-shadow-xl);
+  --chatcn-shadow-lg: var(--chatcn-shadow-lg);
+  --chatcn-shadow-md: var(--chatcn-shadow-md);
+  --chatcn-shadow-sm-hover: var(--chatcn-shadow-sm-hover);
+  --chatcn-shadow-sm: var(--chatcn-shadow-sm);
+  --chatcn-shadow-xs: var(--chatcn-shadow-xs);
+  --chatcn-shadow-border: var(--chatcn-shadow-border);
+  --chatcn-primary-hover: var(--chatcn-primary-hover);
+  --chatcn-primary-fg: var(--chatcn-primary-fg);
+  --chatcn-primary: var(--chatcn-primary);
+  --chatcn-accent-fg: var(--chatcn-accent-fg);
+  --chatcn-accent: var(--chatcn-accent);
+  --chatcn-scrollbar-hover: var(--chatcn-scrollbar-hover);
+  --chatcn-scrollbar: var(--chatcn-scrollbar);
+  --chatcn-fill-active: var(--chatcn-fill-active);
+  --chatcn-fill-hover: var(--chatcn-fill-hover);
+  --chatcn-fill: var(--chatcn-fill);
+  --chatcn-border-strong: var(--chatcn-border-strong);
+  --chatcn-border-hover: var(--chatcn-border-hover);
+  --chatcn-border: var(--chatcn-border);
+  --chatcn-fg-faint: var(--chatcn-fg-faint);
+  --chatcn-fg-subtle: var(--chatcn-fg-subtle);
+  --chatcn-fg-muted: var(--chatcn-fg-muted);
+  --chatcn-fg: var(--chatcn-fg);
+  --chatcn-syntax-attribute: var(--chatcn-syntax-attribute);
+  --chatcn-syntax-punctuation: var(--chatcn-syntax-punctuation);
+  --chatcn-syntax-plain: var(--chatcn-syntax-plain);
+  --chatcn-radius-2xl: var(--chatcn-radius-2xl);
+  --chatcn-radius-xl: var(--chatcn-radius-xl);
+  --chatcn-radius-lg: var(--chatcn-radius-lg);
+  --chatcn-radius-md: var(--chatcn-radius-md);
+  --chatcn-radius-sm: var(--chatcn-radius-sm);
+  --chatcn-radius-xs: var(--chatcn-radius-xs);
+  --chatcn-exit-scale: var(--chatcn-exit-scale);
+  --chatcn-enter-scale: var(--chatcn-enter-scale);
+  --chatcn-press-scale-icon: var(--chatcn-press-scale-icon);
+  --chatcn-press-scale: var(--chatcn-press-scale);
+  --chatcn-ease-standard: var(--chatcn-ease-standard);
+  --chatcn-ease-drawer: var(--chatcn-ease-drawer);
+  --chatcn-ease-in-out: var(--chatcn-ease-in-out);
+  --chatcn-ease-out-soft: var(--chatcn-ease-out-soft);
+  --chatcn-ease-out: var(--chatcn-ease-out);
+  --chatcn-duration-sheet: var(--chatcn-duration-sheet);
+  --chatcn-duration-toast: var(--chatcn-duration-toast);
+  --chatcn-duration-panel: var(--chatcn-duration-panel);
+  --chatcn-duration-dialog: var(--chatcn-duration-dialog);
+  --chatcn-duration-popover: var(--chatcn-duration-popover);
+  --chatcn-duration-fast: var(--chatcn-duration-fast);
+  --chatcn-duration-tooltip: var(--chatcn-duration-tooltip);
+  --chatcn-duration-press: var(--chatcn-duration-press);
+  --chatcn-duration-instant: var(--chatcn-duration-instant);
+  @keyframes chatcn-spin {
+  to {
+    transform: rotate(360deg);
+    }
+  }
+  @keyframes chatcn-shimmer {
+  from {
+    background-position: 100% 0;
+    }
+  to {
+    background-position: 0% 0;
+    }
+  }
+  @keyframes chatcn-swap {
+  from {
+    opacity: 0;
+    scale: 0.8;
+    filter: blur(2px);
+    }
+  to {
+    opacity: 1;
+    scale: 1;
+    filter: blur(0);
+    }
+  }
+  @keyframes chatcn-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+    }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    }
+  }
+  @keyframes chatcn-rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+    }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    }
+  }
+  @keyframes chatcn-indeterminate {
+  from {
+    transform: translateX(-100%);
+    }
+  to {
+    transform: translateX(250%);
+    }
+  }
+  @keyframes chatcn-ripple {
+  from {
+    opacity: 0.5;
+    transform: scale(0.6);
+    }
+  to {
+    opacity: 0;
+    transform: scale(1.6);
+    }
+  }
+  @keyframes chatcn-exit-hold {
+  from {
+    --chatcn-exit-hold: 0;
+    }
+  to {
+    --chatcn-exit-hold: 1;
+    }
+  }
+  @keyframes chatcn-tooltip-in {
+  from {
+    opacity: 0;
+    scale: 0.97;
+    }
+  to {
+    opacity: 1;
+    scale: 1;
+    }
+  }
+  @keyframes chatcn-caret-blink {
+  0%, 100% {
+    opacity: 1;
+    }
+  50% {
+    opacity: 0;
+    }
+  }
 }
 
 @layer base {
@@ -143,6 +592,19 @@
       transform: none;
     }
   }
+  :root {
+    --chatcn-press-scale: 1;
+    --chatcn-press-scale-icon: 1;
+    --chatcn-enter-scale: 1;
+  }
+  .chatcn-shimmer {
+    animation: none;
+    color: var(--chatcn-fg-subtle);
+    background-image: none;
+  }
+  .chatcn-spin {
+    animation-duration: 1.2s;
+  }
 }
 
 /* Forward-sync highlight on the PDF: visible, then fades. */
@@ -173,7 +635,11 @@
   height: 100%;
   background: transparent;
   color: var(--foreground);
-  font-size: 13.5px;
+  font-size: var(--editor-font-size, 13.5px);
+}
+/* Room for the floating assistant bar under the last line. */
+.cm-content {
+  padding-bottom: 6rem;
 }
 .cm-editor.cm-focused {
   outline: none;
@@ -210,4 +676,159 @@
   color: var(--popover-foreground);
   border: 1px solid var(--border);
   border-radius: 8px;
+}
+
+@utility chatcn-text-12 {
+    font-size: 0.75rem;
+    line-height: 1rem;
+    letter-spacing: 0em;
+}
+
+@utility chatcn-text-13 {
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+    letter-spacing: 0em;
+}
+
+@utility chatcn-text-14 {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    letter-spacing: -0.003em;
+}
+
+@utility chatcn-text-15 {
+    font-size: 0.9375rem;
+    line-height: 1.5rem;
+    letter-spacing: -0.006em;
+}
+
+@utility chatcn-text-16 {
+    font-size: 1rem;
+    line-height: 1.5rem;
+    letter-spacing: -0.01em;
+}
+
+@utility chatcn-text-18 {
+    font-size: 1.125rem;
+    line-height: 1.625rem;
+    letter-spacing: -0.015em;
+}
+
+@utility chatcn-text-20 {
+    font-size: 1.25rem;
+    line-height: 1.75rem;
+    letter-spacing: -0.018em;
+}
+
+@utility chatcn-text-24 {
+    font-size: 1.5rem;
+    line-height: 2rem;
+    letter-spacing: -0.022em;
+}
+
+@utility chatcn-text-32 {
+    font-size: 2rem;
+    line-height: 2.5rem;
+    letter-spacing: -0.028em;
+}
+
+@utility chatcn-text-40 {
+    font-size: 2.5rem;
+    line-height: 2.75rem;
+    letter-spacing: -0.035em;
+}
+
+@utility chatcn-text-56 {
+    font-size: 3.5rem;
+    line-height: 3.5rem;
+    letter-spacing: -0.042em;
+}
+
+@utility chatcn-text-72 {
+    font-size: 4.5rem;
+    line-height: 4.25rem;
+    letter-spacing: -0.048em;
+}
+
+@utility chatcn-focus {
+  &:focus-visible {
+    outline: 2px solid var(--chatcn-accent);
+    outline-offset: 2px;
+  }
+}
+
+@utility chatcn-press {
+    transition: transform 150ms var(--chatcn-ease-out);
+  &:active {
+    transform: scale(var(--chatcn-press-scale));
+    transition-duration: 100ms;
+  }
+}
+
+@utility chatcn-shimmer {
+    color: transparent;
+    background-image: linear-gradient(90deg, var(--chatcn-fg-subtle) 0%, var(--chatcn-fg-subtle) 40%, var(--chatcn-fg) 50%, var(--chatcn-fg-subtle) 60%, var(--chatcn-fg-subtle) 100%);
+    background-size: 250% 100%;
+    background-clip: text;
+    -webkit-background-clip: text;
+    animation: chatcn-shimmer 1.6s linear infinite;
+}
+
+@utility chatcn-spin {
+    animation: chatcn-spin 0.8s linear infinite;
+}
+
+@utility chatcn-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--chatcn-scrollbar) transparent;
+  &:hover {
+    scrollbar-color: var(--chatcn-scrollbar-hover) transparent;
+  }
+  &::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  &::-webkit-scrollbar-track, &::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background-color: var(--chatcn-scrollbar);
+    background-clip: content-box;
+    border: 3px solid transparent;
+    border-radius: 9999px;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background-color: var(--chatcn-scrollbar-hover);
+  }
+}
+  .chatcn-code-mono {
+    --chatcn-syntax-keyword: var(--chatcn-fg);
+    --chatcn-syntax-string: var(--chatcn-fg-muted);
+    --chatcn-syntax-constant: var(--chatcn-fg-muted);
+    --chatcn-syntax-function: var(--chatcn-fg);
+    --chatcn-syntax-type: var(--chatcn-fg-muted);
+    --chatcn-syntax-tag: var(--chatcn-fg);
+    --chatcn-syntax-attribute: var(--chatcn-fg-muted);
+    --chatcn-syntax-comment: var(--chatcn-fg-subtle);
+    --chatcn-syntax-punctuation: var(--chatcn-fg-subtle);
+}
+
+@media (forced-colors: active) {
+  .chatcn-scroll {
+    scrollbar-color: auto;
+  }
+}
+/* chatcn components draw with the app's own tokens, so both read as one system. */
+:root,
+.dark {
+  --chatcn-bg: var(--background);
+  --chatcn-card: var(--card);
+  --chatcn-surface: var(--popover);
+  --chatcn-fg: var(--foreground);
+  --chatcn-fg-muted: var(--muted-foreground);
+  --chatcn-border: var(--border);
+  --chatcn-accent: var(--primary);
+  --chatcn-accent-fg: var(--primary-foreground);
+  --chatcn-primary: var(--primary);
+  --chatcn-primary-fg: var(--primary-foreground);
 }

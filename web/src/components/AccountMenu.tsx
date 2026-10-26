@@ -8,6 +8,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import type { ChatGPTStatus } from '@/api'
+import { openSettings } from '@/lib/prefs'
 import { setTheme, useTheme, type Theme } from '@/lib/theme'
 import { cn } from '@/lib/utils'
 
@@ -47,10 +48,8 @@ export default function AccountMenu({ status, compact }: { status: ChatGPTStatus
           </DropdownMenuItem>
         ))}
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <a href="/settings">
-            <Settings /> Settings
-          </a>
+        <DropdownMenuItem onSelect={() => openSettings()}>
+          <Settings /> Settings
         </DropdownMenuItem>
         {status && (
           <DropdownMenuItem asChild>

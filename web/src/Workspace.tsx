@@ -36,11 +36,11 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ago } from '@/lib/time'
+import { mod, shortcuts } from '@/lib/shortcuts'
 import { cn } from '@/lib/utils'
 
 const under = (p: string, prefix: string) => p === prefix || p.startsWith(prefix + '/')
 const moved = (p: string, from: string, to: string) => (under(p, from) ? to + p.slice(from.length) : p)
-const mod = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+'
 
 const saveState: Record<SaveStatus, { text: string; dot: string }> = {
   saved: { text: 'Saved', dot: 'bg-success' },
@@ -65,7 +65,9 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
   const [jump, setJump] = useState<{ path: string; line: number; n: number } | undefined>()
   const [pdfVersion, setPdfVersion] = useState(0)
   const [highlight, setHighlight] = useState<Highlight | undefined>()
-  const [rightTab, setRightTab] = useState<'pdf' | 'assistant'>('pdf')
+  const [chatOpen, setChatOpen] = useState(false)
+  const [chatFocus, setChatFocus] = useState(0)
+  const [selLines, setSelLines] = useState('')
   const [sideTab, setSideTab] = useState<'files' | 'chats'>('files')
   const [review, setReview] = useState<Turn | null>(null)
   const [turnUpdate, setTurnUpdate] = useState<Turn | undefined>()
@@ -77,7 +79,6 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
   const [askValue, setAskValue] = useState('')
   const [confirm, setConfirm] = useState<Confirm | null>(null)
   const sidebar = usePanelRef()
-  const [rightBar, setRightBar] = useState<HTMLDivElement | null>(null) // PDF/Assistant controls render here
   const uploadInput = useRef<HTMLInputElement>(null)
 
   // Outside React state: content loaded from the server and live editor states per open file.
@@ -163,7 +164,6 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
       const { boxes } = await api<{ boxes: Omit<Highlight, 'n'>[] }>(
         `/api/projects/${id}/synctex/forward?file=${encodeURIComponent(path)}&line=${line}&col=${col}`,
       )
-      setRightTab('pdf')
       setHighlight((h) => ({ ...boxes[0], n: (h?.n ?? 0) + 1 }))
     } catch (e) {
       toast(errorText(e))
@@ -486,7 +486,8 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                   className="mb-1 w-full justify-start text-muted-foreground"
                   onClick={() => {
                     setChatId('')
-                    setRightTab('assistant')
+                    setChatOpen(true)
+                    setChatFocus((n) => n + 1)
                   }}
                 >
                   <Plus /> New chat
@@ -500,7 +501,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                     )}
                     onClick={() => {
                       setChatId(c.id)
-                      setRightTab('assistant')
+                      setChatOpen(true)
                     }}
                   >
                     <MessageSquare className="size-4 shrink-0 text-muted-foreground" />
@@ -623,11 +624,32 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                   onSave={() => active && autosave.flush(active)}
                   onCompile={compile}
                   onSync={syncToPDF}
+                  onSelect={setSelLines}
                   jump={jump}
                 />
               )}
               {!review && active && current && !current.text && <BinaryView file={current} path={active} />}
               {!review && !active && <EmptyEditor />}
+              <Assistant
+                projectId={id}
+                status={status}
+                chats={chats}
+                chatId={chatId}
+                onChatId={setChatId}
+                onChatsChanged={loadChats}
+                getContext={editorContext}
+                contextLabel={active && current?.text ? `${active.split('/').pop()}${selLines ? ` · L${selLines}` : ''}` : undefined}
+                beforeSend={() => autosave.flushAll()}
+                onReview={(t) => {
+                  setReview(t)
+                  setChatOpen(false) // the diff takes the editor
+                }}
+                reviewing={review?.id}
+                turnUpdate={turnUpdate}
+                open={chatOpen}
+                onOpen={setChatOpen}
+                focus={chatFocus}
+              />
             </div>
 
             {!review && saving && current?.text && (
@@ -646,43 +668,13 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
 
         <ResizablePanel id="right" defaultSize="42%" minSize="320px">
           <section className="flex h-full min-w-0 flex-col overflow-hidden rounded-xl border bg-card shadow-xs">
-            <div className="flex h-11 shrink-0 items-center gap-1 border-b px-2">
-              <Segmented
-                value={rightTab}
-                onChange={(v) => setRightTab(v as 'pdf' | 'assistant')}
-                options={[
-                  { value: 'pdf', label: 'PDF' },
-                  { value: 'assistant', label: 'Assistant' },
-                ]}
-              />
-              <div ref={setRightBar} className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden" />
-            </div>
-            <div className={cn('min-h-0 flex-1 flex-col', rightTab === 'assistant' ? 'flex' : 'hidden')}>
-              <Assistant
-                projectId={id}
-                status={status}
-                chats={chats}
-                chatId={chatId}
-                onChatId={setChatId}
-                onChatsChanged={loadChats}
-                getContext={editorContext}
-                beforeSend={() => autosave.flushAll()}
-                onReview={setReview}
-                reviewing={review?.id}
-                turnUpdate={turnUpdate}
-                toolbarTarget={rightTab === 'assistant' ? rightBar : null}
-              />
-            </div>
-            <div className={cn('min-h-0 flex-1 flex-col', rightTab === 'pdf' ? 'flex' : 'hidden')}>
-              <PdfViewer
-                projectId={id}
-                version={pdfVersion}
-                highlight={highlight}
-                onInverse={syncToSource}
-                toolbar={<CompileStatus projectId={id} compiling={compiling} result={result} error={compileError} onJump={jumpTo} />}
-                toolbarTarget={rightTab === 'pdf' ? rightBar : null}
-              />
-            </div>
+            <PdfViewer
+              projectId={id}
+              version={pdfVersion}
+              highlight={highlight}
+              onInverse={syncToSource}
+              toolbar={<CompileStatus projectId={id} compiling={compiling} result={result} error={compileError} onJump={jumpTo} />}
+            />
           </section>
         </ResizablePanel>
       </ResizablePanelGroup>
@@ -770,14 +762,9 @@ function Segmented({ value, onChange, options }: { value: string; onChange: (v: 
 }
 
 function EmptyEditor() {
-  const rows: [string, string][] = [
-    [`${mod}↵`, 'Compile'],
-    [`${mod}J`, 'Show the cursor position in the PDF'],
-    [`${mod}+click`, 'In the PDF: jump to the source'],
-    [`${mod}S`, 'Save now (it also saves on its own)'],
-  ]
+  const rows = shortcuts.slice(0, 4)
   return (
-    <div className="enter flex h-full flex-col items-center justify-center gap-5 text-center">
+    <div className="enter flex h-full flex-col items-center justify-center gap-5 pb-16 text-center">
       <div>
         <p className="text-sm font-medium">Open a file from the sidebar</p>
         <p className="mt-1 text-sm text-muted-foreground">Edits save automatically.</p>

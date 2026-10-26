@@ -81,7 +81,7 @@ export default function Review({ turn, onAccept, onReject, onClose }: Props) {
         </Button>
       </div>
       {message && <p className="enter border-b bg-destructive/5 px-4 py-2.5 text-sm text-destructive">{message}</p>}
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div className="min-h-0 flex-1 overflow-auto pb-24">
         {!diffs && !message && (
           <p className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" /> Loading changes…
