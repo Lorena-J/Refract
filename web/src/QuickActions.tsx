@@ -8,27 +8,29 @@ import Markdown from '@/components/Markdown'
 import { accept, proposal, propose, reject } from '@/lib/proposal'
 import { getPrefs } from '@/lib/prefs'
 import { cn } from '@/lib/utils'
+import { t } from '@/lib/i18n'
 
 export type Action = 'improve' | 'shorten' | 'grammar' | 'table' | 'explain' | 'custom'
 
 // label: the toolbar button; command: the same action in the ⌘K palette.
 export const actions: { id: Action; label: string; command: string; icon: typeof Sparkles }[] = [
-  { id: 'improve', label: 'Improve', command: 'Improve the wording', icon: Sparkles },
-  { id: 'shorten', label: 'Shorten', command: 'Make it shorter', icon: Scissors },
-  { id: 'grammar', label: 'Fix grammar', command: 'Fix grammar and spelling', icon: SpellCheck },
-  { id: 'table', label: 'Table', command: 'Convert to a table', icon: Table },
-  { id: 'explain', label: 'Explain', command: 'Explain it', icon: BookOpen },
+  { id: 'improve', label: t('Improve'), command: t('Improve the wording'), icon: Sparkles },
+  { id: 'shorten', label: t('Shorten'), command: t('Make it shorter'), icon: Scissors },
+  { id: 'grammar', label: t('Fix grammar'), command: t('Fix grammar and spelling'), icon: SpellCheck },
+  { id: 'table', label: t('Table'), command: t('Convert to a table'), icon: Table },
+  { id: 'explain', label: t('Explain'), command: t('Explain it'), icon: BookOpen },
 ]
 
 const working: Record<Action, string> = {
-  improve: 'Improving',
-  shorten: 'Shortening',
-  grammar: 'Fixing grammar',
-  table: 'Building the table',
-  explain: 'Explaining',
-  custom: 'Editing',
+  improve: t('Improving'),
+  shorten: t('Shortening'),
+  grammar: t('Fixing grammar'),
+  table: t('Building the table'),
+  explain: t('Explaining'),
+  custom: t('Editing'),
 }
 
+const noChanges = t('No changes to suggest.')
 const CONTEXT = 2000 // characters of context on each side
 
 type Job = { from: number; to: number; action: Action; instruction: string }
@@ -60,6 +62,7 @@ export default function QuickActions({ view, path, dragging, handle }: Props) {
   const bar = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLInputElement>(null)
   const [left, setLeft] = useState(0)
+  const [compact, setCompact] = useState(false)
 
   const pending = proposal(view.state)
   const sel = view.state.selection.main
@@ -103,8 +106,8 @@ export default function QuickActions({ view, path, dragging, handle }: Props) {
         },
       })
       if (action === 'explain') setExplanation(res.text)
-      else if (res.text === doc.sliceString(from, to)) setError('No changes to suggest.')
-      else if (view.state.sliceDoc(from, to) !== doc.sliceString(from, to)) setError('The text changed while the assistant was working. Try again.')
+      else if (res.text === doc.sliceString(from, to)) setError(noChanges)
+      else if (view.state.sliceDoc(from, to) !== doc.sliceString(from, to)) setError(t('The text changed while the assistant was working. Try again.'))
       else {
         propose(view, from, to, res.text)
         setJob(null)
@@ -152,9 +155,14 @@ export default function QuickActions({ view, path, dragging, handle }: Props) {
   const top = above >= 4 ? above : below
   const wantLeft = a ? a.left - box.left : 0
 
-  // Keep the toolbar inside the editor horizontally (its width depends on its state).
+  // Keep the toolbar inside the editor horizontally (its width depends on its
+  // state and language). Too wide for the editor: icons only, labels in tooltips.
+  const fullWidth = useRef(0)
   useLayoutEffect(() => {
     const w = bar.current?.offsetWidth ?? 0
+    if (!compact) fullWidth.current = w
+    const fits = fullWidth.current <= box.width - 16
+    if (fits === compact) setCompact(!fits)
     setLeft(Math.max(8, Math.min(wantLeft, box.width - w - 8)))
   })
 
@@ -171,35 +179,35 @@ export default function QuickActions({ view, path, dragging, handle }: Props) {
       <div
         className="flex h-9 items-center gap-0.5 rounded-xl border bg-popover p-1 text-xs text-popover-foreground shadow-lg transition-[opacity,scale] duration-150 ease-out starting:scale-[0.97] starting:opacity-0"
         role="toolbar"
-        aria-label="Quick actions"
+        aria-label={t('Quick actions')}
       >
         {running && job ? (
           <>
             <ShimmerText className="px-2 font-normal">{working[job.action]}…</ShimmerText>
-            <Button size="icon-xs" variant="ghost" onClick={reset} aria-label="Stop">
+            <Button size="icon-xs" variant="ghost" onClick={reset} aria-label={t('Stop')}>
               <Square className="fill-current" />
             </Button>
           </>
         ) : pending ? (
           <>
             <Button size="xs" onClick={() => accept(view)}>
-              <Check /> Accept <kbd className="opacity-60">Tab</kbd>
+              <Check /> {t('Accept')} <kbd className="opacity-60">Tab</kbd>
             </Button>
             <Button size="xs" variant="ghost" onClick={() => reject(view)}>
-              <X /> Reject <kbd className="opacity-60">Esc</kbd>
+              <X /> {t('Reject')} <kbd className="opacity-60">Esc</kbd>
             </Button>
           </>
         ) : error ? (
           <>
-            <span className={cn('max-w-80 truncate px-2', error.startsWith('No changes') ? 'text-muted-foreground' : 'text-destructive')} title={error}>
+            <span className={cn('max-w-80 truncate px-2', error === noChanges ? 'text-muted-foreground' : 'text-destructive')} title={error}>
               {error}
             </span>
             {job && (
-              <Button size="icon-xs" variant="ghost" onClick={() => run(job.action, job.instruction)} aria-label="Retry">
+              <Button size="icon-xs" variant="ghost" onClick={() => run(job.action, job.instruction)} aria-label={t('Retry')}>
                 <RotateCcw />
               </Button>
             )}
-            <Button size="icon-xs" variant="ghost" onClick={reset} aria-label="Close">
+            <Button size="icon-xs" variant="ghost" onClick={reset} aria-label={t('Close')}>
               <X />
             </Button>
           </>
@@ -222,11 +230,11 @@ export default function QuickActions({ view, path, dragging, handle }: Props) {
                   view.focus()
                 }
               }}
-              placeholder="Tell the assistant what to change…"
-              aria-label="Instruction"
+              placeholder={t('Tell the assistant what to change…')}
+              aria-label={t('Instruction')}
               className="h-7 w-72 bg-transparent px-2 text-xs outline-none placeholder:text-muted-foreground"
             />
-            <Button type="submit" size="icon-xs" className="rounded-full" disabled={!instruction.trim()} aria-label="Apply instruction">
+            <Button type="submit" size="icon-xs" className="rounded-full" disabled={!instruction.trim()} aria-label={t('Apply instruction')}>
               <ArrowUp />
             </Button>
           </form>
@@ -239,12 +247,16 @@ export default function QuickActions({ view, path, dragging, handle }: Props) {
                 variant="ghost"
                 className={cn('text-muted-foreground hover:text-foreground', x.id === 'explain' && 'ml-0.5')}
                 onClick={() => run(x.id)}
+                title={compact ? x.label : undefined}
+                aria-label={x.label}
               >
-                <x.icon /> {x.label}
+                <x.icon /> {!compact && x.label}
               </Button>
             ))}
             <span className="mx-0.5 h-4 w-px bg-border" />
             <Button
+              title={compact ? t('Ask…') : undefined}
+              aria-label={t('Ask…')}
               size="xs"
               variant="ghost"
               className="text-muted-foreground hover:text-foreground"
@@ -253,7 +265,7 @@ export default function QuickActions({ view, path, dragging, handle }: Props) {
                 requestAnimationFrame(() => input.current?.focus())
               }}
             >
-              <Pencil /> Ask…
+              <Pencil /> {!compact && t('Ask…')}
             </Button>
           </>
         )}
@@ -262,8 +274,8 @@ export default function QuickActions({ view, path, dragging, handle }: Props) {
       {explanation && (
         <div className="enter max-h-72 w-[min(28rem,calc(100vw-2rem))] overflow-auto rounded-xl border bg-popover p-3 text-sm text-popover-foreground shadow-lg">
           <div className="mb-1 flex items-center justify-between">
-            <span className="text-xs font-medium text-muted-foreground">Explanation</span>
-            <Button size="icon-xs" variant="ghost" onClick={reset} aria-label="Close explanation">
+            <span className="text-xs font-medium text-muted-foreground">{t('Explanation')}</span>
+            <Button size="icon-xs" variant="ghost" onClick={reset} aria-label={t('Close explanation')}>
               <X />
             </Button>
           </div>

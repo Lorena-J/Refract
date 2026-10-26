@@ -1,6 +1,7 @@
 import { Switch } from "@base-ui/react/switch"
 import { Tabs } from "@base-ui/react/tabs"
 import * as React from "react"
+import { t } from '@/lib/i18n'
 import { cn } from "@/lib/utils"
 
 /* -------------------------------------------------------------------------------------------------
@@ -82,7 +83,7 @@ interface SettingsNavProps extends Omit<React.ComponentProps<"nav">, "title"> {
 function SettingsNav({
   title,
   footer,
-  label = "Settings sections",
+  label = t('Settings sections'),
   className,
   children,
   ...props

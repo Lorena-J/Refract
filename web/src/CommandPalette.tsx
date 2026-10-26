@@ -4,11 +4,23 @@ import { CornerDownLeft, Search } from 'lucide-react'
 import { collect, setOverlay, useOverlay, type Command } from '@/lib/commands'
 import { score } from '@/lib/fuzzy'
 import { cn } from '@/lib/utils'
+import { t } from '@/lib/i18n'
 
 const PER_GROUP = 8 // with an empty query, each group shows its first few
 const ORDER = ['Selection', 'Actions', 'Files', 'Chats', 'Projects', 'Navigate', 'General']
 const groupRank = (g: string) => (ORDER.includes(g) ? ORDER.indexOf(g) : ORDER.length)
 const MAX = 50
+// Group names are data (compared against ORDER); only their display is translated.
+const GROUP_NAMES: Record<string, string> = {
+  Selection: t('Selection'),
+  Actions: t('Actions'),
+  Files: t('Files'),
+  Chats: t('Chats'),
+  Projects: t('Projects'),
+  Navigate: t('Navigate'),
+  General: t('General'),
+}
+const groupName = (g: string) => GROUP_NAMES[g] ?? g
 
 // ⌘K. Opened many times a day, so it does not animate (Emil Kowalski).
 export default function CommandPalette() {
@@ -18,7 +30,7 @@ export default function CommandPalette() {
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-50 bg-black/25" />
         <Dialog.Popup
-          aria-label="Command palette"
+          aria-label={t('Command palette')}
           className="fixed top-[16vh] left-1/2 z-50 flex max-h-[min(30rem,70vh)] w-[min(36rem,calc(100vw-2rem))] -translate-x-1/2 flex-col overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-2xl outline-none"
         >
           {open && <Palette />}
@@ -89,7 +101,7 @@ function Palette() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onKey}
-          placeholder="Type a command, a file or a question…"
+          placeholder={t('Type a command, a file or a question…')}
           role="combobox"
           aria-expanded
           aria-controls="palette-list"
@@ -98,12 +110,12 @@ function Palette() {
         />
       </div>
       <div ref={list} id="palette-list" role="listbox" className="min-h-0 flex-1 overflow-y-auto p-1.5">
-        {items.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">No results</p>}
+        {items.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">{t('No results')}</p>}
         {items.map((c, i) => {
           const heading = grouped && !c.pinned && c.group !== items[i - 1]?.group
           return (
             <div key={c.id}>
-              {heading && <div className="px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground">{c.group}</div>}
+              {heading && <div className="px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground">{groupName(c.group)}</div>}
               <div
                 id={`palette-${i}`}
                 data-index={i}
@@ -117,7 +129,7 @@ function Palette() {
                 <span className="truncate">{c.label}</span>
                 {c.hint && <span className="min-w-0 truncate text-xs text-muted-foreground">{c.hint}</span>}
                 <span className="flex-1" />
-                {!grouped && !c.pinned && <span className="shrink-0 text-xs text-muted-foreground">{c.group}</span>}
+                {!grouped && !c.pinned && <span className="shrink-0 text-xs text-muted-foreground">{groupName(c.group)}</span>}
                 {c.shortcut && <kbd className="shrink-0 rounded border bg-muted px-1.5 font-mono text-[11px] text-muted-foreground">{c.shortcut}</kbd>}
                 {i === active && <CornerDownLeft className="size-3.5 shrink-0 text-muted-foreground" />}
               </div>
@@ -126,9 +138,9 @@ function Palette() {
         })}
       </div>
       <div className="flex items-center gap-3 border-t px-3 py-2 text-xs text-muted-foreground">
-        <span>↑↓ to move</span>
-        <span>↵ to run</span>
-        <span>esc to close</span>
+        <span>{t('↑↓ to move')}</span>
+        <span>{t('↵ to run')}</span>
+        <span>{t('esc to close')}</span>
       </div>
     </>
   )

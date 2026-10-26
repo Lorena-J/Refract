@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { api, errorText } from './api'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
+import { t } from '@/lib/i18n'
 
 type Paper = { id: string; version: string; title: string; authors: string[]; summary: string; published: string; category: string }
 export type Citation = { key: string; path: string; added: boolean; needs_setup: boolean }
@@ -55,10 +56,10 @@ export default function CiteArxiv({ projectId, open, onClose, onCited }: Props) 
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="flex h-[min(640px,calc(100dvh-2rem))] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:max-w-2xl">
         <DialogTitle className="flex items-center gap-2 px-5 pt-5 text-base">
-          <BookMarked className="size-4 text-muted-foreground" /> Cite from arXiv
+          <BookMarked className="size-4 text-muted-foreground" /> {t('Cite from arXiv')}
         </DialogTitle>
         <DialogDescription className="px-5 pt-1 text-sm">
-          The entry is added to your .bib from arXiv's own metadata, and \cite is inserted at the cursor.
+          {t('The entry is added to your .bib from arXiv’s own metadata, and \\cite is inserted at the cursor.')}
         </DialogDescription>
         <form onSubmit={search} className="flex gap-2 px-5 pt-4 pb-3">
           <div className="relative flex-1">
@@ -67,18 +68,18 @@ export default function CiteArxiv({ projectId, open, onClose, onCited }: Props) 
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Title words, au:surname, or an arXiv id like 1706.03762"
-              aria-label="Search arXiv"
+              placeholder={t('Title words, au:surname, or an arXiv id like 1706.03762')}
+              aria-label={t('Search arXiv')}
               className="h-9 w-full rounded-lg border bg-transparent pr-3 pl-9 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
             />
           </div>
           <Button type="submit" disabled={searching || !query.trim()}>
-            {searching && <Loader2 className="animate-spin" />} Search
+            {searching && <Loader2 className="animate-spin" />} {t('Search')}
           </Button>
         </form>
         <ol className="min-h-0 flex-1 overflow-y-auto border-t px-2 py-2">
-          {results?.length === 0 && <li className="p-4 text-center text-sm text-muted-foreground">No papers found.</li>}
-          {!results && !searching && <li className="p-4 text-center text-sm text-muted-foreground">Search by title, author or id.</li>}
+          {results?.length === 0 && <li className="p-4 text-center text-sm text-muted-foreground">{t('No papers found.')}</li>}
+          {!results && !searching && <li className="p-4 text-center text-sm text-muted-foreground">{t('Search by title, author or id.')}</li>}
           {results?.map((p) => (
             <li key={p.id} className="enter group flex gap-3 rounded-lg p-3 hover:bg-foreground/[0.03]">
               <div className="min-w-0 flex-1">
@@ -93,7 +94,7 @@ export default function CiteArxiv({ projectId, open, onClose, onCited }: Props) 
                 <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{p.summary}</p>
               </div>
               <Button size="sm" variant="secondary" className="shrink-0 self-start" disabled={!!citing} onClick={() => cite(p)}>
-                {citing === p.id ? <Loader2 className="animate-spin" /> : <Quote />} Cite
+                {citing === p.id ? <Loader2 className="animate-spin" /> : <Quote />} {t('Cite')}
               </Button>
             </li>
           ))}

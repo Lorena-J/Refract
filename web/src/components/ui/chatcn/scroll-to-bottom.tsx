@@ -3,6 +3,7 @@
 import type * as React from "react"
 import { useConversation } from "@/components/ui/chatcn/conversation"
 import { ArrowDownIcon } from "@/lib/chatcn-icons"
+import { t, tn } from '@/lib/i18n'
 import { cn } from "@/lib/utils"
 
 interface ScrollToBottomProps extends Omit<React.ComponentProps<"button">, "children"> {
@@ -34,9 +35,7 @@ function ScrollToBottom({
   const { isAtBottom, isFar, unread, scrollToBottom } = ctx
   const show = visible ?? (when === "away" ? !isAtBottom : isFar || (!isAtBottom && unread > 0))
   const count = showUnread && unread > 0 ? unread : 0
-  const label = count
-    ? `${count} new ${count === 1 ? "message" : "messages"}, scroll to latest`
-    : "Scroll to latest"
+  const label = count ? tn(count, '{n} new message, scroll to latest', '{n} new messages, scroll to latest') : t('Scroll to latest')
 
   return (
     <button
@@ -67,7 +66,7 @@ function ScrollToBottom({
       {...props}
     >
       <ArrowDownIcon aria-hidden="true" />
-      {count ? <span>{count > 99 ? "99+" : count} new</span> : null}
+      {count ? <span>{t('{count} new', { count: count > 99 ? '99+' : count })}</span> : null}
     </button>
   )
 }

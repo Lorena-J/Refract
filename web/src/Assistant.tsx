@@ -38,6 +38,7 @@ import Markdown from '@/components/Markdown'
 import { openSettings, setPref, usePrefs } from '@/lib/prefs'
 import { ago } from '@/lib/time'
 import { cn } from '@/lib/utils'
+import { t, tn } from '@/lib/i18n'
 
 export type Turn = {
   id: string
@@ -72,13 +73,13 @@ type Props = {
 }
 
 const finished: Partial<Record<Turn['status'], { label: string; tone: string }>> = {
-  done: { label: 'No changes', tone: 'text-muted-foreground' },
-  accepted: { label: 'Changes applied', tone: 'text-success' },
-  rejected: { label: 'Changes rejected', tone: 'text-muted-foreground' },
-  stopped: { label: 'Stopped', tone: 'text-muted-foreground' },
+  done: { label: t('No changes'), tone: 'text-muted-foreground' },
+  accepted: { label: t('Changes applied'), tone: 'text-success' },
+  rejected: { label: t('Changes rejected'), tone: 'text-muted-foreground' },
+  stopped: { label: t('Stopped'), tone: 'text-muted-foreground' },
 }
 
-const suggestions = ['Fix the compile errors', 'Check the grammar of the open file', 'Make the abstract more concise']
+const suggestions = [t('Fix the compile errors'), t('Check the grammar of the open file'), t('Make the abstract more concise')]
 const MIN_HEIGHT = 260
 
 // The assistant floats over the editor (Prism-style): an input bar, a bubble, or a resizable sheet.
@@ -114,7 +115,7 @@ export default function Assistant(p: Props) {
 
   useEffect(() => {
     if (!p.request) return
-    if (running) setError('The assistant is busy with another request.')
+    if (running) setError(t('The assistant is busy with another request.'))
     else send(p.request.text)
   }, [p.request?.n])
 
@@ -227,7 +228,7 @@ export default function Assistant(p: Props) {
 
   const plan = p.status?.status
   const notice = error || (plan && !plan.signed_in ? describe({ kind: 'not_signed_in', message: '' }) : '')
-  const title = p.chats.find((c) => c.id === p.chatId)?.title ?? 'New chat'
+  const title = p.chats.find((c) => c.id === p.chatId)?.title ?? t('New chat')
   const last = turns[turns.length - 1]
   const pendingReview = last?.status === 'review' ? last : undefined
   const sheetHeight = height ?? prefs.chatHeight
@@ -240,7 +241,7 @@ export default function Assistant(p: Props) {
             render={
               <button
                 onClick={() => p.onOpen(true)}
-                aria-label="Open assistant"
+                aria-label={t('Open assistant')}
                 className="pointer-events-auto relative flex size-11 origin-bottom-right items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-[scale,opacity] duration-200 ease-out starting:scale-90 starting:opacity-0 hover:scale-105 active:scale-95"
               />
             }
@@ -252,7 +253,7 @@ export default function Assistant(p: Props) {
               />
             )}
           </TooltipTrigger>
-          <TooltipContent side="left">{running ? 'Assistant is working…' : pendingReview ? 'Changes ready to review' : 'Assistant'}</TooltipContent>
+          <TooltipContent side="left">{running ? t('Assistant is working…') : pendingReview ? t('Changes ready to review') : t('Assistant')}</TooltipContent>
         </Tooltip>
       </div>
     )
@@ -275,7 +276,7 @@ export default function Assistant(p: Props) {
             <div
               role="separator"
               aria-orientation="horizontal"
-              aria-label="Resize assistant"
+              aria-label={t('Resize assistant')}
               onPointerDown={startResize}
               onPointerMove={resize}
               onPointerUp={endResize}
@@ -289,13 +290,19 @@ export default function Assistant(p: Props) {
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <Button variant="ghost" size="icon-sm" className="text-muted-foreground" onClick={() => p.onOpen(false)} aria-label="Collapse assistant" />
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="text-muted-foreground"
+                      onClick={() => p.onOpen(false)}
+                      aria-label={t('Collapse assistant')}
+                    />
                   }
                 >
                   <ChevronDown />
                 </TooltipTrigger>
                 <TooltipContent>
-                  Collapse <kbd className="ml-1 opacity-70">Esc</kbd>
+                  {t('Collapse')} <kbd className="ml-1 opacity-70">Esc</kbd>
                 </TooltipContent>
               </Tooltip>
               <DropdownMenu>
@@ -304,11 +311,11 @@ export default function Assistant(p: Props) {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="max-h-80 w-72">
                   <DropdownMenuItem onClick={newChat}>
-                    <MessageSquarePlus /> New chat
+                    <MessageSquarePlus /> {t('New chat')}
                   </DropdownMenuItem>
                   {p.chats.length > 0 && <DropdownMenuSeparator />}
                   <DropdownMenuGroup>
-                    {p.chats.length > 0 && <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Recent chats</DropdownMenuLabel>}
+                    {p.chats.length > 0 && <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">{t('Recent chats')}</DropdownMenuLabel>}
                     {p.chats.map((c) => (
                       <DropdownMenuItem key={c.id} onClick={() => p.onChatId(c.id)}>
                         <span className="truncate">{c.title}</span>
@@ -323,12 +330,12 @@ export default function Assistant(p: Props) {
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <Button variant="ghost" size="icon-sm" className="text-muted-foreground" onClick={newChat} disabled={running} aria-label="New chat" />
+                    <Button variant="ghost" size="icon-sm" className="text-muted-foreground" onClick={newChat} disabled={running} aria-label={t('New chat')} />
                   }
                 >
                   <MessageSquarePlus />
                 </TooltipTrigger>
-                <TooltipContent>New chat</TooltipContent>
+                <TooltipContent>{t('New chat')}</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger
@@ -341,13 +348,13 @@ export default function Assistant(p: Props) {
                         setPref('chatBubble', !prefs.chatBubble)
                         p.onOpen(false)
                       }}
-                      aria-label={prefs.chatBubble ? 'Collapse to input bar' : 'Minimize to bubble'}
+                      aria-label={prefs.chatBubble ? t('Collapse to input bar') : t('Minimize to bubble')}
                     />
                   }
                 >
                   {prefs.chatBubble ? <PanelBottom /> : <Minimize2 />}
                 </TooltipTrigger>
-                <TooltipContent>{prefs.chatBubble ? 'Collapse to input bar' : 'Minimize to bubble'}</TooltipContent>
+                <TooltipContent>{prefs.chatBubble ? t('Collapse to input bar') : t('Minimize to bubble')}</TooltipContent>
               </Tooltip>
             </div>
 
@@ -355,9 +362,9 @@ export default function Assistant(p: Props) {
               <ConversationContent className="max-w-3xl gap-6 px-5 pt-3 pb-4 sm:px-6">
                 {turns.length === 0 && (
                   <div className="mx-auto mt-6 max-w-sm text-center">
-                    <p className="text-sm font-medium">Ask for a change</p>
+                    <p className="text-sm font-medium">{t('Ask for a change')}</p>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      The assistant reads your project, edits a copy and proposes a diff. Nothing changes until you accept.
+                      {t('The assistant reads your project, edits a copy and proposes a diff. Nothing changes until you accept.')}
                     </p>
                     <div className="mt-4 flex flex-wrap justify-center gap-1.5">
                       {suggestions.map((s) => (
@@ -387,20 +394,20 @@ export default function Assistant(p: Props) {
         {!p.open && (running || pendingReview) && (
           <div className="enter flex items-center gap-2 border-b px-4 py-2 text-xs">
             {running ? (
-              <ShimmerText className="min-w-0 truncate">{last?.activity[last.activity.length - 1] ?? 'Thinking'}</ShimmerText>
+              <ShimmerText className="min-w-0 truncate">{last?.activity[last.activity.length - 1] ?? t('Thinking')}</ShimmerText>
             ) : (
               <span className="flex items-center gap-1.5 text-muted-foreground">
-                <FileDiff className="size-3.5" /> {pendingReview!.files.length} file{pendingReview!.files.length === 1 ? '' : 's'} changed
+                <FileDiff className="size-3.5" /> {tn(pendingReview!.files.length, '{n} file changed', '{n} files changed')}
               </span>
             )}
             <span className="flex-1" />
             {pendingReview && !running && p.reviewing !== pendingReview.id && (
               <Button size="xs" variant="secondary" onClick={() => p.onReview(pendingReview)}>
-                Review
+                {t('Review')}
               </Button>
             )}
             <Button size="xs" variant="ghost" onClick={() => p.onOpen(true)}>
-              Open chat
+              {t('Open chat')}
             </Button>
           </div>
         )}
@@ -410,7 +417,7 @@ export default function Assistant(p: Props) {
             <span className="min-w-0 flex-1">{notice}</span>
             {!error && (
               <Button size="xs" variant="ghost" onClick={() => openSettings('assistant')}>
-                Open settings
+                {t('Open settings')}
               </Button>
             )}
           </p>
@@ -427,10 +434,10 @@ export default function Assistant(p: Props) {
               ref={input}
               rows={1}
               value={draft}
-              placeholder={p.open ? 'Ask for a change, or ask about the document…' : 'Ask anything'}
+              placeholder={p.open ? t('Ask for a change, or ask about the document…') : t('Ask anything')}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={onKey}
-              aria-label="Message the assistant"
+              aria-label={t('Message the assistant')}
               className={cn(
                 'block max-h-[200px] min-w-0 flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-muted-foreground',
                 p.open ? 'px-3.5 pt-3 pb-1' : 'px-4 py-3',
@@ -442,7 +449,7 @@ export default function Assistant(p: Props) {
                   {p.contextLabel && (
                     <span
                       className="flex min-w-0 items-center gap-1 rounded-md bg-foreground/[0.05] px-1.5 py-0.5 text-xs text-muted-foreground"
-                      title="Sent with your message"
+                      title={t('Sent with your message')}
                     >
                       <FileText className="size-3 shrink-0" />
                       <span className="truncate">{p.contextLabel}</span>
@@ -456,11 +463,13 @@ export default function Assistant(p: Props) {
               {!p.open && turns.length > 0 && (
                 <Tooltip>
                   <TooltipTrigger
-                    render={<Button variant="ghost" size="icon-sm" className="text-muted-foreground" onClick={() => p.onOpen(true)} aria-label="Show chat" />}
+                    render={
+                      <Button variant="ghost" size="icon-sm" className="text-muted-foreground" onClick={() => p.onOpen(true)} aria-label={t('Show chat')} />
+                    }
                   >
                     <ChevronUp />
                   </TooltipTrigger>
-                  <TooltipContent>Show chat</TooltipContent>
+                  <TooltipContent>{t('Show chat')}</TooltipContent>
                 </Tooltip>
               )}
               {!p.open && (
@@ -472,21 +481,21 @@ export default function Assistant(p: Props) {
                         size="icon-sm"
                         className="text-muted-foreground"
                         onClick={() => setPref('chatBubble', true)}
-                        aria-label="Minimize to bubble"
+                        aria-label={t('Minimize to bubble')}
                       />
                     }
                   >
                     <Minimize2 />
                   </TooltipTrigger>
-                  <TooltipContent>Minimize to bubble</TooltipContent>
+                  <TooltipContent>{t('Minimize to bubble')}</TooltipContent>
                 </Tooltip>
               )}
               {running ? (
-                <Button size="icon-sm" variant="secondary" className="rounded-full" onClick={() => abort.current?.abort()} aria-label="Stop">
+                <Button size="icon-sm" variant="secondary" className="rounded-full" onClick={() => abort.current?.abort()} aria-label={t('Stop')}>
                   <Square className="size-3 fill-current" />
                 </Button>
               ) : (
-                <Button size="icon-sm" className="rounded-full" onClick={() => send()} disabled={!draft.trim()} aria-label="Send">
+                <Button size="icon-sm" className="rounded-full" onClick={() => send()} disabled={!draft.trim()} aria-label={t('Send')}>
                   <ArrowUp />
                 </Button>
               )}
@@ -498,11 +507,11 @@ export default function Assistant(p: Props) {
   )
 }
 
-function TurnView({ turn: t, status, reviewing, onReview }: { turn: Turn; status: ChatGPTStatus | null; reviewing: boolean; onReview: () => void }) {
+function TurnView({ turn, status, reviewing, onReview }: { turn: Turn; status: ChatGPTStatus | null; reviewing: boolean; onReview: () => void }) {
   const [showSteps, setShowSteps] = useState(false)
-  const request = t.message.split('\n\n[Open file:')[0]
-  const running = t.status === 'running'
-  const done = finished[t.status]
+  const request = turn.message.split('\n\n[Open file:')[0]
+  const running = turn.status === 'running'
+  const done = finished[turn.status]
   return (
     <div className="flex flex-col gap-3">
       <div
@@ -513,11 +522,11 @@ function TurnView({ turn: t, status, reviewing, onReview }: { turn: Turn; status
         {request}
       </div>
 
-      {t.activity.length > 0 &&
+      {turn.activity.length > 0 &&
         (running ? (
           <p className="flex min-w-0 items-center gap-2 text-xs">
-            <ShimmerText key={t.activity.length} className="enter truncate font-mono font-normal">
-              {t.activity[t.activity.length - 1]}
+            <ShimmerText key={turn.activity.length} className="enter truncate font-mono font-normal">
+              {turn.activity[turn.activity.length - 1]}
             </ShimmerText>
           </p>
         ) : (
@@ -528,11 +537,11 @@ function TurnView({ turn: t, status, reviewing, onReview }: { turn: Turn; status
               aria-expanded={showSteps}
             >
               <ChevronRight className={cn('size-3.5 transition-transform duration-150 ease-out', showSteps && 'rotate-90')} />
-              Worked · {t.activity.length} step{t.activity.length === 1 ? '' : 's'}
+              {tn(turn.activity.length, 'Worked · {n} step', 'Worked · {n} steps')}
             </button>
             {showSteps && (
               <ul className="enter mt-1.5 ml-1.5 space-y-0.5 border-l pl-3 font-mono text-xs text-muted-foreground">
-                {t.activity.map((a, i) => (
+                {turn.activity.map((a, i) => (
                   <li key={i}>{a}</li>
                 ))}
               </ul>
@@ -540,51 +549,51 @@ function TurnView({ turn: t, status, reviewing, onReview }: { turn: Turn; status
           </div>
         ))}
 
-      <ThinkingIndicator active={running && t.activity.length === 0 && !t.reply} />
+      <ThinkingIndicator active={running && turn.activity.length === 0 && !turn.reply} />
 
-      {t.reply && (
+      {turn.reply && (
         <div className="group/reply">
           <div className="text-sm leading-relaxed">
-            <Markdown text={t.reply} />
+            <Markdown text={turn.reply} />
           </div>
-          {!running && <CopyButton text={t.reply} />}
+          {!running && <CopyButton text={turn.reply} />}
         </div>
       )}
 
-      {t.status === 'review' && (
+      {turn.status === 'review' && (
         <div className="enter rounded-xl border bg-background p-3">
           <div className="flex items-center gap-2 text-sm font-medium">
-            <FileDiff className="size-4 text-muted-foreground" /> {t.files.length} file{t.files.length === 1 ? '' : 's'} changed
+            <FileDiff className="size-4 text-muted-foreground" /> {tn(turn.files.length, '{n} file changed', '{n} files changed')}
           </div>
           <ul className="mt-1.5 space-y-0.5 font-mono text-xs text-muted-foreground">
-            {t.files.slice(0, 5).map((f) => (
+            {turn.files.slice(0, 5).map((f) => (
               <li key={f.path} className="truncate">
                 {f.path}
               </li>
             ))}
-            {t.files.length > 5 && <li>… and {t.files.length - 5} more</li>}
+            {turn.files.length > 5 && <li>{t('… and {n} more', { n: turn.files.length - 5 })}</li>}
           </ul>
           <Button size="sm" className="mt-3 w-full" variant={reviewing ? 'secondary' : 'default'} onClick={onReview}>
-            {reviewing ? 'Reviewing…' : 'Review changes'}
+            {reviewing ? t('Reviewing…') : t('Review changes')}
           </Button>
         </div>
       )}
 
       {done && (
         <p className={cn('flex items-center gap-1.5 text-xs', done.tone)}>
-          {t.status === 'accepted' ? <Check className="size-3.5" /> : t.status === 'rejected' ? <X className="size-3.5" /> : null}
+          {turn.status === 'accepted' ? <Check className="size-3.5" /> : turn.status === 'rejected' ? <X className="size-3.5" /> : null}
           {done.label}
         </p>
       )}
 
-      {t.error && (
+      {turn.error && (
         <div className="enter rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-          {describe(t.error)}
-          {t.error.kind === 'usage_limit' && status && (
+          {describe(turn.error)}
+          {turn.error.kind === 'usage_limit' && status && (
             <>
               {' '}
               <a className="underline underline-offset-4" href={status.manage_usage} target="_blank" rel="noreferrer">
-                Manage usage
+                {t('Manage usage')}
               </a>
             </>
           )}
@@ -610,7 +619,7 @@ function CopyButton({ text }: { text: string }) {
             variant="ghost"
             size="icon-xs"
             className="mt-1 text-muted-foreground opacity-60 transition-opacity duration-150 group-hover/reply:opacity-100 focus-visible:opacity-100"
-            aria-label="Copy reply"
+            aria-label={t('Copy reply')}
             onClick={() => navigator.clipboard.writeText(text).then(() => setCopied(true))}
           />
         }
@@ -619,7 +628,7 @@ function CopyButton({ text }: { text: string }) {
           {copied ? <Check /> : <Copy />}
         </span>
       </TooltipTrigger>
-      <TooltipContent>{copied ? 'Copied' : 'Copy'}</TooltipContent>
+      <TooltipContent>{copied ? t('Copied') : t('Copy')}</TooltipContent>
     </Tooltip>
   )
 }

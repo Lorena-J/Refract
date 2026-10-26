@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import { t, tn } from '@/lib/i18n'
 
 export type Problem = { severity: 'error' | 'warning'; kind: string; file?: string; line?: number; message: string }
 export type CompileResult = {
@@ -29,8 +30,8 @@ type Props = {
 
 // Noisy kinds, collapsed by default.
 const groups = [
-  { kinds: ['overfull', 'underfull'], label: (n: number) => `${n} overfull/underfull box${n > 1 ? 'es' : ''}` },
-  { kinds: ['absolute-path'], label: (n: number) => `${n} file${n > 1 ? 's' : ''} read from outside the project` },
+  { kinds: ['overfull', 'underfull'], label: (n: number) => tn(n, '{n} overfull/underfull box', '{n} overfull/underfull boxes') },
+  { kinds: ['absolute-path'], label: (n: number) => tn(n, '{n} file read from outside the project', '{n} files read from outside the project') },
 ]
 
 // The compile state as a chip; click for problems and the log.
@@ -61,20 +62,20 @@ export default function CompileStatus({ projectId, compiling, result, error, onJ
     : undefined
 
   let icon = <CheckCircle2 className="text-success" />
-  let label = 'Compile to preview'
+  let label = t('Compile to preview')
   if (compiling) {
     icon = <Loader2 className="animate-spin text-muted-foreground" />
-    label = 'Compiling…'
+    label = t('Compiling…')
   } else if (error) {
     icon = <CircleX className="text-destructive" />
-    label = 'Could not compile'
+    label = t('Could not compile')
   } else if (result?.superseded) {
-    label = 'Cancelled'
+    label = t('Cancelled')
   } else if (result && errors > 0) {
     icon = <CircleX className="text-destructive" />
-    label = `${errors} error${errors > 1 ? 's' : ''}`
+    label = tn(errors, '{n} error', '{n} errors')
   } else if (result) {
-    label = `Compiled · ${(result.duration_ms / 1000).toFixed(1)}s`
+    label = t('Compiled · {seconds}s', { seconds: (result.duration_ms / 1000).toFixed(1) })
     if (warnings > 0) icon = <AlertTriangle className="text-warning" />
   } else if (!result && checks.length) {
     icon = <AlertTriangle className="text-warning" />
@@ -82,7 +83,7 @@ export default function CompileStatus({ projectId, compiling, result, error, onJ
 
   async function showLog() {
     const res = await fetch(`/api/projects/${projectId}/log`, { headers: { 'X-Refract': '1' } })
-    setLog(res.ok ? await res.text() : 'No log yet: compile first.')
+    setLog(res.ok ? await res.text() : t('No log yet: compile first.'))
   }
 
   return (
@@ -90,7 +91,12 @@ export default function CompileStatus({ projectId, compiling, result, error, onJ
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger
           render={
-            <Button variant="ghost" size="sm" className="min-w-0 shrink gap-1.5 rounded-full px-2.5 font-normal" aria-label="Compile status and problems" />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="min-w-0 shrink gap-1.5 rounded-full px-2.5 font-normal"
+              aria-label={t('Compile status and problems')}
+            />
           }
         >
           {/* key: a soft crossfade when the state changes */}
@@ -99,22 +105,20 @@ export default function CompileStatus({ projectId, compiling, result, error, onJ
             <span className="truncate tabular-nums">{label}</span>
           </span>
           {warnings > 0 && !compiling && errors === 0 && result && (
-            <span className="text-xs text-muted-foreground">
-              · {warnings} warning{warnings > 1 ? 's' : ''}
-            </span>
+            <span className="text-xs text-muted-foreground">· {tn(warnings, '{n} warning', '{n} warnings')}</span>
           )}
         </PopoverTrigger>
         <PopoverContent align="start" className="max-h-[60vh] w-[26rem] overflow-auto p-0">
           <div className="flex items-center justify-between border-b px-3 py-2">
-            <span className="text-sm font-medium">Problems</span>
+            <span className="text-sm font-medium">{t('Problems')}</span>
             <span className="flex items-center gap-1">
               {fix && fixable.length > 0 && (
                 <Button variant="secondary" size="xs" onClick={() => fix(fixable)}>
-                  <Sparkles /> Fix all with AI
+                  <Sparkles /> {t('Fix all with AI')}
                 </Button>
               )}
               <Button variant="ghost" size="xs" onClick={showLog}>
-                <ScrollText /> Full log
+                <ScrollText /> {t('Full log')}
               </Button>
             </span>
           </div>
@@ -150,7 +154,7 @@ export default function CompileStatus({ projectId, compiling, result, error, onJ
             ))}
           </ul>
           {!error && problems.length === 0 && checks.length === 0 && (
-            <p className="px-3 py-6 text-center text-sm text-muted-foreground">{result ? 'No problems.' : 'Compile to check the document.'}</p>
+            <p className="px-3 py-6 text-center text-sm text-muted-foreground">{result ? t('No problems.') : t('Compile to check the document.')}</p>
           )}
         </PopoverContent>
       </Popover>
@@ -158,7 +162,7 @@ export default function CompileStatus({ projectId, compiling, result, error, onJ
       <Dialog open={log !== null} onOpenChange={(o) => !o && setLog(null)}>
         <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Compile log</DialogTitle>
+            <DialogTitle>{t('Compile log')}</DialogTitle>
           </DialogHeader>
           <pre className="min-h-0 flex-1 overflow-auto rounded-md bg-muted p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">{log}</pre>
         </DialogContent>
@@ -177,7 +181,7 @@ function ProblemRow({ problem: x, onJump, onFix }: { problem: Problem; onJump: (
           <span className="block font-mono text-xs text-muted-foreground">
             {x.file}
             {x.line ? `:${x.line}` : ''}
-            {x.kind === 'portability' && ' · portability'}
+            {x.kind === 'portability' && ` · ${t('portability')}`}
           </span>
         )}
         <span className="block text-sm leading-snug">{x.message}</span>
@@ -200,7 +204,7 @@ function ProblemRow({ problem: x, onJump, onFix }: { problem: Problem; onJump: (
           className="m-2 shrink-0 text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/problem:opacity-100 focus-visible:opacity-100 hover:text-foreground"
           onClick={() => onFix([x])}
         >
-          <Sparkles /> Fix
+          <Sparkles /> {t('Fix')}
         </Button>
       )}
     </li>

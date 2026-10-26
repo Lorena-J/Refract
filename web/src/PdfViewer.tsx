@@ -4,6 +4,7 @@ import { Check, ChevronDown, ChevronLeft, ChevronRight, Maximize2, Minus, Plus }
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
+import { t } from '@/lib/i18n'
 import * as pdfjs from 'pdfjs-dist'
 import type { PDFDocumentLoadingTask, PDFDocumentProxy } from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
@@ -50,7 +51,7 @@ export default function PdfViewer({ projectId, version, highlight, onInverse, to
     ;(async () => {
       const res = await fetch(`/api/projects/${projectId}/pdf`, { headers: { 'X-Refract': '1' } })
       if (!res.ok) {
-        setMessage(res.status === 404 ? 'No PDF yet. Compile to see it here.' : `Could not load the PDF (HTTP ${res.status}).`)
+        setMessage(res.status === 404 ? t('No PDF yet. Compile to see it here.') : t('Could not load the PDF (HTTP {status}).', { status: res.status }))
         return
       }
       const data = new Uint8Array(await res.arrayBuffer())
@@ -69,7 +70,7 @@ export default function PdfViewer({ projectId, version, highlight, onInverse, to
       task.current?.destroy() // free the previous document
       task.current = loading
       setDoc(loaded)
-    })().catch((e) => !cancelled && setMessage(`Could not load the PDF: ${e}`))
+    })().catch((e) => !cancelled && setMessage(t('Could not load the PDF: {error}', { error: String(e) })))
     return () => {
       cancelled = true
     }
@@ -139,7 +140,7 @@ export default function PdfViewer({ projectId, version, highlight, onInverse, to
     if (p && scroller.current) scroller.current.scrollTop = p.offsetTop - 8
   }
 
-  const zoomLabel = scale === 'fit' ? 'Fit' : `${Math.round(s * 100)}%`
+  const zoomLabel = scale === 'fit' ? t('Fit') : `${Math.round(s * 100)}%`
   const bar = (
     <>
       {toolbar}
@@ -150,7 +151,7 @@ export default function PdfViewer({ projectId, version, highlight, onInverse, to
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-40">
           <DropdownMenuItem onClick={() => zoom('fit')}>
-            Zoom to fit <Check className={cn('ml-auto', scale !== 'fit' && 'invisible')} />
+            {t('Zoom to fit')} <Check className={cn('ml-auto', scale !== 'fit' && 'invisible')} />
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           {[0.5, 0.75, 1, 1.25, 1.5, 2].map((z) => (
@@ -183,13 +184,13 @@ export default function PdfViewer({ projectId, version, highlight, onInverse, to
               className="rounded-full"
               onClick={() => goTo(current - 1)}
               disabled={current <= 1}
-              aria-label="Previous page"
+              aria-label={t('Previous page')}
             >
               <ChevronLeft />
             </Button>
             <input
               className="w-8 rounded-md bg-transparent text-center tabular-nums outline-none focus-visible:bg-accent"
-              aria-label="Page"
+              aria-label={t('Page')}
               value={current}
               onChange={(e) => {
                 const n = Number(e.target.value)
@@ -203,15 +204,15 @@ export default function PdfViewer({ projectId, version, highlight, onInverse, to
               className="rounded-full"
               onClick={() => goTo(current + 1)}
               disabled={current >= sizes.length}
-              aria-label="Next page"
+              aria-label={t('Next page')}
             >
               <ChevronRight />
             </Button>
             <span className="mx-0.5 h-4 w-px bg-border" />
-            <Button variant="ghost" size="icon-sm" className="rounded-full" onClick={() => zoom(Math.max(0.25, s / 1.2))} aria-label="Zoom out">
+            <Button variant="ghost" size="icon-sm" className="rounded-full" onClick={() => zoom(Math.max(0.25, s / 1.2))} aria-label={t('Zoom out')}>
               <Minus />
             </Button>
-            <Button variant="ghost" size="icon-sm" className="rounded-full" onClick={() => zoom(Math.min(5, s * 1.2))} aria-label="Zoom in">
+            <Button variant="ghost" size="icon-sm" className="rounded-full" onClick={() => zoom(Math.min(5, s * 1.2))} aria-label={t('Zoom in')}>
               <Plus />
             </Button>
           </div>
@@ -294,7 +295,7 @@ function Page({
       ref={box}
       style={{ width: size.w * scale, height: size.h * scale }}
       onClick={onClick}
-      title="Cmd/Ctrl+click: go to source"
+      title={t('Cmd/Ctrl+click: go to source')}
     >
       <canvas ref={canvas} className="block size-full" />
       {flash && (

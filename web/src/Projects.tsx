@@ -21,6 +21,7 @@ import AccountMenu from '@/components/AccountMenu'
 import PaperIcon from '@/components/PaperIcon'
 import { ago } from '@/lib/time'
 import { cn } from '@/lib/utils'
+import { t } from '@/lib/i18n'
 import { useCommands } from '@/lib/commands'
 import { DropdownItems, WithContextMenu, type MenuEntry } from '@/components/Menu'
 
@@ -40,33 +41,37 @@ export default function Projects({ status }: { status: ChatGPTStatus | null }) {
   const folderInput = useRef<HTMLInputElement>(null)
 
   const rowMenu = (p: Project): MenuEntry[] => [
-    { label: 'Open', icon: FolderOpen, onSelect: () => (window.location.href = `/p/${p.id}`) },
+    { label: t('Open'), icon: FolderOpen, onSelect: () => (window.location.href = `/p/${p.id}`) },
     {
-      label: 'Rename',
+      label: t('Rename'),
       icon: Pencil,
       onSelect: () => {
         setName(p.name)
         setNaming({ mode: 'rename', project: p })
       },
     },
-    { label: 'Export .zip', icon: Download, onSelect: () => download(`/api/projects/${p.id}/export`, `${p.name}.zip`).catch((e) => toast.error(errorText(e))) },
+    {
+      label: t('Export .zip'),
+      icon: Download,
+      onSelect: () => download(`/api/projects/${p.id}/export`, `${p.name}.zip`).catch((e) => toast.error(errorText(e))),
+    },
     '-',
-    { label: 'Delete', icon: Trash2, destructive: true, onSelect: () => setDeleting(p) },
+    { label: t('Delete'), icon: Trash2, destructive: true, onSelect: () => setDeleting(p) },
   ]
 
   useCommands(() => [
     {
       id: 'p:new',
       group: 'Actions',
-      label: 'New blank project',
+      label: t('New blank project'),
       icon: Plus,
       run: () => {
         setName('')
         setNaming({ mode: 'new' })
       },
     },
-    { id: 'p:zip', group: 'Actions', label: 'Import a Prism export (.zip)', icon: FileArchive, keywords: 'upload', run: () => zipInput.current?.click() },
-    { id: 'p:folder', group: 'Actions', label: 'Import a folder', icon: FolderUp, keywords: 'upload', run: () => folderInput.current?.click() },
+    { id: 'p:zip', group: 'Actions', label: t('Import a Prism export (.zip)'), icon: FileArchive, keywords: 'upload', run: () => zipInput.current?.click() },
+    { id: 'p:folder', group: 'Actions', label: t('Import a folder'), icon: FolderUp, keywords: 'upload', run: () => folderInput.current?.click() },
     ...(projects ?? []).map((p) => ({
       id: `project:${p.id}`,
       group: 'Projects',
@@ -99,7 +104,7 @@ export default function Projects({ status }: { status: ChatGPTStatus | null }) {
 
   async function importZips(files: File[]) {
     const zips = files.filter((f) => f.name.toLowerCase().endsWith('.zip'))
-    if (zips.length === 0) return toast.error('Drop .zip files to import them.')
+    if (zips.length === 0) return toast.error(t('Drop .zip files to import them.'))
     setBusy(true)
     const done: ImportResult[] = []
     for (const f of zips) {
@@ -131,7 +136,7 @@ export default function Projects({ status }: { status: ChatGPTStatus | null }) {
     setBusy(false)
     load()
     if (done.length === 0) return
-    toast.success(done.length === 1 ? `Imported ${done[0].project.name}` : `Imported ${done.length} projects`)
+    toast.success(done.length === 1 ? t('Imported {name}', { name: done[0].project.name }) : t('Imported {n} projects', { n: done.length }))
     const needLook = done.filter(attention)
     if (needLook.length) setReports(needLook)
   }
@@ -157,7 +162,7 @@ export default function Projects({ status }: { status: ChatGPTStatus | null }) {
     if (!deleting) return
     try {
       await api(`/api/projects/${deleting.id}`, { method: 'DELETE' })
-      toast.success(`Deleted ${deleting.name}`)
+      toast.success(t('Deleted {name}', { name: deleting.name }))
       load()
     } catch (e) {
       toast.error(errorText(e))
@@ -187,28 +192,34 @@ export default function Projects({ status }: { status: ChatGPTStatus | null }) {
         <header className="flex flex-wrap items-center gap-2 px-5 py-4">
           <h1 className="mr-auto flex items-center gap-2.5 text-lg font-semibold tracking-tight">
             <img src="/logo.svg" alt="Refract" className="size-7" />
-            All projects
+            {t('All projects')}
           </h1>
           <div className="relative w-full max-w-72 sm:w-72">
             <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search" aria-label="Search projects" className="rounded-full pl-9" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t('Search')}
+              aria-label={t('Search projects')}
+              className="rounded-full pl-9"
+            />
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger render={<Button variant="secondary" className="rounded-full" disabled={busy} />}>
-              {busy ? 'Importing…' : 'Import'} <ChevronDown className="text-muted-foreground" />
+              {busy ? t('Importing…') : t('Import')} <ChevronDown className="text-muted-foreground" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
               <DropdownMenuItem onClick={() => zipInput.current?.click()}>
-                <FileArchive /> Zip files…
+                <FileArchive /> {t('Zip files…')}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => folderInput.current?.click()}>
-                <FolderUp /> Folder…
+                <FolderUp /> {t('Folder…')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           <DropdownMenu>
             <DropdownMenuTrigger render={<Button className="rounded-full" />}>
-              <Plus /> New <ChevronDown className="opacity-60" />
+              <Plus /> {t('New')} <ChevronDown className="opacity-60" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
               <DropdownMenuItem
@@ -217,11 +228,11 @@ export default function Projects({ status }: { status: ChatGPTStatus | null }) {
                   setNaming({ mode: 'new' })
                 }}
               >
-                <Plus /> Blank project
+                <Plus /> {t('Blank project')}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => zipInput.current?.click()}>
-                <Upload /> From a Prism export…
+                <Upload /> {t('From a Prism export…')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -232,10 +243,10 @@ export default function Projects({ status }: { status: ChatGPTStatus | null }) {
 
         <div className="flex items-center border-y px-5 py-2 text-xs text-muted-foreground">
           <button className="flex items-center gap-1 transition-colors duration-150 hover:text-foreground" onClick={() => sortBy('name')}>
-            Name <ArrowDownUp className={cn('size-3', sort.key !== 'name' && 'opacity-40')} />
+            {t('Name')} <ArrowDownUp className={cn('size-3', sort.key !== 'name' && 'opacity-40')} />
           </button>
           <button className="ml-auto flex items-center gap-1 pr-11 transition-colors duration-150 hover:text-foreground" onClick={() => sortBy('updated')}>
-            Updated <ArrowDownUp className={cn('size-3', sort.key !== 'updated' && 'opacity-40')} />
+            {t('Updated')} <ArrowDownUp className={cn('size-3', sort.key !== 'updated' && 'opacity-40')} />
           </button>
         </div>
 
@@ -248,7 +259,7 @@ export default function Projects({ status }: { status: ChatGPTStatus | null }) {
                     <PaperIcon />
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-medium">{p.name}</span>
-                      <span className="block truncate text-xs text-muted-foreground">{p.main_file || 'Main file not set'}</span>
+                      <span className="block truncate text-xs text-muted-foreground">{p.main_file || t('Main file not set')}</span>
                     </span>
                   </a>
                   <span className="w-12 text-right text-xs text-muted-foreground tabular-nums" title={new Date(p.updated_at).toLocaleString()}>
@@ -256,7 +267,9 @@ export default function Projects({ status }: { status: ChatGPTStatus | null }) {
                   </span>
                   <DropdownMenu>
                     <DropdownMenuTrigger
-                      render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${p.name}`} className="text-muted-foreground" />}
+                      render={
+                        <Button variant="ghost" size="icon-sm" aria-label={t('Actions for {name}', { name: p.name })} className="text-muted-foreground" />
+                      }
                     >
                       <MoreHorizontal />
                     </DropdownMenuTrigger>
@@ -273,14 +286,16 @@ export default function Projects({ status }: { status: ChatGPTStatus | null }) {
         {projects && shown.length === 0 && (
           <div className="enter absolute inset-0 top-28 flex flex-col items-center justify-center gap-3 text-center">
             <PaperIcon className="h-12 w-9 opacity-70" />
-            <p className="text-sm font-medium">{query ? 'No projects match.' : 'No projects yet'}</p>
-            {!query && <p className="max-w-xs text-sm text-muted-foreground">Create a blank project, or drop Prism .zip exports anywhere on this page.</p>}
+            <p className="text-sm font-medium">{query ? t('No projects match.') : t('No projects yet')}</p>
+            {!query && (
+              <p className="max-w-xs text-sm text-muted-foreground">{t('Create a blank project, or drop Prism .zip exports anywhere on this page.')}</p>
+            )}
           </div>
         )}
 
         {dragging && (
           <div className="pointer-events-none absolute inset-2 flex items-center justify-center rounded-lg border-2 border-dashed border-ring bg-background/80 text-sm font-medium backdrop-blur-sm">
-            Drop .zip files to import
+            {t('Drop .zip files to import')}
           </div>
         )}
       </main>
@@ -291,7 +306,7 @@ export default function Projects({ status }: { status: ChatGPTStatus | null }) {
       <Dialog open={!!naming} onOpenChange={(o) => !o && setNaming(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{naming?.mode === 'new' ? 'New project' : 'Rename project'}</DialogTitle>
+            <DialogTitle>{naming?.mode === 'new' ? t('New project') : t('Rename project')}</DialogTitle>
           </DialogHeader>
           <form
             onSubmit={(e) => {
@@ -299,13 +314,13 @@ export default function Projects({ status }: { status: ChatGPTStatus | null }) {
               submitName()
             }}
           >
-            <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Project name" aria-label="Project name" />
+            <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={t('Project name')} aria-label={t('Project name')} />
             <DialogFooter className="mt-4">
               <Button type="button" variant="ghost" onClick={() => setNaming(null)}>
-                Cancel
+                {t('Cancel')}
               </Button>
               <Button type="submit" disabled={!name.trim()}>
-                {naming?.mode === 'new' ? 'Create' : 'Save'}
+                {naming?.mode === 'new' ? t('Create') : t('Save')}
               </Button>
             </DialogFooter>
           </form>
@@ -315,13 +330,15 @@ export default function Projects({ status }: { status: ChatGPTStatus | null }) {
       <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {deleting?.name}?</AlertDialogTitle>
-            <AlertDialogDescription>The project and its whole history are removed from this server. Export it first if you may need it.</AlertDialogDescription>
+            <AlertDialogTitle>{t('Delete {name}?', { name: deleting?.name ?? '' })}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('The project and its whole history are removed from this server. Export it first if you may need it.')}
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t('Cancel')}</AlertDialogCancel>
             <AlertDialogAction variant="destructive" onClick={confirmDelete}>
-              Delete
+              {t('Delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -330,8 +347,8 @@ export default function Projects({ status }: { status: ChatGPTStatus | null }) {
       <Dialog open={reports.length > 0} onOpenChange={(o) => !o && setReports([])}>
         <DialogContent className="max-h-[80vh] overflow-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Imported, with notes</DialogTitle>
-            <DialogDescription>These won't stop you from working, but they may affect compiling on another machine.</DialogDescription>
+            <DialogTitle>{t('Imported, with notes')}</DialogTitle>
+            <DialogDescription>{t("These won't stop you from working, but they may affect compiling on another machine.")}</DialogDescription>
           </DialogHeader>
           {reports.map((r) => (
             <ImportNotes key={r.project.id} result={r} onMainFile={load} />
@@ -349,7 +366,7 @@ function ImportNotes({ result: r, onMainFile }: { result: ImportResult; onMainFi
       <h3 className="text-sm font-semibold">{r.project.name}</h3>
       {r.candidates && (
         <div className="flex items-center gap-2 text-sm">
-          <span className="text-muted-foreground">Main file not found. Choose it:</span>
+          <span className="text-muted-foreground">{t('Main file not found. Choose it:')}</span>
           <Select
             value={main || null}
             onValueChange={(v) =>
@@ -363,7 +380,7 @@ function ImportNotes({ result: r, onMainFile }: { result: ImportResult; onMainFi
             }
           >
             <SelectTrigger size="sm" className="w-56">
-              <SelectValue placeholder="Select…" />
+              <SelectValue placeholder={t('Select…')} />
             </SelectTrigger>
             <SelectContent>
               {r.candidates.map((c) => (
@@ -375,7 +392,7 @@ function ImportNotes({ result: r, onMainFile }: { result: ImportResult; onMainFi
           </Select>
         </div>
       )}
-      {r.skipped && r.skipped.length > 0 && <p className="text-xs text-muted-foreground">Skipped: {r.skipped.join(', ')}</p>}
+      {r.skipped && r.skipped.length > 0 && <p className="text-xs text-muted-foreground">{t('Skipped: {files}', { files: r.skipped.join(', ') })}</p>}
       <ul className="space-y-2">
         {r.warnings.map((w, i) => (
           <li key={i} className="rounded-md bg-muted/60 px-3 py-2 text-sm">

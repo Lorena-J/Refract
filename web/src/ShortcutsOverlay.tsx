@@ -1,10 +1,11 @@
 import { useEffect } from 'react'
 import { getOverlay, setOverlay, useOverlay } from '@/lib/commands'
 import { isMac, shortcutGroups } from '@/lib/shortcuts'
+import { t } from '@/lib/i18n'
 
 const HOLD_MS = 700
 
-const typing = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))
+const typing = (el: EventTarget | null) => el instanceof HTMLElement && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))
 
 // Keyboard shortcuts over the page: shown while ⌘ (Ctrl) is held alone, or toggled with "?".
 // It never takes clicks, so holding ⌘ to ⌘-click the PDF still works; moving the
@@ -79,12 +80,12 @@ export default function ShortcutsOverlay() {
     <div
       className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-black/20 p-4 transition-opacity duration-150 ease-out starting:opacity-0"
       role="dialog"
-      aria-label="Keyboard shortcuts"
+      aria-label={t('Keyboard shortcuts')}
     >
       <div className="w-full max-w-2xl rounded-2xl border bg-popover/95 p-6 text-popover-foreground shadow-2xl backdrop-blur-md transition-[opacity,scale] duration-150 ease-out starting:scale-[0.98] starting:opacity-0">
         <div className="mb-4 flex items-baseline justify-between">
-          <h2 className="text-sm font-semibold">Keyboard shortcuts</h2>
-          <span className="text-xs text-muted-foreground">Release to close</span>
+          <h2 className="text-sm font-semibold">{t('Keyboard shortcuts')}</h2>
+          <span className="text-xs text-muted-foreground">{t('Release to close')}</span>
         </div>
         <div className="grid gap-x-10 gap-y-5 sm:grid-cols-2">
           {shortcutGroups.map((g) => (

@@ -1,6 +1,7 @@
 import { api } from './api'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { t } from '@/lib/i18n'
 
 // First sign-in only (SIWC UI guidelines).
 export default function Welcome({ open, manageUsage, onClose }: { open: boolean; manageUsage: string; onClose: () => void }) {
@@ -13,18 +14,18 @@ export default function Welcome({ open, manageUsage, onClose }: { open: boolean;
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <img src="/logo.svg" alt="" className="mb-1 size-10" />
-          <DialogTitle>You're using your ChatGPT plan</DialogTitle>
+          <DialogTitle>{t('You’re using your ChatGPT plan')}</DialogTitle>
           <DialogDescription>
-            Eligible AI requests in Refract use your ChatGPT plan. You can review and manage this usage in{' '}
+            {t('Eligible AI requests in Refract use your ChatGPT plan. You can review and manage this usage in')}{' '}
             <a className="underline underline-offset-4" href={manageUsage} target="_blank" rel="noreferrer">
-              ChatGPT settings
+              {t('ChatGPT settings')}
             </a>
             .
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button autoFocus onClick={close}>
-            Got it
+            {t('Got it')}
           </Button>
         </DialogFooter>
       </DialogContent>

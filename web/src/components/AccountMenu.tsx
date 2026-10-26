@@ -12,11 +12,12 @@ import type { ChatGPTStatus } from '@/api'
 import { openSettings } from '@/lib/prefs'
 import { setTheme, useTheme, type Theme } from '@/lib/theme'
 import { cn } from '@/lib/utils'
+import { t } from '@/lib/i18n'
 
 const themes: { value: Theme; label: string; icon: typeof Sun }[] = [
-  { value: 'light', label: 'Light', icon: Sun },
-  { value: 'dark', label: 'Dark', icon: Moon },
-  { value: 'system', label: 'System', icon: Monitor },
+  { value: 'light', label: t('Light'), icon: Sun },
+  { value: 'dark', label: t('Dark'), icon: Moon },
+  { value: 'system', label: t('System'), icon: Monitor },
 ]
 
 // Bottom-left account chip: ChatGPT identity, settings, theme.
@@ -32,29 +33,31 @@ export default function AccountMenu({ status, compact }: { status: ChatGPTStatus
         {!compact && (
           <span className="min-w-0">
             <span className="flex items-center gap-1 truncate text-sm font-medium">
-              {email ?? 'Not signed in'} <ChevronsUpDown className="size-3 shrink-0 text-muted-foreground" />
+              {email ?? t('Not signed in')} <ChevronsUpDown className="size-3 shrink-0 text-muted-foreground" />
             </span>
-            <span className="block truncate text-xs text-muted-foreground">{status?.status.plan_granted ? 'Using ChatGPT plan' : 'ChatGPT not connected'}</span>
+            <span className="block truncate text-xs text-muted-foreground">
+              {status?.status.plan_granted ? t('Using ChatGPT plan') : t('ChatGPT not connected')}
+            </span>
           </span>
         )}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="top" className="w-60">
         <DropdownMenuGroup>
-          <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Theme</DropdownMenuLabel>
-          {themes.map((t) => (
-            <DropdownMenuItem key={t.value} onClick={() => setTheme(t.value)}>
-              <t.icon /> {t.label}
-              <Check className={cn('ml-auto', theme !== t.value && 'invisible')} />
+          <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">{t('Theme')}</DropdownMenuLabel>
+          {themes.map((opt) => (
+            <DropdownMenuItem key={opt.value} onClick={() => setTheme(opt.value)}>
+              <opt.icon /> {opt.label}
+              <Check className={cn('ml-auto', theme !== opt.value && 'invisible')} />
             </DropdownMenuItem>
           ))}
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => openSettings()}>
-          <Settings /> Settings
+          <Settings /> {t('Settings')}
         </DropdownMenuItem>
         {status && (
           <DropdownMenuItem render={<a href={status.manage_usage} target="_blank" rel="noreferrer" />}>
-            <ExternalLink /> Manage ChatGPT usage
+            <ExternalLink /> {t('Manage ChatGPT usage')}
           </DropdownMenuItem>
         )}
       </DropdownMenuContent>

@@ -1,3 +1,5 @@
+import { t } from '@/lib/i18n'
+
 // Every /api call carries X-Refract (the server rejects requests without it: CSRF).
 const headers = { 'X-Refract': '1' }
 
@@ -66,19 +68,19 @@ export type ChatGPTStatus = {
 export function describe(e: ApiError): string {
   switch (e.kind) {
     case 'not_signed_in':
-      return 'Not signed in to ChatGPT. Run `refract login` and upload the credentials in Settings.'
+      return t('Not signed in to ChatGPT. Run `refract login` and upload the credentials in Settings.')
     case 'plan_not_granted':
-      return 'ChatGPT plan usage was not granted. Run `refract login` again and allow plan usage.'
+      return t('ChatGPT plan usage was not granted. Run `refract login` again and allow plan usage.')
     case 'usage_limit':
-      return 'You have reached a usage limit on your ChatGPT plan or for this app. Review it in ChatGPT settings → Usage.'
+      return t('You have reached a usage limit on your ChatGPT plan or for this app. Review it in ChatGPT settings → Usage.')
     case 'not_eligible':
-      return `ChatGPT plan usage is not available for this account: ${e.message}`
+      return t('ChatGPT plan usage is not available for this account: {message}', { message: e.message })
     case 'model_unavailable':
-      return 'This model is not available on your ChatGPT plan. Pick another one.'
+      return t('This model is not available on your ChatGPT plan. Pick another one.')
     case 'unsupported':
-      return `Request not supported on plan usage (${e.param ?? 'unknown'}): ${e.message}`
+      return t('Request not supported on plan usage ({param}): {message}', { param: e.param ?? t('unknown'), message: e.message })
     case 'unavailable':
-      return `ChatGPT is temporarily unavailable. Try again shortly. (${e.message})`
+      return t('ChatGPT is temporarily unavailable. Try again shortly. ({message})', { message: e.message })
     default:
       return e.message
   }
@@ -87,7 +89,7 @@ export function describe(e: ApiError): string {
 // Downloads a file from an API route (a plain link can't send X-Refract).
 export async function download(path: string, filename: string) {
   const res = await fetch(path, { headers })
-  if (!res.ok) throw new RequestError({ kind: 'other', message: `Download failed: HTTP ${res.status}` })
+  if (!res.ok) throw new RequestError({ kind: 'other', message: t('Download failed: HTTP {status}', { status: res.status }) })
   const url = URL.createObjectURL(await res.blob())
   const a = document.createElement('a')
   a.href = url

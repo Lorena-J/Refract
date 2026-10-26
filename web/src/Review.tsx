@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { latex } from '@/lib/editor'
 import { cn } from '@/lib/utils'
+import { t, tn } from '@/lib/i18n'
 
 type FileDiff = { path: string; status: 'added' | 'modified' | 'deleted'; before: string; after: string; binary: boolean }
 
@@ -25,6 +26,7 @@ const statusTone: Record<FileDiff['status'], string> = {
   modified: 'text-muted-foreground',
   deleted: 'text-destructive',
 }
+const statusLabel: Record<FileDiff['status'], string> = { added: t('added'), modified: t('modified'), deleted: t('deleted') }
 
 // A turn's pending changes as unified diffs, file by file.
 export default function Review({ turn, onAccept, onReject, onClose }: Props) {
@@ -45,7 +47,11 @@ export default function Review({ turn, onAccept, onReject, onClose }: Props) {
     try {
       const conflicts = await fn()
       if (conflicts && conflicts.length) {
-        setMessage(`Not applied: ${conflicts.join(', ')} changed since the assistant started, in the same places. Nothing was changed. Edit the file or reject these changes.`)
+        setMessage(
+          t('Not applied: {files} changed since the assistant started, in the same places. Nothing was changed. Edit the file or reject these changes.', {
+            files: conflicts.join(', '),
+          }),
+        )
       }
     } catch (e) {
       setMessage(errorText(e))
@@ -65,18 +71,16 @@ export default function Review({ turn, onAccept, onReject, onClose }: Props) {
     <div className="flex h-full flex-col">
       <div className="flex h-11 shrink-0 items-center gap-2 border-b px-3">
         <FileDiff className="size-4 text-muted-foreground" />
-        <span className="text-sm font-medium">Review changes</span>
-        <span className="text-xs text-muted-foreground">
-          {turn.files.length} file{turn.files.length === 1 ? '' : 's'}
-        </span>
+        <span className="text-sm font-medium">{t('Review changes')}</span>
+        <span className="text-xs text-muted-foreground">{tn(turn.files.length, '{n} file', '{n} files')}</span>
         <span className="flex-1" />
         <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => act('reject', onReject)}>
-          <X /> Reject all
+          <X /> {t('Reject all')}
         </Button>
         <Button size="sm" disabled={!!busy} onClick={() => act('all', () => onAccept(null))}>
-          {busy === 'all' ? <Loader2 className="animate-spin" /> : <Check />} Accept all
+          {busy === 'all' ? <Loader2 className="animate-spin" /> : <Check />} {t('Accept all')}
         </Button>
-        <Button size="icon-sm" variant="ghost" onClick={onClose} aria-label="Close review">
+        <Button size="icon-sm" variant="ghost" onClick={onClose} aria-label={t('Close review')}>
           <X />
         </Button>
       </div>
@@ -84,7 +88,7 @@ export default function Review({ turn, onAccept, onReject, onClose }: Props) {
       <div className="min-h-0 flex-1 overflow-auto pb-24">
         {!diffs && !message && (
           <p className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" /> Loading changes…
+            <Loader2 className="size-4 animate-spin" /> {t('Loading changes…')}
           </p>
         )}
         {diffs?.map((d) => {
@@ -100,19 +104,24 @@ export default function Review({ turn, onAccept, onReject, onClose }: Props) {
                   <ChevronRight className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform duration-150 ease-out', open && 'rotate-90')} />
                   <code className="truncate text-sm">{d.path}</code>
                   <Badge variant="outline" className={cn('font-normal', statusTone[d.status])}>
-                    {d.status}
+                    {statusLabel[d.status]}
                   </Badge>
                   {delta !== null && delta !== 0 && (
                     <span className={cn('text-xs tabular-nums', delta > 0 ? 'text-success' : 'text-destructive')}>
-                      {delta > 0 ? `+${delta}` : delta} lines
+                      {tn(Math.abs(delta), '{delta} line', '{delta} lines', { delta: delta > 0 ? `+${delta}` : delta })}
                     </span>
                   )}
                 </button>
                 <Button size="xs" variant="secondary" disabled={!!busy} onClick={() => act(d.path, () => onAccept([d.path]))}>
-                  {busy === d.path ? <Loader2 className="animate-spin" /> : <Check />} Accept file
+                  {busy === d.path ? <Loader2 className="animate-spin" /> : <Check />} {t('Accept file')}
                 </Button>
               </div>
-              {open && (d.binary ? <p className="px-4 py-3 text-sm text-muted-foreground">Binary file changed.</p> : <DiffView before={d.before} after={d.after} />)}
+              {open &&
+                (d.binary ? (
+                  <p className="px-4 py-3 text-sm text-muted-foreground">{t('Binary file changed.')}</p>
+                ) : (
+                  <DiffView before={d.before} after={d.after} />
+                ))}
             </section>
           )
         })}

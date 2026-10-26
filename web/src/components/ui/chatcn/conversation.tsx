@@ -4,6 +4,7 @@ import {
   type UseChatcnStickToBottomOptions,
   useChatcnStickToBottom,
 } from "@/hooks/use-chatcn-stick-to-bottom"
+import { t } from '@/lib/i18n'
 import { cn } from "@/lib/utils"
 
 /* -------------------------------------------------------------------------------------------------
@@ -107,7 +108,7 @@ interface ConversationContentProps extends React.ComponentProps<"div"> {
  */
 function ConversationContent({
   viewportClassName,
-  label = "Conversation",
+  label = t('Conversation'),
   className,
   children,
   ...props

@@ -14,7 +14,8 @@ import {
   SettingsSegmented,
   SettingsSwitch,
 } from '@/components/ui/chatcn/settings-panel'
-import { openSettings, setPref, usePrefs, useSettingsSection, type Prefs } from '@/lib/prefs'
+import { getPrefs, openSettings, setPref, usePrefs, useSettingsSection, type Prefs } from '@/lib/prefs'
+import { t } from '@/lib/i18n'
 import { shortcutGroups } from '@/lib/shortcuts'
 import { setTheme, useTheme, type Theme } from '@/lib/theme'
 import PlanBadge from './PlanBadge'
@@ -27,27 +28,27 @@ export default function SettingsDialog({ status, onChange }: Props) {
   return (
     <Dialog open={section !== null} onOpenChange={(o) => !o && openSettings(null)}>
       <DialogContent className="h-[min(640px,calc(100dvh-2rem))] gap-0 overflow-hidden rounded-2xl p-0 sm:max-w-[860px]">
-        <DialogTitle className="sr-only">Settings</DialogTitle>
-        <DialogDescription className="sr-only">Appearance, editor and ChatGPT settings</DialogDescription>
+        <DialogTitle className="sr-only">{t('Settings')}</DialogTitle>
+        <DialogDescription className="sr-only">{t('Appearance, editor and ChatGPT settings')}</DialogDescription>
         <SettingsPanel value={section ?? 'general'} onValueChange={(v) => openSettings(v)} className="h-full">
-          <SettingsNav title="Settings" className="bg-foreground/[0.025]">
+          <SettingsNav title={t('Settings')} className="bg-foreground/[0.025]">
             <SettingsNavItem value="general" icon={<SunMoon />}>
-              General
+              {t('General')}
             </SettingsNavItem>
             <SettingsNavItem value="editor" icon={<Code2 />}>
-              Editor
+              {t('Editor')}
             </SettingsNavItem>
-            <SettingsNavItem value="assistant" icon={<Sparkles />} meta={status?.status.signed_in ? undefined : 'Off'}>
-              Assistant
+            <SettingsNavItem value="assistant" icon={<Sparkles />} meta={status?.status.signed_in ? undefined : t('Off')}>
+              {t('Assistant')}
             </SettingsNavItem>
             <SettingsNavItem value="shortcuts" icon={<Keyboard />}>
-              Shortcuts
+              {t('Shortcuts')}
             </SettingsNavItem>
           </SettingsNav>
           <General />
           <EditorPane />
           <AssistantPane status={status} onChange={onChange} />
-          <SettingsPane value="shortcuts" title="Keyboard shortcuts" description="Hold ⌘ (Ctrl) anywhere, or press ?, to see them over the page.">
+          <SettingsPane value="shortcuts" title={t('Keyboard shortcuts')} description={t('Hold ⌘ (Ctrl) anywhere, or press ?, to see them over the page.')}>
             {shortcutGroups.map((g) => (
               <SettingsGroup key={g.title} title={g.title}>
                 {g.items.map(([k, v]) => (
@@ -67,16 +68,30 @@ export default function SettingsDialog({ status, onChange }: Props) {
 function General() {
   const { theme } = useTheme()
   return (
-    <SettingsPane value="general" title="General">
+    <SettingsPane value="general" title={t('General')}>
       <SettingsGroup>
-        <SettingsRow label="Interface theme" description="System follows your operating system.">
+        <SettingsRow label={t('Interface theme')} description={t('System follows your operating system.')}>
           <SettingsSegmented
             value={theme}
             onValueChange={(v) => setTheme(v as Theme)}
             options={[
-              { value: 'light', label: 'Light', icon: <Sun /> },
-              { value: 'dark', label: 'Dark', icon: <Moon /> },
-              { value: 'system', label: 'System', icon: <Monitor /> },
+              { value: 'light', label: t('Light'), icon: <Sun /> },
+              { value: 'dark', label: t('Dark'), icon: <Moon /> },
+              { value: 'system', label: t('System'), icon: <Monitor /> },
+            ]}
+          />
+        </SettingsRow>
+        <SettingsRow label={t('Language')} description={t('System follows your browser. Changing it reloads the page.')}>
+          <SettingsSegmented
+            value={getPrefs().language}
+            onValueChange={(v) => {
+              setPref('language', v as Prefs['language'])
+              location.reload()
+            }}
+            options={[
+              { value: 'system', label: t('System') },
+              { value: 'en', label: 'English' }, // language names stay in their own language
+              { value: 'es', label: 'Español' },
             ]}
           />
         </SettingsRow>
@@ -88,20 +103,20 @@ function General() {
 function EditorPane() {
   const prefs = usePrefs()
   return (
-    <SettingsPane value="editor" title="Editor" description="Stored in this browser.">
+    <SettingsPane value="editor" title={t('Editor')} description={t('Stored in this browser.')}>
       <SettingsGroup>
-        <SettingsRow label="Font size" description="Text size in the editor.">
+        <SettingsRow label={t('Font size')} description={t('Text size in the editor.')}>
           <SettingsSegmented
             value={prefs.fontSize}
             onValueChange={(v) => setPref('fontSize', v as Prefs['fontSize'])}
             options={[
-              { value: 'small', label: 'Small' },
-              { value: 'normal', label: 'Normal' },
-              { value: 'large', label: 'Large' },
+              { value: 'small', label: t('Small') },
+              { value: 'normal', label: t('Normal') },
+              { value: 'large', label: t('Large') },
             ]}
           />
         </SettingsRow>
-        <SettingsRow label="Word wrap" description="Wrap long lines instead of scrolling sideways.">
+        <SettingsRow label={t('Word wrap')} description={t('Wrap long lines instead of scrolling sideways.')}>
           <SettingsSwitch checked={prefs.wrap} onCheckedChange={(v) => setPref('wrap', v)} />
         </SettingsRow>
       </SettingsGroup>
@@ -128,10 +143,10 @@ function AssistantPane({ status, onChange }: Props) {
 
   const s = status?.status
   return (
-    <SettingsPane value="assistant" title="Assistant" description="Refract uses your ChatGPT plan for AI requests.">
-      <SettingsGroup title="ChatGPT account">
+    <SettingsPane value="assistant" title={t('Assistant')} description={t('Refract uses your ChatGPT plan for AI requests.')}>
+      <SettingsGroup title={t('ChatGPT account')}>
         {!status ? (
-          <SettingsRow label="Loading…" />
+          <SettingsRow label={t('Loading…')} />
         ) : s?.signed_in ? (
           <>
             <SettingsRow
@@ -144,51 +159,51 @@ function AssistantPane({ status, onChange }: Props) {
                 s.limit_reached
                   ? describe({ kind: 'usage_limit', message: '' })
                   : s.plan_granted
-                    ? 'Signed in. Requests count against your ChatGPT plan.'
+                    ? t('Signed in. Requests count against your ChatGPT plan.')
                     : describe({ kind: 'plan_not_granted', message: '' })
               }
             >
               {s.plan_granted && <PlanBadge manageUsage={status.manage_usage} />}
             </SettingsRow>
-            <SettingsRow label="Credentials" description="Replace them after running refract login again.">
+            <SettingsRow label={t('Credentials')} description={t('Replace them after running {cmd} again.', { cmd: 'refract login' })}>
               <Button size="sm" variant="secondary" disabled={busy} onClick={() => input.current?.click()}>
-                <Upload /> Replace…
+                <Upload /> {t('Replace…')}
               </Button>
-              <Button size="sm" variant="ghost" disabled={busy} onClick={() => run(() => api('/api/chatgpt/signout', { method: 'POST' }), 'Signed out')}>
-                Sign out
+              <Button size="sm" variant="ghost" disabled={busy} onClick={() => run(() => api('/api/chatgpt/signout', { method: 'POST' }), t('Signed out'))}>
+                {t('Sign out')}
               </Button>
             </SettingsRow>
-            <SettingsRow label="Usage" description="Limits and remaining usage are managed by ChatGPT.">
+            <SettingsRow label={t('Usage')} description={t('Limits and remaining usage are managed by ChatGPT.')}>
               <Button size="sm" variant="ghost" render={<a href={status.manage_usage} target="_blank" rel="noreferrer" />} nativeButton={false}>
-                Manage usage <ExternalLink />
+                {t('Manage usage')} <ExternalLink />
               </Button>
             </SettingsRow>
           </>
         ) : (
           <SettingsRow
             stacked
-            label="Not connected"
+            label={t('Not connected')}
             description={
               <>
-                Sign-in happens on your own computer: run <code className="rounded bg-muted px-1 py-0.5 text-foreground">refract login</code>, choose{' '}
-                <em>Continue with ChatGPT</em>, then upload the credentials file it writes.
+                {t('Sign-in happens on your own computer: run')} <code className="rounded bg-muted px-1 py-0.5 text-foreground">refract login</code>,{' '}
+                {t('choose')} <em>Continue with ChatGPT</em>, {t('then upload the credentials file it writes.')}
               </>
             }
           >
             <Button size="sm" disabled={busy} onClick={() => input.current?.click()}>
-              <Upload /> Upload credentials…
+              <Upload /> {t('Upload credentials…')}
             </Button>
           </SettingsRow>
         )}
       </SettingsGroup>
-      <SettingsGroup title="Chat">
-        <SettingsRow label="When collapsed" description="Keep an input bar under the editor, or tuck the chat into a bubble.">
+      <SettingsGroup title={t('Chat')}>
+        <SettingsRow label={t('When collapsed')} description={t('Keep an input bar under the editor, or tuck the chat into a bubble.')}>
           <SettingsSegmented
             value={prefs.chatBubble ? 'bubble' : 'bar'}
             onValueChange={(v) => setPref('chatBubble', v === 'bubble')}
             options={[
-              { value: 'bar', label: 'Input bar' },
-              { value: 'bubble', label: 'Bubble' },
+              { value: 'bar', label: t('Input bar') },
+              { value: 'bubble', label: t('Bubble') },
             ]}
           />
         </SettingsRow>
@@ -200,7 +215,7 @@ function AssistantPane({ status, onChange }: Props) {
         hidden
         onChange={(e) => {
           const f = e.target.files?.[0]
-          if (f) run(async () => api<ChatGPTStatus>('/api/chatgpt/credentials', { method: 'POST', body: await f.text() }), 'Credentials imported')
+          if (f) run(async () => api<ChatGPTStatus>('/api/chatgpt/credentials', { method: 'POST', body: await f.text() }), t('Credentials imported'))
           e.target.value = ''
         }}
       />

@@ -3,6 +3,7 @@
 import * as React from "react"
 import { ShimmerText } from "@/components/ui/chatcn/shimmer-text"
 import { StreamingCaret } from "@/components/ui/chatcn/streaming-caret"
+import { t } from '@/lib/i18n'
 import { cn } from "@/lib/utils"
 
 /* -------------------------------------------------------------------------------------------------
@@ -88,7 +89,7 @@ interface ThinkingIndicatorProps extends Omit<React.ComponentProps<"div">, "chil
 function ThinkingIndicator({
   active = true,
   variant = "label",
-  label = "Thinking",
+  label = t('Thinking'),
   startedAt,
   delay = 300,
   minDuration = 400,

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { ago } from '@/lib/time'
 import { cn } from '@/lib/utils'
+import { t } from '@/lib/i18n'
 
 type Commit = { hash: string; short: string; message: string; time: string }
 type FileDiff = { path: string; status: 'added' | 'modified' | 'deleted'; before: string; after: string; binary: boolean }
@@ -20,6 +21,7 @@ type Props = {
 }
 
 const tone: Record<FileDiff['status'], string> = { added: 'text-success', modified: 'text-muted-foreground', deleted: 'text-destructive' }
+const statusLabel: Record<FileDiff['status'], string> = { added: t('added'), modified: t('modified'), deleted: t('deleted') }
 
 // The project's commits, what each changed, and restoring a file or the whole
 // project as a new commit (history is never rewritten).
@@ -63,9 +65,9 @@ export default function History({ projectId, open, onClose, beforeRestore, onRes
     try {
       await beforeRestore()
       const res = await api<{ commit: string }>(`/api/projects/${projectId}/history/${selected}/restore`, { method: 'POST', body })
-      if (!res.commit) toast('Already identical: nothing to restore.')
+      if (!res.commit) toast(t('Already identical: nothing to restore.'))
       else {
-        toast.success(body.path ? `Restored ${body.path}` : 'Restored the project')
+        toast.success(body.path ? t('Restored {path}', { path: body.path }) : t('Restored the project'))
         await onRestored()
         setSelected(null)
         await load()
@@ -82,17 +84,17 @@ export default function History({ projectId, open, onClose, beforeRestore, onRes
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="h-[min(720px,calc(100dvh-2rem))] gap-0 overflow-hidden rounded-2xl p-0 sm:max-w-[1100px]">
-        <DialogTitle className="sr-only">Project history</DialogTitle>
-        <DialogDescription className="sr-only">Every saved version of the project, what changed, and restoring older versions.</DialogDescription>
+        <DialogTitle className="sr-only">{t('Project history')}</DialogTitle>
+        <DialogDescription className="sr-only">{t('Every saved version of the project, what changed, and restoring older versions.')}</DialogDescription>
         <div className="flex h-full min-h-0">
           <aside className="flex w-72 shrink-0 flex-col border-r bg-foreground/[0.025]">
             <h2 className="flex items-center gap-2 px-4 pt-4 pb-2 text-sm font-medium">
-              <HistoryIcon className="size-4 text-muted-foreground" /> History
+              <HistoryIcon className="size-4 text-muted-foreground" /> {t('History')}
             </h2>
             <ol className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
               {!commits && (
                 <li className="flex items-center gap-2 p-2 text-sm text-muted-foreground">
-                  <Loader2 className="size-4 animate-spin" /> Loading…
+                  <Loader2 className="size-4 animate-spin" /> {t('Loading…')}
                 </li>
               )}
               {commits?.map((c) => (
@@ -124,27 +126,27 @@ export default function History({ projectId, open, onClose, beforeRestore, onRes
               {current &&
                 (confirming ? (
                   <div className="enter flex items-center gap-2 text-xs">
-                    <span className="text-muted-foreground">Replace every file with this version? The current one stays in history.</span>
+                    <span className="text-muted-foreground">{t('Replace every file with this version? The current one stays in history.')}</span>
                     <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
-                      Cancel
+                      {t('Cancel')}
                     </Button>
                     <Button size="sm" disabled={!!busy} onClick={() => restore('project', {})}>
-                      {busy === 'project' && <Loader2 className="animate-spin" />} Restore
+                      {busy === 'project' && <Loader2 className="animate-spin" />} {t('Restore')}
                     </Button>
                   </div>
                 ) : (
                   <Button size="sm" variant="secondary" onClick={() => setConfirming(true)}>
-                    <RotateCcw /> Restore project to this version
+                    <RotateCcw /> {t('Restore project to this version')}
                   </Button>
                 ))}
             </header>
             <div className="min-h-0 flex-1 overflow-auto">
               {selected && !diffs && (
                 <p className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
-                  <Loader2 className="size-4 animate-spin" /> Loading changes…
+                  <Loader2 className="size-4 animate-spin" /> {t('Loading changes…')}
                 </p>
               )}
-              {diffs?.length === 0 && <p className="p-4 text-sm text-muted-foreground">No file changes in this version.</p>}
+              {diffs?.length === 0 && <p className="p-4 text-sm text-muted-foreground">{t('No file changes in this version.')}</p>}
               {diffs?.map((d) => {
                 const isOpen = !collapsed.includes(d.path)
                 const restoreBefore = d.status === 'deleted'
@@ -159,15 +161,19 @@ export default function History({ projectId, open, onClose, beforeRestore, onRes
                           className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform duration-150 ease-out', isOpen && 'rotate-90')}
                         />
                         <code className="truncate text-sm">{d.path}</code>
-                        <span className={cn('text-xs', tone[d.status])}>{d.status}</span>
+                        <span className={cn('text-xs', tone[d.status])}>{statusLabel[d.status]}</span>
                       </button>
                       <Button size="xs" variant="ghost" disabled={!!busy} onClick={() => restore(d.path, { path: d.path, before: restoreBefore })}>
                         {busy === d.path ? <Loader2 className="animate-spin" /> : <RotateCcw />}
-                        {restoreBefore ? 'Restore deleted file' : 'Restore this version'}
+                        {restoreBefore ? t('Restore deleted file') : t('Restore this version')}
                       </Button>
                     </div>
                     {isOpen &&
-                      (d.binary ? <p className="px-4 py-3 text-sm text-muted-foreground">Binary file.</p> : <DiffView before={d.before} after={d.after} />)}
+                      (d.binary ? (
+                        <p className="px-4 py-3 text-sm text-muted-foreground">{t('Binary file.')}</p>
+                      ) : (
+                        <DiffView before={d.before} after={d.after} />
+                      ))}
                   </section>
                 )
               })}

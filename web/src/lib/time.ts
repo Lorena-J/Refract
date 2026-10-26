@@ -1,7 +1,9 @@
+import { t } from './i18n'
+
 // Compact relative time like "now", "5m", "3h", "2d", "2mo", "1y".
 export function ago(iso: string): string {
   const s = (Date.now() - new Date(iso).getTime()) / 1000
-  if (s < 60) return 'now'
+  if (s < 60) return t('now')
   const steps: [number, string][] = [
     [60, 'm'],
     [24, 'h'],

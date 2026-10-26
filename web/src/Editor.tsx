@@ -10,6 +10,7 @@ import { useCommands } from '@/lib/commands'
 import { ClipboardPaste, Copy, FileSearch, MessageSquareText, Pencil, Play, Scissors, TextSelect } from 'lucide-react'
 import { WithContextMenu, type MenuEntry } from '@/components/Menu'
 import { mod } from '@/lib/shortcuts'
+import { t } from '@/lib/i18n'
 
 const wrapping = new Compartment()
 const wrapExt = (on: boolean) => (on ? EditorView.lineWrapping : [])
@@ -55,8 +56,8 @@ export default function Editor({ path, states, initial, onChange, onSave, onComp
             {
               id: 'sel:ask',
               group: 'Selection',
-              label: `Ask: “${q}”`,
-              hint: 'edit the selection',
+              label: t('Ask: “{query}”', { query: q }),
+              hint: t('edit the selection'),
               icon: MessageSquareText,
               pinned: true,
               run: () => quickRef.current?.run('custom', q),
@@ -67,7 +68,7 @@ export default function Editor({ path, states, initial, onChange, onSave, onComp
         id: `sel:${a.id}`,
         group: 'Selection',
         label: a.command,
-        hint: 'selection',
+        hint: t('selection'),
         icon: a.icon,
         run: () => quickRef.current?.run(a.id),
       })),
@@ -196,16 +197,16 @@ export default function Editor({ path, states, initial, onChange, onSave, onComp
     }
     return [
       {
-        label: 'Cut',
+        label: t('Cut'),
         icon: Scissors,
         shortcut: `${mod}X`,
         disabled: sel.empty,
         onSelect: () => navigator.clipboard.writeText(text).then(() => edit('', 'delete.cut')),
       },
-      { label: 'Copy', icon: Copy, shortcut: `${mod}C`, disabled: sel.empty, onSelect: () => navigator.clipboard.writeText(text) },
-      { label: 'Paste', icon: ClipboardPaste, shortcut: `${mod}V`, onSelect: () => navigator.clipboard.readText().then((t) => edit(t, 'input.paste')) },
+      { label: t('Copy'), icon: Copy, shortcut: `${mod}C`, disabled: sel.empty, onSelect: () => navigator.clipboard.writeText(text) },
+      { label: t('Paste'), icon: ClipboardPaste, shortcut: `${mod}V`, onSelect: () => navigator.clipboard.readText().then((s) => edit(s, 'input.paste')) },
       {
-        label: 'Select all',
+        label: t('Select all'),
         icon: TextSelect,
         shortcut: `${mod}A`,
         onSelect: () => {
@@ -217,12 +218,12 @@ export default function Editor({ path, states, initial, onChange, onSave, onComp
       ...(quick && !sel.empty
         ? [
             ...actions.map((a) => ({ label: a.command, icon: a.icon, onSelect: () => quickRef.current?.run(a.id) })),
-            { label: 'Ask the assistant…', icon: Pencil, onSelect: () => quickRef.current?.ask() },
+            { label: t('Ask the assistant…'), icon: Pencil, onSelect: () => quickRef.current?.ask() },
             '-' as const,
           ]
         : []),
       {
-        label: 'Show in PDF',
+        label: t('Show in PDF'),
         icon: FileSearch,
         shortcut: `${mod}J`,
         onSelect: () => {
@@ -230,7 +231,7 @@ export default function Editor({ path, states, initial, onChange, onSave, onComp
           cb.current.onSync(current.current, line.number, sel.head - line.from + 1)
         },
       },
-      { label: 'Compile', icon: Play, shortcut: `${mod}↵`, onSelect: () => cb.current.onCompile() },
+      { label: t('Compile'), icon: Play, shortcut: `${mod}↵`, onSelect: () => cb.current.onCompile() },
     ]
   }
 

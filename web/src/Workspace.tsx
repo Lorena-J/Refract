@@ -78,15 +78,16 @@ import { WithContextMenu, type MenuEntry } from '@/components/Menu'
 import { useCommands } from '@/lib/commands'
 import { editorShortcuts, mod } from '@/lib/shortcuts'
 import { cn } from '@/lib/utils'
+import { t } from '@/lib/i18n'
 
 const under = (p: string, prefix: string) => p === prefix || p.startsWith(prefix + '/')
 const moved = (p: string, from: string, to: string) => (under(p, from) ? to + p.slice(from.length) : p)
 
 const saveState: Record<SaveStatus, { text: string; dot: string }> = {
-  saved: { text: 'Saved', dot: 'bg-success' },
-  dirty: { text: 'Unsaved changes', dot: 'bg-warning' },
-  saving: { text: 'Saving…', dot: 'bg-muted-foreground animate-pulse' },
-  error: { text: 'Save failed, retrying…', dot: 'bg-destructive' },
+  saved: { text: t('Saved'), dot: 'bg-success' },
+  dirty: { text: t('Unsaved changes'), dot: 'bg-warning' },
+  saving: { text: t('Saving…'), dot: 'bg-muted-foreground animate-pulse' },
+  error: { text: t('Save failed, retrying…'), dot: 'bg-destructive' },
 }
 
 type Ask = { title: string; description?: string; value: string; action: string; onSubmit: (v: string) => Promise<void> }
@@ -272,7 +273,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
     await reloadFromDisk(applied)
     setTurnUpdate(res.turn)
     setReview(res.turn.status === 'review' ? res.turn : null)
-    toast.success(applied.length === 1 ? `Applied changes to ${applied[0]}` : `Applied changes to ${applied.length} files`)
+    toast.success(applied.length === 1 ? t('Applied changes to {path}', { path: applied[0] }) : t('Applied changes to {n} files', { n: applied.length }))
     return null
   }
 
@@ -287,10 +288,13 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
     await reloadFromDisk([c.path]) // the .bib may be open
     const target = active && active.endsWith('.tex') && loaded.current.get(active)?.text ? active : undefined
     if (target) setInsert({ path: target, text: `\\cite{${c.key}}` })
-    const where = c.added ? `Added to ${c.path}` : `Already in ${c.path}`
-    toast.success(target ? `${where} · \\cite{${c.key}} inserted` : `${where} as ${c.key}`, {
+    const where = c.added ? t('Added to {path}', { path: c.path }) : t('Already in {path}', { path: c.path })
+    toast.success(target ? t('{where} · \\cite{{key}} inserted', { where, key: c.key }) : t('{where} as {key}', { where, key: c.key }), {
       description: c.needs_setup
-        ? `No .tex file loads a bibliography yet: add \\bibliography{${c.path.replace(/\.bib$/, '')}} (or \\addbibresource{${c.path}}).`
+        ? t('No .tex file loads a bibliography yet: add \\bibliography{{base}} (or \\addbibresource{{path}}).', {
+            base: c.path.replace(/\.bib$/, ''),
+            path: c.path,
+          })
         : undefined,
     })
   }
@@ -301,12 +305,12 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
   }
 
   const tabMenu = (p: string): MenuEntry[] => [
-    { label: 'Close', icon: X, shortcut: `${mod}W`, onSelect: () => close(p) },
-    { label: 'Close others', onSelect: () => closeOthers(p), disabled: tabs.length < 2 },
-    { label: 'Close all', onSelect: () => closeOthers(null) },
+    { label: t('Close'), icon: X, shortcut: `${mod}W`, onSelect: () => close(p) },
+    { label: t('Close others'), onSelect: () => closeOthers(p), disabled: tabs.length < 2 },
+    { label: t('Close all'), onSelect: () => closeOthers(null) },
     '-',
-    ...(p.endsWith('.tex') && p !== project?.main_file ? [{ label: 'Set as main file', icon: Star, onSelect: () => setMainFile(p) }] : []),
-    { label: 'Copy path', icon: Copy, onSelect: () => navigator.clipboard.writeText(p) },
+    ...(p.endsWith('.tex') && p !== project?.main_file ? [{ label: t('Set as main file'), icon: Star, onSelect: () => setMainFile(p) }] : []),
+    { label: t('Copy path'), icon: Copy, onSelect: () => navigator.clipboard.writeText(p) },
   ]
 
   // "Fix with AI" on compile problems: a new chat asking for the fix (and a check compile).
@@ -314,8 +318,8 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
     const lines = ps.map((p) => `- ${p.file ? `${p.file}${p.line ? `:${p.line}` : ''}: ` : ''}${p.severity}: ${p.message}`)
     const text =
       ps.length === 1
-        ? `Fix this problem from the last compile, then compile to check it is gone:\n${lines[0]}`
-        : `Fix these problems from the last compile, then compile to check they are gone:\n${lines.join('\n')}`
+        ? t('Fix this problem from the last compile, then compile to check it is gone:\n{problems}', { problems: lines[0] })
+        : t('Fix these problems from the last compile, then compile to check they are gone:\n{problems}', { problems: lines.join('\n') })
     setChatId('')
     setChatOpen(true)
     setAiRequest((r) => ({ text, n: (r?.n ?? 0) + 1 }))
@@ -329,7 +333,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
   async function setMainFile(path: string) {
     await run(async () => {
       setProject(await api<Project>(`/api/projects/${id}`, { method: 'PATCH', body: { main_file: path } }))
-      toast.success(`Main file: ${path}`)
+      toast.success(t('Main file: {path}', { path }))
     })
   }
 
@@ -378,13 +382,13 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
 
   function create(dir: string, kind: 'file' | 'folder') {
     askFor({
-      title: kind === 'file' ? 'New file' : 'New folder',
-      description: 'Use slashes for subfolders, e.g. chapters/intro.tex',
+      title: kind === 'file' ? t('New file') : t('New folder'),
+      description: t('Use slashes for subfolders, e.g. chapters/intro.tex'),
       value: dir ? dir + '/' : '',
-      action: 'Create',
+      action: t('Create'),
       onSubmit: async (path) => {
-        if (!path || path.endsWith('/')) throw new Error('Enter a name.')
-        if (files.some((f) => f.path === path)) throw new Error(`${path} already exists`)
+        if (!path || path.endsWith('/')) throw new Error(t('Enter a name.'))
+        if (files.some((f) => f.path === path)) throw new Error(t('{path} already exists', { path }))
         if (kind === 'file') await writeFile(id, path, '')
         else await mkdir(id, path)
         await loadFiles()
@@ -395,10 +399,10 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
 
   function rename(from: string) {
     askFor({
-      title: 'Rename or move',
-      description: 'Change the path to move it to another folder.',
+      title: t('Rename or move'),
+      description: t('Change the path to move it to another folder.'),
       value: from,
-      action: 'Rename',
+      action: t('Rename'),
       onSubmit: async (to) => {
         if (!to || to === from) return
         const affected = tabs.filter((p) => under(p, from))
@@ -423,9 +427,9 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
 
   function remove(path: string, dir: boolean) {
     setConfirm({
-      title: `Delete ${path}?`,
-      description: dir ? 'The folder and everything in it will be deleted. It stays in the project history.' : 'It stays in the project history.',
-      action: 'Delete',
+      title: t('Delete {path}?', { path }),
+      description: dir ? t('The folder and everything in it will be deleted. It stays in the project history.') : t('It stays in the project history.'),
+      action: t('Delete'),
       onConfirm: async () => {
         const affected = tabs.filter((p) => under(p, path))
         affected.forEach((p) => autosave.drop(p))
@@ -445,14 +449,14 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
         await writeFile(id, target(f), f)
       }
       await loadFiles()
-      toast.success(list.length === 1 ? `Uploaded ${target(list[0])}` : `Uploaded ${list.length} files`)
+      toast.success(list.length === 1 ? t('Uploaded {path}', { path: target(list[0]) }) : t('Uploaded {n} files', { n: list.length }))
     }
     const existing = list.filter((f) => files.some((e) => e.path === target(f)))
     if (existing.length === 0) return run(write)
     setConfirm({
-      title: existing.length === 1 ? `Replace ${target(existing[0])}?` : `Replace ${existing.length} files?`,
-      description: 'The current versions stay in the project history.',
-      action: 'Replace',
+      title: existing.length === 1 ? t('Replace {path}?', { path: target(existing[0]) }) : t('Replace {n} files?', { n: existing.length }),
+      description: t('The current versions stay in the project history.'),
+      action: t('Replace'),
       onConfirm: write,
     })
   }
@@ -465,11 +469,11 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
   }
 
   useCommands(() => [
-    { id: 'ws:compile', group: 'Actions', label: 'Compile', icon: Play, shortcut: `${mod}↵`, run: compile },
+    { id: 'ws:compile', group: 'Actions', label: t('Compile'), icon: Play, shortcut: `${mod}↵`, run: compile },
     {
       id: 'ws:chat',
       group: 'Actions',
-      label: 'New chat',
+      label: t('New chat'),
       icon: MessageSquarePlus,
       keywords: 'assistant ai ask',
       run: () => {
@@ -481,18 +485,18 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
     {
       id: 'ws:assistant',
       group: 'Actions',
-      label: chatOpen ? 'Collapse the assistant' : 'Open the assistant',
+      label: chatOpen ? t('Collapse the assistant') : t('Open the assistant'),
       icon: Sparkles,
       keywords: 'chat ai',
       run: () => setChatOpen(!chatOpen),
     },
-    { id: 'ws:newfile', group: 'Actions', label: 'New file', icon: FileText, run: () => create('', 'file') },
-    { id: 'ws:newfolder', group: 'Actions', label: 'New folder', icon: FolderPlus, run: () => create('', 'folder') },
-    { id: 'ws:upload', group: 'Actions', label: 'Upload files', icon: Upload, run: () => uploadInput.current?.click() },
+    { id: 'ws:newfile', group: 'Actions', label: t('New file'), icon: FileText, run: () => create('', 'file') },
+    { id: 'ws:newfolder', group: 'Actions', label: t('New folder'), icon: FolderPlus, run: () => create('', 'folder') },
+    { id: 'ws:upload', group: 'Actions', label: t('Upload files'), icon: Upload, run: () => uploadInput.current?.click() },
     {
       id: 'ws:history',
       group: 'Actions',
-      label: 'Project history',
+      label: t('Project history'),
       icon: HistoryIcon,
       keywords: 'versions restore undo commits',
       run: () => setHistoryOpen(true),
@@ -500,12 +504,12 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
     {
       id: 'ws:cite',
       group: 'Actions',
-      label: 'Cite from arXiv…',
+      label: t('Cite from arXiv…'),
       icon: BookMarked,
       keywords: 'bibliography bibtex reference paper',
       run: () => setCiteOpen(true),
     },
-    { id: 'ws:sidebar', group: 'Actions', label: sidebarCollapsed ? 'Show the sidebar' : 'Hide the sidebar', icon: PanelLeft, run: toggleSidebar },
+    { id: 'ws:sidebar', group: 'Actions', label: sidebarCollapsed ? t('Show the sidebar') : t('Hide the sidebar'), icon: PanelLeft, run: toggleSidebar },
     ...files
       .filter((f) => !f.dir)
       .map((f) => {
@@ -559,12 +563,16 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <a href="/" aria-label="All projects" className="shrink-0 rounded-md p-1 transition-transform duration-150 ease-out active:scale-[0.94]" />
+                    <a
+                      href="/"
+                      aria-label={t('All projects')}
+                      className="shrink-0 rounded-md p-1 transition-transform duration-150 ease-out active:scale-[0.94]"
+                    />
                   }
                 >
                   <img src="/logo.svg" alt="" className="size-6" />
                 </TooltipTrigger>
-                <TooltipContent>All projects</TooltipContent>
+                <TooltipContent>{t('All projects')}</TooltipContent>
               </Tooltip>
               <DropdownMenu>
                 <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="min-w-0 flex-1 justify-start gap-1.5 px-2" />}>
@@ -573,17 +581,17 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-64">
                   <DropdownMenuItem render={<a href="/" />}>
-                    <ChevronLeft /> All projects
+                    <ChevronLeft /> {t('All projects')}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setHistoryOpen(true)}>
-                    <HistoryIcon /> History
+                    <HistoryIcon /> {t('History')}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setCiteOpen(true)}>
-                    <BookMarked /> Cite from arXiv…
+                    <BookMarked /> {t('Cite from arXiv…')}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuGroup>
-                    <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Recent</DropdownMenuLabel>
+                    <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">{t('Recent')}</DropdownMenuLabel>
                     {projects.slice(0, 8).map((p) => (
                       <DropdownMenuItem key={p.id} render={<a href={`/p/${p.id}`} />}>
                         <span className="truncate">{p.name}</span>
@@ -595,11 +603,11 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
               </DropdownMenu>
               <Tooltip>
                 <TooltipTrigger
-                  render={<Button variant="ghost" size="icon-sm" onClick={toggleSidebar} aria-label="Hide sidebar" className="text-muted-foreground" />}
+                  render={<Button variant="ghost" size="icon-sm" onClick={toggleSidebar} aria-label={t('Hide sidebar')} className="text-muted-foreground" />}
                 >
                   <PanelLeft />
                 </TooltipTrigger>
-                <TooltipContent>Hide sidebar</TooltipContent>
+                <TooltipContent>{t('Hide sidebar')}</TooltipContent>
               </Tooltip>
             </div>
 
@@ -608,25 +616,25 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                 value={sideTab}
                 onChange={(v) => setSideTab(v as 'files' | 'chats')}
                 options={[
-                  { value: 'files', label: 'Files' },
-                  { value: 'chats', label: 'Chats' },
+                  { value: 'files', label: t('Files') },
+                  { value: 'chats', label: t('Chats') },
                 ]}
               />
               <span className="flex-1" />
               {sideTab === 'files' && (
                 <DropdownMenu>
-                  <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Add" className="text-muted-foreground" />}>
+                  <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t('Add')} className="text-muted-foreground" />}>
                     <Plus />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-44">
                     <DropdownMenuItem onClick={() => create('', 'file')}>
-                      <FileText /> New file
+                      <FileText /> {t('New file')}
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => create('', 'folder')}>
-                      <FolderPlus /> New folder
+                      <FolderPlus /> {t('New folder')}
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => uploadInput.current?.click()}>
-                      <Upload /> Upload files…
+                      <Upload /> {t('Upload files…')}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -670,7 +678,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                     setChatFocus((n) => n + 1)
                   }}
                 >
-                  <Plus /> New chat
+                  <Plus /> {t('New chat')}
                 </Button>
                 {chats.map((c) => (
                   <button
@@ -689,7 +697,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                     <span className="text-xs text-muted-foreground">{ago(c.updated_at)}</span>
                   </button>
                 ))}
-                {chats.length === 0 && <p className="px-2 py-3 text-xs text-muted-foreground">No chats yet.</p>}
+                {chats.length === 0 && <p className="px-2 py-3 text-xs text-muted-foreground">{t('No chats yet.')}</p>}
               </div>
             )}
 
@@ -706,11 +714,11 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
               {sidebarCollapsed && (
                 <Tooltip>
                   <TooltipTrigger
-                    render={<Button variant="ghost" size="icon-sm" onClick={toggleSidebar} aria-label="Show sidebar" className="text-muted-foreground" />}
+                    render={<Button variant="ghost" size="icon-sm" onClick={toggleSidebar} aria-label={t('Show sidebar')} className="text-muted-foreground" />}
                   >
                     <PanelLeft />
                   </TooltipTrigger>
-                  <TooltipContent>Show sidebar</TooltipContent>
+                  <TooltipContent>{t('Show sidebar')}</TooltipContent>
                 </Tooltip>
               )}
               <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none]" role="tablist">
@@ -745,7 +753,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                         <button
                           className="relative mr-1 flex size-4 items-center justify-center rounded-sm transition-colors duration-100 hover:bg-accent"
                           onClick={() => close(p)}
-                          aria-label={`Close ${p}`}
+                          aria-label={t('Close {path}', { path: p })}
                         >
                           {/* unsaved: a dot that turns into × on hover */}
                           {dirty && <span className="absolute size-1.5 rounded-full bg-warning group-hover/tab:hidden" />}
@@ -763,7 +771,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                 })}
                 {review && (
                   <div className="flex h-7 shrink-0 items-center gap-1.5 rounded-md border bg-background px-2.5 text-xs shadow-xs">
-                    <Check className="size-3.5" /> Review
+                    <Check className="size-3.5" /> {t('Review')}
                   </div>
                 )}
               </div>
@@ -771,28 +779,28 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                 <Tooltip>
                   <TooltipTrigger render={<Button size="sm" className="rounded-r-none" onClick={compile} disabled={compiling || !project?.main_file} />}>
                     {compiling ? <Loader2 className="animate-spin" /> : <Play className="fill-current" />}
-                    Compile
+                    {t('Compile')}
                   </TooltipTrigger>
                   <TooltipContent>
-                    Compile <kbd className="ml-1 opacity-70">{mod}↵</kbd>
+                    {t('Compile')} <kbd className="ml-1 opacity-70">{mod}↵</kbd>
                   </TooltipContent>
                 </Tooltip>
                 <DropdownMenu>
                   <DropdownMenuTrigger
-                    render={<Button size="icon-sm" className="rounded-l-none border-l border-primary-foreground/20" aria-label="Compile options" />}
+                    render={<Button size="icon-sm" className="rounded-l-none border-l border-primary-foreground/20" aria-label={t('Compile options')} />}
                   >
                     <ChevronDown />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="max-h-80 w-64">
                     <DropdownMenuGroup>
-                      <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Main file</DropdownMenuLabel>
+                      <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">{t('Main file')}</DropdownMenuLabel>
                       {texFiles.map((f) => (
                         <DropdownMenuItem key={f} onClick={() => setMainFile(f)}>
                           <span className="truncate font-mono text-xs">{f}</span>
                           <Check className={cn('ml-auto', project?.main_file !== f && 'invisible')} />
                         </DropdownMenuItem>
                       ))}
-                      {texFiles.length === 0 && <p className="px-2 py-1.5 text-xs text-muted-foreground">No .tex files yet.</p>}
+                      {texFiles.length === 0 && <p className="px-2 py-1.5 text-xs text-muted-foreground">{t('No .tex files yet.')}</p>}
                     </DropdownMenuGroup>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -851,9 +859,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                 <span className={cn('size-1.5 rounded-full', saving.dot)} />
                 {saving.text}
                 <span className="flex-1" />
-                <span className="hidden sm:inline">
-                  {mod}J sync to PDF · {mod}↵ compile
-                </span>
+                <span className="hidden sm:inline">{t('{mod}J sync to PDF · {mod}↵ compile', { mod })}</span>
               </div>
             )}
           </main>
@@ -903,7 +909,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
             <Input autoFocus value={askValue} onChange={(e) => setAskValue(e.target.value)} className="font-mono text-sm" aria-label={ask?.title} />
             <DialogFooter className="mt-4">
               <Button type="button" variant="ghost" onClick={() => setAsk(null)}>
-                Cancel
+                {t('Cancel')}
               </Button>
               <Button type="submit">{ask?.action}</Button>
             </DialogFooter>
@@ -930,9 +936,9 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
             <AlertDialogDescription>{confirm?.description}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t('Cancel')}</AlertDialogCancel>
             <AlertDialogAction
-              variant={confirm?.action === 'Delete' ? 'destructive' : 'default'}
+              variant={confirm?.action === t('Delete') ? 'destructive' : 'default'}
               onClick={() => {
                 const c = confirm
                 setConfirm(null)
@@ -984,8 +990,8 @@ function EmptyEditor() {
   return (
     <div className="enter flex h-full flex-col items-center justify-center gap-5 pb-16 text-center">
       <div>
-        <p className="text-sm font-medium">Open a file from the sidebar</p>
-        <p className="mt-1 text-sm text-muted-foreground">Edits save automatically.</p>
+        <p className="text-sm font-medium">{t('Open a file from the sidebar')}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{t('Edits save automatically.')}</p>
       </div>
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-left text-xs">
         {rows.map(([k, v]) => (
@@ -1019,7 +1025,7 @@ function BinaryView({ file, path }: { file: Extract<OpenedFile, { text: false }>
     <div className="flex h-full flex-col items-center justify-center gap-1 text-sm text-muted-foreground">
       <p className="font-mono text-foreground">{path}</p>
       <p>
-        {file.type || 'Binary file'} · {(file.size / 1024).toFixed(1)} KB · read-only
+        {file.type || t('Binary file')} · {(file.size / 1024).toFixed(1)} KB · {t('read-only')}
       </p>
     </div>
   )

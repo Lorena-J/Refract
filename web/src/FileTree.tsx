@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { DropdownItems, WithContextMenu, type MenuEntry } from '@/components/Menu'
 import { cn } from '@/lib/utils'
+import { t } from '@/lib/i18n'
 
 type Node = { name: string; path: string; dir: boolean; children: Node[] }
 
@@ -89,17 +90,17 @@ export default function FileTree(p: Props) {
   const menu = (n: Node): MenuEntry[] => [
     ...(n.dir
       ? [
-          { label: 'New file', icon: Plus, onSelect: () => p.onNew(n.path, 'file') },
-          { label: 'New folder', icon: FolderPlus, onSelect: () => p.onNew(n.path, 'folder') },
+          { label: t('New file'), icon: Plus, onSelect: () => p.onNew(n.path, 'file') },
+          { label: t('New folder'), icon: FolderPlus, onSelect: () => p.onNew(n.path, 'folder') },
           '-' as const,
         ]
-      : [{ label: 'Open', icon: FileText, onSelect: () => p.onOpen(n.path) }]),
-    ...(!n.dir && n.path.endsWith('.tex') && n.path !== p.mainFile ? [{ label: 'Set as main file', icon: Star, onSelect: () => p.onSetMain(n.path) }] : []),
-    ...(!n.dir ? [{ label: 'Download', icon: Download, onSelect: () => p.onDownload(n.path) }] : []),
-    { label: 'Copy path', icon: Copy, onSelect: () => navigator.clipboard.writeText(n.path) },
+      : [{ label: t('Open'), icon: FileText, onSelect: () => p.onOpen(n.path) }]),
+    ...(!n.dir && n.path.endsWith('.tex') && n.path !== p.mainFile ? [{ label: t('Set as main file'), icon: Star, onSelect: () => p.onSetMain(n.path) }] : []),
+    ...(!n.dir ? [{ label: t('Download'), icon: Download, onSelect: () => p.onDownload(n.path) }] : []),
+    { label: t('Copy path'), icon: Copy, onSelect: () => navigator.clipboard.writeText(n.path) },
     '-',
-    { label: 'Rename or move', icon: Pencil, onSelect: () => p.onRename(n.path) },
-    { label: 'Delete', icon: Trash2, destructive: true, onSelect: () => p.onDelete(n.path, n.dir) },
+    { label: t('Rename or move'), icon: Pencil, onSelect: () => p.onRename(n.path) },
+    { label: t('Delete'), icon: Trash2, destructive: true, onSelect: () => p.onDelete(n.path, n.dir) },
   ]
 
   const render = (nodes: Node[], depth: number) =>
@@ -132,16 +133,16 @@ export default function FileTree(p: Props) {
                 )}
                 <Icon className="size-4 shrink-0 text-muted-foreground" />
                 <span className="truncate">{n.name}</span>
-                {!n.dir && p.dirty(n.path) && <span className="ml-1 size-1.5 shrink-0 rounded-full bg-warning" aria-label="unsaved changes" />}
+                {!n.dir && p.dirty(n.path) && <span className="ml-1 size-1.5 shrink-0 rounded-full bg-warning" aria-label={t('unsaved changes')} />}
               </button>
               <span className="flex items-center opacity-0 transition-opacity duration-100 group-hover/row:opacity-100 group-focus-within/row:opacity-100 has-data-popup-open:opacity-100">
                 {n.dir && (
-                  <Button variant="ghost" size="icon-xs" aria-label={`New file in ${n.path}`} onClick={() => p.onNew(n.path, 'file')}>
+                  <Button variant="ghost" size="icon-xs" aria-label={t('New file in {path}', { path: n.path })} onClick={() => p.onNew(n.path, 'file')}>
                     <Plus />
                   </Button>
                 )}
                 <DropdownMenu>
-                  <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={`Actions for ${n.path}`} />}>
+                  <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={t('Actions for {path}', { path: n.path })} />}>
                     <MoreHorizontal />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="w-52">
@@ -166,16 +167,16 @@ export default function FileTree(p: Props) {
       <ul>{render(buildTree(p.files), 0)}</ul>
       {p.files.length === 0 && (
         <p className="flex items-center gap-2 px-2 py-3 text-xs text-muted-foreground">
-          <Upload className="size-3.5" /> Drop files here or create one.
+          <Upload className="size-3.5" /> {t('Drop files here or create one.')}
         </p>
       )}
       {/* Right click on the empty space below the tree. */}
       <WithContextMenu
         className="min-h-12 flex-1"
         items={() => [
-          { label: 'New file', icon: Plus, onSelect: () => p.onNew('', 'file') },
-          { label: 'New folder', icon: FolderPlus, onSelect: () => p.onNew('', 'folder') },
-          { label: 'Upload files…', icon: Upload, onSelect: p.onUploadClick },
+          { label: t('New file'), icon: Plus, onSelect: () => p.onNew('', 'file') },
+          { label: t('New folder'), icon: FolderPlus, onSelect: () => p.onNew('', 'folder') },
+          { label: t('Upload files…'), icon: Upload, onSelect: p.onUploadClick },
         ]}
       >
         <div />

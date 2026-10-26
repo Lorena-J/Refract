@@ -11,6 +11,7 @@ import CommandPalette from './CommandPalette'
 import ShortcutsOverlay from './ShortcutsOverlay'
 import { getOverlay, setOverlay, useCommands } from '@/lib/commands'
 import { setTheme } from '@/lib/theme'
+import { t } from '@/lib/i18n'
 import { FolderOpen, Keyboard, Monitor, Moon, Settings, Sun } from 'lucide-react'
 import Workspace from './Workspace'
 
@@ -44,12 +45,12 @@ export default function App() {
 
   const path = window.location.pathname
   useCommands(() => [
-    ...(path !== '/' ? [{ id: 'nav:projects', group: 'Navigate', label: 'All projects', icon: FolderOpen, run: () => (window.location.href = '/') }] : []),
-    { id: 'app:settings', group: 'General', label: 'Settings', icon: Settings, keywords: 'preferences account chatgpt', run: () => openSettings() },
-    { id: 'app:shortcuts', group: 'General', label: 'Keyboard shortcuts', icon: Keyboard, shortcut: '?', run: () => setOverlay('shortcuts') },
-    { id: 'theme:light', group: 'General', label: 'Light theme', icon: Sun, keywords: 'appearance', run: () => setTheme('light') },
-    { id: 'theme:dark', group: 'General', label: 'Dark theme', icon: Moon, keywords: 'appearance', run: () => setTheme('dark') },
-    { id: 'theme:system', group: 'General', label: 'System theme', icon: Monitor, keywords: 'appearance', run: () => setTheme('system') },
+    ...(path !== '/' ? [{ id: 'nav:projects', group: 'Navigate', label: t('All projects'), icon: FolderOpen, run: () => (window.location.href = '/') }] : []),
+    { id: 'app:settings', group: 'General', label: t('Settings'), icon: Settings, keywords: 'preferences account chatgpt', run: () => openSettings() },
+    { id: 'app:shortcuts', group: 'General', label: t('Keyboard shortcuts'), icon: Keyboard, shortcut: '?', run: () => setOverlay('shortcuts') },
+    { id: 'theme:light', group: 'General', label: t('Light theme'), icon: Sun, keywords: 'appearance', run: () => setTheme('light') },
+    { id: 'theme:dark', group: 'General', label: t('Dark theme'), icon: Moon, keywords: 'appearance', run: () => setTheme('dark') },
+    { id: 'theme:system', group: 'General', label: t('System theme'), icon: Monitor, keywords: 'appearance', run: () => setTheme('system') },
   ])
   const welcome = !!status && status.status.signed_in && status.status.plan_granted && !status.welcome_seen
 
