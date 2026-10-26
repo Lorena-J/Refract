@@ -35,6 +35,10 @@ const fontFix = "Put the font files in a fonts/ folder in the project and load t
 // Check scans the project's TeX sources for portability problems.
 func Check(dir string) ([]Warning, error) {
 	var out []Warning
+	exists := func(rel string) bool {
+		_, err := os.Stat(filepath.Join(dir, filepath.FromSlash(rel)))
+		return err == nil
+	}
 	err := walkFiles(dir, func(rel string, _ fs.FileInfo) error {
 		switch strings.ToLower(path.Ext(rel)) {
 		case ".tex", ".sty", ".cls", ".ltx":
@@ -45,13 +49,14 @@ func Check(dir string) ([]Warning, error) {
 		if err != nil {
 			return err
 		}
-		out = append(out, checkSource(rel, string(b))...)
+		out = append(out, checkSource(rel, string(b), exists)...)
 		return nil
 	})
 	return out, err
 }
 
-func checkSource(file, src string) []Warning {
+// exists reports whether a project-relative path exists (used for font Path= checks).
+func checkSource(file, src string, exists func(rel string) bool) []Warning {
 	src = stripComments(src)
 	var out []Warning
 	add := func(offset int, kind, msg string) {
@@ -63,7 +68,13 @@ func checkSource(file, src string) []Warning {
 	for _, m := range reFontCmd.FindAllStringSubmatchIndex(src, -1) {
 		opts := sub(src, m, 2) + sub(src, m, 4)
 		name := strings.TrimSpace(sub(src, m, 3))
-		if strings.Contains(opts, "Path") || strings.Contains(opts, "Extension") || reFontExt.MatchString(name) {
+		if p := optValue(opts, "Path"); p != "" {
+			if msg := checkFontPath(file, name, p, opts, exists); msg != "" {
+				add(m[0], "missing-font", msg)
+			}
+			continue
+		}
+		if strings.Contains(opts, "Extension") || reFontExt.MatchString(name) {
 			continue
 		}
 		add(m[0], "system-font", `\`+sub(src, m, 1)+`{`+name+`} looks the font up by name on the system, so the project can compile on one machine and fail on another. `+fontFix)
@@ -80,6 +91,47 @@ func checkSource(file, src string) []Warning {
 		}
 	}
 	return out
+}
+
+// optValue returns key's value in a fontspec option list ("Path = fonts/, ...").
+func optValue(opts, key string) string {
+	m := regexp.MustCompile(`\b` + key + `\s*=\s*([^,\]\n]+)`).FindStringSubmatch(opts)
+	if m == nil {
+		return ""
+	}
+	return strings.TrimSpace(m[1])
+}
+
+// checkFontPath verifies that a fontspec Path= folder, and its upright font
+// file, are in the project. Path is relative to where TeX runs (the main file's
+// folder), which is usually the folder of this file or the project root.
+func checkFontPath(file, name, p, opts string, exists func(string) bool) string {
+	if strings.HasPrefix(p, "/") || strings.HasPrefix(p, "~") {
+		return "Path = " + p + " loads fonts from outside the project, so it only works on this machine. " + fontFix
+	}
+	var dir string
+	for _, d := range []string{path.Join(path.Dir(file), p), path.Clean(p)} {
+		if exists(d) {
+			dir = d
+			break
+		}
+	}
+	if dir == "" {
+		return "Path = " + p + " but that folder is not in the project. Add the font files for " + name + " to it."
+	}
+	ext := optValue(opts, "Extension")
+	if ext == "" {
+		return ""
+	}
+	upright := optValue(opts, "UprightFont")
+	if upright == "" {
+		upright = "*"
+	}
+	font := path.Join(dir, strings.ReplaceAll(upright, "*", name)+ext)
+	if !exists(font) {
+		return font + " is not in the project. Add the font files for " + name + " to " + dir + "/."
+	}
+	return ""
 }
 
 func sub(s string, m []int, i int) string {

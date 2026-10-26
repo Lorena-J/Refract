@@ -21,7 +21,7 @@ const BuildDir = ".refract/build"
 
 // Result is the outcome of one compile.
 type Result struct {
-	OK         bool      `json:"ok"`
+	OK         bool      `json:"ok"` // no errors (a PDF may exist even when false)
 	Problems   []Problem `json:"problems"`
 	Output     string    `json:"output"` // Tectonic's stderr summary
 	TimedOut   bool      `json:"timed_out"`
@@ -54,7 +54,9 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 	stem := strings.TrimSuffix(base, path.Ext(base))
 	// A log left by the previous build would report stale problems if this one dies early.
 	os.Remove(filepath.Join(outDir, stem+".log"))
-	args := []string{base, "--outdir", outDir, "--synctex", "--keep-logs", "--untrusted"}
+	// continue-on-errors: like Prism and Overleaf, produce a PDF despite errors;
+	// the errors are still reported and the build does not count as OK.
+	args := []string{base, "--outdir", outDir, "--synctex", "--keep-logs", "--untrusted", "-Z", "continue-on-errors"}
 	if t.Bundle != "" {
 		args = append(args, "--bundle", t.Bundle)
 	}
@@ -96,10 +98,12 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 	}
 	locate(res.Problems, projectDir, mainFile)
 
-	res.OK = runErr == nil
-	if res.OK {
-		res.PDF = path.Join(BuildDir, stem+".pdf")
-	} else if !hasError(res.Problems) {
+	res.OK = runErr == nil && !hasError(res.Problems)
+	if fi, err := os.Stat(filepath.Join(outDir, stem+".pdf")); err == nil && !fi.ModTime().Before(start.Truncate(time.Second)) && // coarse-mtime filesystems
+		!res.TimedOut && !res.Superseded {
+		res.PDF = path.Join(BuildDir, stem+".pdf") // produced by this run, possibly with errors
+	}
+	if !res.OK && !hasError(res.Problems) {
 		msg := "Compilation failed."
 		if res.TimedOut {
 			msg = "Compilation timed out after " + t.Timeout.String() + " and was stopped. Look for an infinite loop."

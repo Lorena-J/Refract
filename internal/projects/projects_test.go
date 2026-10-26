@@ -307,7 +307,10 @@ func TestCheckSource(t *testing.T) {
 		{"system font", `\setmainfont{Open Sans}`, []string{"system-font"}},
 		{"system font with opts", `\setsansfont[Scale=0.9]{Open Sans}`, []string{"system-font"}},
 		{"newfontfamily", `\newfontfamily\headfont{Inter}[Scale=1]`, []string{"system-font"}},
-		{"path ok", "\\setmainfont{OpenSans}[\n  Path = fonts/,\n  Extension = .ttf]", nil},
+		{"path ok", "\\setmainfont{OpenSans}[\n  Path = fonts/,\n  Extension = .ttf,\n  UprightFont = *-Regular]", nil},
+		{"path folder missing", "\\setmainfont{Inter}[Path = typefaces/, Extension = .otf]", []string{"missing-font"}},
+		{"path font file missing", "\\setmainfont{OpenSans}[Path = fonts/, Extension = .ttf, UprightFont = *-Light]", []string{"missing-font"}},
+		{"absolute path", "\\setmainfont{X}[Path = /Library/Fonts/, Extension = .ttf]", []string{"missing-font"}},
 		{"path before ok", `\setmainfont[Path=fonts/]{OpenSans-Regular}`, nil},
 		{"file name ok", `\setmonofont{lmmono10-regular.otf}`, nil},
 		{"biblatex biber", `\usepackage[style=apa]{biblatex}`, []string{"biber"}},
@@ -319,7 +322,8 @@ func TestCheckSource(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			ws := checkSource("main.tex", c.src)
+			exists := func(p string) bool { return p == "fonts" || p == "fonts/OpenSans-Regular.ttf" }
+			ws := checkSource("main.tex", c.src, exists)
 			var kinds []string
 			for _, w := range ws {
 				kinds = append(kinds, w.Kind)

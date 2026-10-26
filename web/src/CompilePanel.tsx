@@ -61,15 +61,20 @@ export default function CompilePanel(p: Props) {
     if (res.ok) window.open(URL.createObjectURL(await res.blob()), '_blank')
   }
 
+  const errors = problems.filter((x) => x.severity === 'error').length
+  const secs = p.result ? (p.result.duration_ms / 1000).toFixed(1) : ''
   const status = p.compiling
     ? 'Compiling…'
-    : p.result
-      ? p.result.ok
-        ? `Compiled in ${(p.result.duration_ms / 1000).toFixed(1)} s${p.result.checkpoint ? ' · checkpoint saved' : ''}`
+    : !p.result
+      ? ''
+      : p.result.ok
+        ? `Compiled in ${secs} s${p.result.checkpoint ? ' · checkpoint saved' : ''}`
         : p.result.superseded
           ? 'Cancelled'
-          : 'Failed'
-      : ''
+          : p.result.pdf
+            ? `Compiled with ${errors} error${errors === 1 ? '' : 's'} in ${secs} s`
+            : 'Failed'
+  const hasPDF = !!p.result?.pdf
 
   return (
     <div className="compile">
@@ -110,7 +115,7 @@ export default function CompilePanel(p: Props) {
       </ul>
 
       <div className="compile-links">
-        {p.result?.ok && (
+        {hasPDF && (
           <button className="link" onClick={() => openPDF()}>
             Open PDF
           </button>
@@ -118,7 +123,7 @@ export default function CompilePanel(p: Props) {
         <button className="link" onClick={toggleLog}>
           {log === null ? 'Show full log' : 'Hide log'}
         </button>
-        {p.result?.ok && (
+        {hasPDF && (
           <button className="link" onClick={() => download(`/api/projects/${p.project.id}/pdf`, `${p.project.name}.pdf`).catch(() => {})}>
             Download PDF
           </button>

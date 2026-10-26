@@ -126,6 +126,9 @@ func TestCompileErrorsPointToSource(t *testing.T) {
 	if p.Severity != "error" || p.File != "chapters/one.tex" || p.Line != 3 {
 		t.Fatalf("problem = %+v, want error at chapters/one.tex:3", p)
 	}
+	if res.PDF == "" {
+		t.Fatal("no PDF despite continue-on-errors")
+	}
 }
 
 func TestCompileOKWithSynctexAndWarnings(t *testing.T) {
