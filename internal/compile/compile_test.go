@@ -51,6 +51,13 @@ func TestParseStderr(t *testing.T) {
 	}
 }
 
+func TestParseStderrIgnoresContinueOnErrorsSummary(t *testing.T) {
+	got := parseStderr("error: main.tex:268: You can't use `macro parameter character #' in horizontal mode\nwarning: errors were issued by the TeX engine, but were ignored; use --print and/or --keep-logs for details.\n")
+	if len(got) != 1 || got[0].Line != 268 {
+		t.Fatalf("got %+v", got)
+	}
+}
+
 func TestParseStderrAbsolutePath(t *testing.T) {
 	// Seen with \IfFontExistsTF on macOS: fontconfig reads system fonts.
 	got := parseStderr("warning: accessing absolute path `/Library/Fonts/OpenSans-Regular.ttf`; build may not be reproducible in other environments\n")

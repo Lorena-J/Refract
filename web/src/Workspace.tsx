@@ -1,42 +1,84 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { EditorState } from '@codemirror/state'
+import { usePanelRef } from 'react-resizable-panels'
+import { Check, ChevronDown, ChevronLeft, FileText, FolderPlus, Loader2, MessageSquare, PanelLeft, Play, Plus, Upload, X } from 'lucide-react'
+import { toast } from 'sonner'
 import { api, errorText, mkdir, move, readFile, removeFile, writeFile, type ChatGPTStatus, type FileEntry, type OpenedFile, type Project } from './api'
-import Assistant, { type EditorContext, type Turn } from './Assistant'
+import Assistant, { type Chat, type EditorContext, type Turn } from './Assistant'
 import Review from './Review'
 import { Autosaver, type SaveStatus } from './autosave'
-import CompilePanel, { type CompileResult } from './CompilePanel'
+import CompileStatus, { type CompileResult } from './CompileStatus'
 import Editor from './Editor'
 import FileTree from './FileTree'
 import PdfViewer, { type Highlight } from './PdfViewer'
+import AccountMenu from '@/components/AccountMenu'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { ago } from '@/lib/time'
+import { cn } from '@/lib/utils'
 
 const under = (p: string, prefix: string) => p === prefix || p.startsWith(prefix + '/')
 const moved = (p: string, from: string, to: string) => (under(p, from) ? to + p.slice(from.length) : p)
+const mod = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+'
 
-const statusText: Record<SaveStatus, string> = {
-  saved: 'All changes saved',
-  dirty: 'Unsaved changes',
-  saving: 'Saving…',
-  error: 'Save failed, retrying…',
+const saveState: Record<SaveStatus, { text: string; dot: string }> = {
+  saved: { text: 'Saved', dot: 'bg-success' },
+  dirty: { text: 'Unsaved changes', dot: 'bg-warning' },
+  saving: { text: 'Saving…', dot: 'bg-muted-foreground animate-pulse' },
+  error: { text: 'Save failed, retrying…', dot: 'bg-destructive' },
 }
+
+type Ask = { title: string; description?: string; value: string; action: string; onSubmit: (v: string) => Promise<void> }
+type Confirm = { title: string; description: string; action: string; onConfirm: () => Promise<void> }
 
 export default function Workspace({ id, status }: { id: string; status: ChatGPTStatus | null }) {
   const [project, setProject] = useState<Project | null>(null)
+  const [projects, setProjects] = useState<Project[]>([])
   const [files, setFiles] = useState<FileEntry[]>([])
   const [tabs, setTabs] = useState<string[]>([])
   const [active, setActive] = useState<string | undefined>()
   const [statuses, setStatuses] = useState<Record<string, SaveStatus>>({})
-  const [error, setError] = useState('')
   const [compiling, setCompiling] = useState(false)
   const [result, setResult] = useState<CompileResult | null>(null)
   const [compileError, setCompileError] = useState('')
   const [jump, setJump] = useState<{ path: string; line: number; n: number } | undefined>()
   const [pdfVersion, setPdfVersion] = useState(0)
   const [highlight, setHighlight] = useState<Highlight | undefined>()
-  const [syncMessage, setSyncMessage] = useState('')
   const [rightTab, setRightTab] = useState<'pdf' | 'assistant'>('pdf')
+  const [sideTab, setSideTab] = useState<'files' | 'chats'>('files')
   const [review, setReview] = useState<Turn | null>(null)
   const [turnUpdate, setTurnUpdate] = useState<Turn | undefined>()
   const [editorKey, setEditorKey] = useState(0) // bump to reload open files from disk
+  const [chats, setChats] = useState<Chat[]>([])
+  const [chatId, setChatId] = useState('')
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [ask, setAsk] = useState<Ask | null>(null)
+  const [askValue, setAskValue] = useState('')
+  const [confirm, setConfirm] = useState<Confirm | null>(null)
+  const sidebar = usePanelRef()
+  const [rightBar, setRightBar] = useState<HTMLDivElement | null>(null) // PDF/Assistant controls render here
+  const uploadInput = useRef<HTMLInputElement>(null)
 
   // Outside React state: content loaded from the server and live editor states per open file.
   const loaded = useRef(new Map<string, OpenedFile>())
@@ -50,13 +92,30 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
   const autosave = saver.current
 
   const loadFiles = useCallback(() => api<FileEntry[]>(`/api/projects/${id}/files`).then(setFiles), [id])
+  const loadChats = useCallback(
+    () =>
+      api<Chat[]>(`/api/projects/${id}/chats`)
+        .then((cs) => {
+          setChats(cs)
+          setChatId((cur) => cur || cs[0]?.id || '')
+        })
+        .catch(() => {}),
+    [id],
+  )
 
   useEffect(() => {
     api<Project>(`/api/projects/${id}`)
-      .then(setProject)
-      .catch((e) => setError(errorText(e)))
-    loadFiles().catch((e) => setError(errorText(e)))
-  }, [id, loadFiles])
+      .then((p) => {
+        setProject(p)
+        document.title = `${p.name} · Refract`
+      })
+      .catch((e) => toast.error(errorText(e)))
+    api<Project[]>('/api/projects')
+      .then(setProjects)
+      .catch(() => {})
+    loadFiles().catch((e) => toast.error(errorText(e)))
+    loadChats()
+  }, [id, loadFiles, loadChats])
 
   // Never lose edits on reload or close: flush and ask the browser to confirm.
   useEffect(() => {
@@ -100,25 +159,24 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
 
   // Forward sync: editor position → PDF.
   async function syncToPDF(path: string, line: number, col: number) {
-    setSyncMessage('')
     try {
       const { boxes } = await api<{ boxes: Omit<Highlight, 'n'>[] }>(
         `/api/projects/${id}/synctex/forward?file=${encodeURIComponent(path)}&line=${line}&col=${col}`,
       )
+      setRightTab('pdf')
       setHighlight((h) => ({ ...boxes[0], n: (h?.n ?? 0) + 1 }))
     } catch (e) {
-      setSyncMessage(errorText(e))
+      toast(errorText(e))
     }
   }
 
   // Inverse sync: PDF point → editor.
   async function syncToSource(page: number, x: number, y: number) {
-    setSyncMessage('')
     try {
       const r = await api<{ file: string; line: number }>(`/api/projects/${id}/synctex/inverse?page=${page}&x=${x}&y=${y}`)
       await jumpTo(r.file, r.line)
     } catch (e) {
-      setSyncMessage(errorText(e))
+      toast(errorText(e))
     }
   }
 
@@ -155,9 +213,11 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
     await autosave.flushAll()
     const res = await api<{ turn: Turn; conflicts: string[] | null }>(`/api/turns/${review.id}/accept`, { method: 'POST', body: { files } })
     if (res.conflicts?.length) return res.conflicts
-    await reloadFromDisk(files ?? review.files.map((f) => f.path))
+    const applied = files ?? review.files.map((f) => f.path)
+    await reloadFromDisk(applied)
     setTurnUpdate(res.turn)
     setReview(res.turn.status === 'review' ? res.turn : null)
+    toast.success(applied.length === 1 ? `Applied changes to ${applied[0]}` : `Applied changes to ${applied.length} files`)
     return null
   }
 
@@ -174,15 +234,17 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
   }
 
   async function setMainFile(path: string) {
-    await run(async () => setProject(await api<Project>(`/api/projects/${id}`, { method: 'PATCH', body: { main_file: path } })))
+    await run(async () => {
+      setProject(await api<Project>(`/api/projects/${id}`, { method: 'PATCH', body: { main_file: path } }))
+      toast.success(`Main file: ${path}`)
+    })
   }
 
   async function run(fn: () => Promise<unknown>) {
-    setError('')
     try {
       await fn()
     } catch (e) {
-      setError(errorText(e))
+      toast.error(errorText(e))
     }
   }
 
@@ -191,10 +253,11 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
       try {
         loaded.current.set(path, await readFile(id, path))
       } catch (e) {
-        setError(errorText(e))
+        toast.error(errorText(e))
         return
       }
     }
+    setReview(null)
     setTabs((t) => (t.includes(path) ? t : [...t, path]))
     setActive(path)
   }
@@ -215,161 +278,520 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
     forget([path])
   }
 
-  async function create(dir: string, kind: 'file' | 'folder') {
-    const path = prompt(kind === 'file' ? 'New file path' : 'New folder path', dir ? dir + '/' : '')?.trim()
-    if (!path || path.endsWith('/')) return
-    await run(async () => {
-      if (files.some((f) => f.path === path)) throw new Error(`${path} already exists`)
-      if (kind === 'file') await writeFile(id, path, '')
-      else await mkdir(id, path)
-      await loadFiles()
-      if (kind === 'file') await open(path)
+  function askFor(a: Ask) {
+    setAskValue(a.value)
+    setAsk(a)
+  }
+
+  function create(dir: string, kind: 'file' | 'folder') {
+    askFor({
+      title: kind === 'file' ? 'New file' : 'New folder',
+      description: 'Use slashes for subfolders, e.g. chapters/intro.tex',
+      value: dir ? dir + '/' : '',
+      action: 'Create',
+      onSubmit: async (path) => {
+        if (!path || path.endsWith('/')) throw new Error('Enter a name.')
+        if (files.some((f) => f.path === path)) throw new Error(`${path} already exists`)
+        if (kind === 'file') await writeFile(id, path, '')
+        else await mkdir(id, path)
+        await loadFiles()
+        if (kind === 'file') await open(path)
+      },
     })
   }
 
-  async function rename(from: string) {
-    const to = prompt('Rename or move to', from)?.trim()
-    if (!to || to === from) return
-    await run(async () => {
-      const affected = tabs.filter((p) => under(p, from))
-      await Promise.all(affected.map((p) => autosave.flush(p))) // save under the old name first
-      await move(id, from, to)
-      for (const p of affected) {
-        const q = moved(p, from, to)
-        autosave.rename(p, q)
-        for (const m of [loaded.current, states.current] as Map<string, unknown>[]) {
-          if (m.has(p)) {
-            m.set(q, m.get(p))
-            m.delete(p)
+  function rename(from: string) {
+    askFor({
+      title: 'Rename or move',
+      description: 'Change the path to move it to another folder.',
+      value: from,
+      action: 'Rename',
+      onSubmit: async (to) => {
+        if (!to || to === from) return
+        const affected = tabs.filter((p) => under(p, from))
+        await Promise.all(affected.map((p) => autosave.flush(p))) // save under the old name first
+        await move(id, from, to)
+        for (const p of affected) {
+          const q = moved(p, from, to)
+          autosave.rename(p, q)
+          for (const m of [loaded.current, states.current] as Map<string, unknown>[]) {
+            if (m.has(p)) {
+              m.set(q, m.get(p))
+              m.delete(p)
+            }
           }
         }
-      }
-      setTabs((t) => t.map((p) => moved(p, from, to)))
-      setActive((a) => (a ? moved(a, from, to) : a))
-      await loadFiles()
+        setTabs((t) => t.map((p) => moved(p, from, to)))
+        setActive((a) => (a ? moved(a, from, to) : a))
+        await loadFiles()
+      },
     })
   }
 
-  async function remove(path: string, dir: boolean) {
-    if (!confirm(dir ? `Delete the folder ${path} and everything in it?` : `Delete ${path}?`)) return
-    await run(async () => {
-      const affected = tabs.filter((p) => under(p, path))
-      affected.forEach((p) => autosave.drop(p))
-      await removeFile(id, path)
-      forget(affected)
-      await loadFiles()
+  function remove(path: string, dir: boolean) {
+    setConfirm({
+      title: `Delete ${path}?`,
+      description: dir ? 'The folder and everything in it will be deleted. It stays in the project history.' : 'It stays in the project history.',
+      action: 'Delete',
+      onConfirm: async () => {
+        const affected = tabs.filter((p) => under(p, path))
+        affected.forEach((p) => autosave.drop(p))
+        await removeFile(id, path)
+        forget(affected)
+        await loadFiles()
+      },
     })
   }
 
   async function upload(dir: string, list: File[]) {
-    await run(async () => {
+    const target = (f: File) => (dir ? `${dir}/${f.name}` : f.name)
+    const write = async () => {
       for (const f of list) {
-        const path = dir ? `${dir}/${f.name}` : f.name
-        if (files.some((e) => e.path === path) && !confirm(`Replace ${path}?`)) continue
-        autosave.drop(path)
-        forget([path])
-        await writeFile(id, path, f)
+        autosave.drop(target(f))
+        forget([target(f)])
+        await writeFile(id, target(f), f)
       }
       await loadFiles()
+      toast.success(list.length === 1 ? `Uploaded ${target(list[0])}` : `Uploaded ${list.length} files`)
+    }
+    const existing = list.filter((f) => files.some((e) => e.path === target(f)))
+    if (existing.length === 0) return run(write)
+    setConfirm({
+      title: existing.length === 1 ? `Replace ${target(existing[0])}?` : `Replace ${existing.length} files?`,
+      description: 'The current versions stay in the project history.',
+      action: 'Replace',
+      onConfirm: write,
     })
   }
 
+  function toggleSidebar() {
+    const p = sidebar.current
+    if (!p) return
+    if (p.isCollapsed()) p.expand()
+    else p.collapse()
+  }
+
   const current = active ? loaded.current.get(active) : undefined
+  const texFiles = files.filter((f) => !f.dir && f.path.toLowerCase().endsWith('.tex')).map((f) => f.path)
+  const saving = active ? saveState[statuses[active] ?? 'saved'] : null
 
   return (
-    <div className="layout">
-      <aside className="pane files">
-        <div className="pane-title">
-          <a href="/">Projects</a> / <strong>{project?.name ?? '…'}</strong>
-        </div>
-        <FileTree
-          files={files}
-          active={active}
-          dirty={(p) => autosave.isDirty(p)}
-          onOpen={open}
-          onNew={create}
-          onRename={rename}
-          onDelete={remove}
-          onUpload={upload}
-        />
-      </aside>
-      <main className="pane editor">
-        <div className="tabs" role="tablist">
-          {tabs.map((p) => (
-            <div key={p} className={'tab' + (p === active ? ' active' : '')} role="tab" aria-selected={p === active}>
-              <button className="tab-name" onClick={() => setActive(p)} onAuxClick={(e) => e.button === 1 && close(p)} title={p}>
-                {p.split('/').pop()}
-                {statuses[p] && statuses[p] !== 'saved' ? ' •' : ''}
-              </button>
-              <button className="tab-close" onClick={() => close(p)} aria-label={`Close ${p}`}>
-                ×
-              </button>
+    <div className="h-full p-2">
+      <ResizablePanelGroup orientation="horizontal">
+        <ResizablePanel
+          id="sidebar"
+          panelRef={sidebar}
+          defaultSize="248px"
+          minSize="190px"
+          maxSize="420px"
+          collapsible
+          collapsedSize={0}
+          onResize={(size) => setSidebarCollapsed(size.inPixels < 8)}
+        >
+          <aside className="flex h-full min-w-0 flex-col pr-1">
+            <div className="flex h-11 items-center gap-1 px-1">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="min-w-0 flex-1 justify-start gap-1.5 px-2">
+                    <span className="truncate font-semibold">{project?.name ?? '…'}</span>
+                    <ChevronDown className="opacity-50" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-64">
+                  <DropdownMenuItem asChild>
+                    <a href="/">
+                      <ChevronLeft /> All projects
+                    </a>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Recent</DropdownMenuLabel>
+                  {projects.slice(0, 8).map((p) => (
+                    <DropdownMenuItem key={p.id} asChild>
+                      <a href={`/p/${p.id}`}>
+                        <span className="truncate">{p.name}</span>
+                        {p.id === id && <Check className="ml-auto" />}
+                      </a>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon-sm" onClick={toggleSidebar} aria-label="Hide sidebar" className="text-muted-foreground">
+                    <PanelLeft />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Hide sidebar</TooltipContent>
+              </Tooltip>
             </div>
-          ))}
-        </div>
-        {error && <p className="error">{error}</p>}
-        <div className="editor-body">
-          {review && (
-            <Review turn={review} onAccept={acceptTurn} onReject={rejectTurn} onClose={() => setReview(null)} />
-          )}
-          {!review && active && current?.text && (
-            <Editor
-              key={editorKey}
-              path={active}
-              states={states.current}
-              initial={(p) => {
-                const f = loaded.current.get(p)
-                return f?.text ? f.content : ''
+
+            <div className="flex items-center gap-1 px-2 pt-1 pb-2">
+              <Segmented
+                value={sideTab}
+                onChange={(v) => setSideTab(v as 'files' | 'chats')}
+                options={[
+                  { value: 'files', label: 'Files' },
+                  { value: 'chats', label: 'Chats' },
+                ]}
+              />
+              <span className="flex-1" />
+              {sideTab === 'files' && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon-sm" aria-label="Add" className="text-muted-foreground">
+                      <Plus />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-44">
+                    <DropdownMenuItem onSelect={() => create('', 'file')}>
+                      <FileText /> New file
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => create('', 'folder')}>
+                      <FolderPlus /> New folder
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => uploadInput.current?.click()}>
+                      <Upload /> Upload files…
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+              <input
+                ref={uploadInput}
+                type="file"
+                multiple
+                hidden
+                onChange={(e) => {
+                  upload('', [...(e.target.files ?? [])])
+                  e.target.value = ''
+                }}
+              />
+            </div>
+
+            {sideTab === 'files' ? (
+              <FileTree
+                files={files}
+                active={review ? undefined : active}
+                dirty={(p) => autosave.isDirty(p)}
+                onOpen={open}
+                onNew={create}
+                onRename={rename}
+                onDelete={remove}
+                onUpload={upload}
+              />
+            ) : (
+              <div className="min-h-0 flex-1 overflow-auto px-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="mb-1 w-full justify-start text-muted-foreground"
+                  onClick={() => {
+                    setChatId('')
+                    setRightTab('assistant')
+                  }}
+                >
+                  <Plus /> New chat
+                </Button>
+                {chats.map((c) => (
+                  <button
+                    key={c.id}
+                    className={cn(
+                      'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors duration-100',
+                      c.id === chatId ? 'bg-foreground/[0.07]' : 'text-foreground/80 hover:bg-foreground/[0.04]',
+                    )}
+                    onClick={() => {
+                      setChatId(c.id)
+                      setRightTab('assistant')
+                    }}
+                  >
+                    <MessageSquare className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate">{c.title}</span>
+                    <span className="text-xs text-muted-foreground">{ago(c.updated_at)}</span>
+                  </button>
+                ))}
+                {chats.length === 0 && <p className="px-2 py-3 text-xs text-muted-foreground">No chats yet.</p>}
+              </div>
+            )}
+
+            <div className="pt-1">
+              <AccountMenu status={status} />
+            </div>
+          </aside>
+        </ResizablePanel>
+        <ResizableHandle className={cn('w-2 bg-transparent', sidebarCollapsed && 'w-0')} />
+
+        <ResizablePanel id="editor" minSize="320px">
+          <main className="flex h-full min-w-0 flex-col overflow-hidden rounded-xl border bg-card shadow-xs">
+            <div className="flex h-11 shrink-0 items-center gap-1.5 border-b px-2">
+              {sidebarCollapsed && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon-sm" onClick={toggleSidebar} aria-label="Show sidebar" className="text-muted-foreground">
+                      <PanelLeft />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Show sidebar</TooltipContent>
+                </Tooltip>
+              )}
+              <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none]" role="tablist">
+                {tabs.map((p) => {
+                  const on = p === active && !review
+                  const dirty = statuses[p] && statuses[p] !== 'saved'
+                  return (
+                    <div
+                      key={p}
+                      role="tab"
+                      aria-selected={on}
+                      className={cn(
+                        'group/tab flex h-7 shrink-0 items-center rounded-md border text-xs transition-colors duration-100',
+                        on ? 'border-border bg-background text-foreground shadow-xs' : 'border-transparent text-muted-foreground hover:bg-accent/60 hover:text-foreground',
+                      )}
+                    >
+                      <button
+                        className="flex items-center gap-1.5 py-1 pr-1 pl-2.5"
+                        onClick={() => {
+                          setReview(null)
+                          setActive(p)
+                        }}
+                        onAuxClick={(e) => e.button === 1 && close(p)}
+                        title={p}
+                      >
+                        <FileText className="size-3.5 opacity-70" />
+                        {p.split('/').pop()}
+                      </button>
+                      <button
+                        className="relative mr-1 flex size-4 items-center justify-center rounded-sm transition-colors duration-100 hover:bg-accent"
+                        onClick={() => close(p)}
+                        aria-label={`Close ${p}`}
+                      >
+                        {/* unsaved: a dot that turns into × on hover */}
+                        {dirty && <span className="absolute size-1.5 rounded-full bg-warning group-hover/tab:hidden" />}
+                        <X className={cn('size-3', dirty ? 'hidden group-hover/tab:block' : 'opacity-0 group-hover/tab:opacity-100', on && !dirty && 'opacity-60')} />
+                      </button>
+                    </div>
+                  )
+                })}
+                {review && (
+                  <div className="flex h-7 shrink-0 items-center gap-1.5 rounded-md border bg-background px-2.5 text-xs shadow-xs">
+                    <Check className="size-3.5" /> Review
+                  </div>
+                )}
+              </div>
+              <div className="flex shrink-0 items-center">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button size="sm" className="rounded-r-none" onClick={compile} disabled={compiling || !project?.main_file}>
+                      {compiling ? <Loader2 className="animate-spin" /> : <Play className="fill-current" />}
+                      Compile
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Compile <kbd className="ml-1 opacity-70">{mod}↵</kbd>
+                  </TooltipContent>
+                </Tooltip>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="icon-sm" className="rounded-l-none border-l border-primary-foreground/20" aria-label="Compile options">
+                      <ChevronDown />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="max-h-80 w-64">
+                    <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Main file</DropdownMenuLabel>
+                    {texFiles.map((f) => (
+                      <DropdownMenuItem key={f} onSelect={() => setMainFile(f)}>
+                        <span className="truncate font-mono text-xs">{f}</span>
+                        <Check className={cn('ml-auto', project?.main_file !== f && 'invisible')} />
+                      </DropdownMenuItem>
+                    ))}
+                    {texFiles.length === 0 && <p className="px-2 py-1.5 text-xs text-muted-foreground">No .tex files yet.</p>}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+
+            <div className="relative min-h-0 flex-1">
+              {review && <Review turn={review} onAccept={acceptTurn} onReject={rejectTurn} onClose={() => setReview(null)} />}
+              {!review && active && current?.text && (
+                <Editor
+                  key={editorKey}
+                  path={active}
+                  states={states.current}
+                  initial={(p) => {
+                    const f = loaded.current.get(p)
+                    return f?.text ? f.content : ''
+                  }}
+                  onChange={(p, c) => autosave.change(p, c)}
+                  onSave={() => active && autosave.flush(active)}
+                  onCompile={compile}
+                  onSync={syncToPDF}
+                  jump={jump}
+                />
+              )}
+              {!review && active && current && !current.text && <BinaryView file={current} path={active} />}
+              {!review && !active && <EmptyEditor />}
+            </div>
+
+            {!review && saving && current?.text && (
+              <div className="flex h-7 shrink-0 items-center gap-1.5 border-t px-3 text-xs text-muted-foreground">
+                <span className={cn('size-1.5 rounded-full', saving.dot)} />
+                {saving.text}
+                <span className="flex-1" />
+                <span className="hidden sm:inline">
+                  {mod}J sync to PDF · {mod}↵ compile
+                </span>
+              </div>
+            )}
+          </main>
+        </ResizablePanel>
+        <ResizableHandle className="w-2 bg-transparent" />
+
+        <ResizablePanel id="right" defaultSize="42%" minSize="320px">
+          <section className="flex h-full min-w-0 flex-col overflow-hidden rounded-xl border bg-card shadow-xs">
+            <div className="flex h-11 shrink-0 items-center gap-1 border-b px-2">
+              <Segmented
+                value={rightTab}
+                onChange={(v) => setRightTab(v as 'pdf' | 'assistant')}
+                options={[
+                  { value: 'pdf', label: 'PDF' },
+                  { value: 'assistant', label: 'Assistant' },
+                ]}
+              />
+              <div ref={setRightBar} className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden" />
+            </div>
+            <div className={cn('min-h-0 flex-1 flex-col', rightTab === 'assistant' ? 'flex' : 'hidden')}>
+              <Assistant
+                projectId={id}
+                status={status}
+                chats={chats}
+                chatId={chatId}
+                onChatId={setChatId}
+                onChatsChanged={loadChats}
+                getContext={editorContext}
+                beforeSend={() => autosave.flushAll()}
+                onReview={setReview}
+                reviewing={review?.id}
+                turnUpdate={turnUpdate}
+                toolbarTarget={rightTab === 'assistant' ? rightBar : null}
+              />
+            </div>
+            <div className={cn('min-h-0 flex-1 flex-col', rightTab === 'pdf' ? 'flex' : 'hidden')}>
+              <PdfViewer
+                projectId={id}
+                version={pdfVersion}
+                highlight={highlight}
+                onInverse={syncToSource}
+                toolbar={<CompileStatus projectId={id} compiling={compiling} result={result} error={compileError} onJump={jumpTo} />}
+                toolbarTarget={rightTab === 'pdf' ? rightBar : null}
+              />
+            </div>
+          </section>
+        </ResizablePanel>
+      </ResizablePanelGroup>
+
+      <Dialog open={!!ask} onOpenChange={(o) => !o && setAsk(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{ask?.title}</DialogTitle>
+            {ask?.description && <DialogDescription>{ask.description}</DialogDescription>}
+          </DialogHeader>
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault()
+              if (!ask) return
+              try {
+                await ask.onSubmit(askValue.trim())
+                setAsk(null)
+              } catch (err) {
+                toast.error(errorText(err))
+              }
+            }}
+          >
+            <Input autoFocus value={askValue} onChange={(e) => setAskValue(e.target.value)} className="font-mono text-sm" aria-label={ask?.title} />
+            <DialogFooter className="mt-4">
+              <Button type="button" variant="ghost" onClick={() => setAsk(null)}>
+                Cancel
+              </Button>
+              <Button type="submit">{ask?.action}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!confirm} onOpenChange={(o) => !o && setConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirm?.title}</AlertDialogTitle>
+            <AlertDialogDescription>{confirm?.description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant={confirm?.action === 'Delete' ? 'destructive' : 'default'}
+              onClick={() => {
+                const c = confirm
+                setConfirm(null)
+                if (c) run(c.onConfirm)
               }}
-              onChange={(p, c) => autosave.change(p, c)}
-              onSave={() => active && autosave.flush(active)}
-              onCompile={compile}
-              onSync={syncToPDF}
-              jump={jump}
-            />
-          )}
-          {!review && active && current && !current.text && <BinaryView file={current} path={active} />}
-          {!review && !active && <p className="hint empty">Open a file from the tree.</p>}
-        </div>
-        {!review && active && current?.text && <div className="status hint">{statusText[statuses[active] ?? 'saved']}</div>}
-      </main>
-      <section className="pane preview">
-        <div className="right-tabs" role="tablist">
-          <button role="tab" aria-selected={rightTab === 'pdf'} className={rightTab === 'pdf' ? 'active' : ''} onClick={() => setRightTab('pdf')}>
-            PDF
-          </button>
-          <button role="tab" aria-selected={rightTab === 'assistant'} className={rightTab === 'assistant' ? 'active' : ''} onClick={() => setRightTab('assistant')}>
-            Assistant
-          </button>
-        </div>
-        <div className="right-body" hidden={rightTab !== 'assistant'}>
-          <Assistant
-            projectId={id}
-            status={status}
-            getContext={editorContext}
-            beforeSend={() => autosave.flushAll()}
-            onReview={setReview}
-            reviewing={review?.id}
-            turnUpdate={turnUpdate}
-          />
-        </div>
-        <div className="right-body" hidden={rightTab !== 'pdf'}>
-        {project && (
-          <CompilePanel
-            project={project}
-            texFiles={files.filter((f) => !f.dir && f.path.toLowerCase().endsWith('.tex')).map((f) => f.path)}
-            compiling={compiling}
-            result={result}
-            error={compileError}
-            onCompile={compile}
-            onMainFile={setMainFile}
-            onJump={jumpTo}
-          />
-        )}
-        {syncMessage && <p className="error sync-message">{syncMessage}</p>}
-        <PdfViewer projectId={id} version={pdfVersion} highlight={highlight} onInverse={syncToSource} />
-        </div>
-      </section>
+            >
+              {confirm?.action}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  )
+}
+
+// Two-option switch with a sliding thumb (transform only: cheap and interruptible).
+function Segmented({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
+  const index = Math.max(
+    0,
+    options.findIndex((o) => o.value === value),
+  )
+  return (
+    <div className="relative grid shrink-0 grid-cols-2 rounded-lg bg-foreground/[0.06] p-0.5 text-xs" role="tablist">
+      <span
+        className="absolute inset-y-0.5 left-0.5 w-[calc(50%-2px)] rounded-md bg-background shadow-xs transition-transform duration-200 ease-out"
+        style={{ transform: `translateX(${index * 100}%)` }}
+        aria-hidden
+      />
+      {options.map((o) => (
+        <button
+          key={o.value}
+          role="tab"
+          aria-selected={o.value === value}
+          className={cn('relative px-3 py-1 font-medium transition-colors duration-150', o.value === value ? 'text-foreground' : 'text-muted-foreground hover:text-foreground')}
+          onClick={() => onChange(o.value)}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function EmptyEditor() {
+  const rows: [string, string][] = [
+    [`${mod}↵`, 'Compile'],
+    [`${mod}J`, 'Show the cursor position in the PDF'],
+    [`${mod}+click`, 'In the PDF: jump to the source'],
+    [`${mod}S`, 'Save now (it also saves on its own)'],
+  ]
+  return (
+    <div className="enter flex h-full flex-col items-center justify-center gap-5 text-center">
+      <div>
+        <p className="text-sm font-medium">Open a file from the sidebar</p>
+        <p className="mt-1 text-sm text-muted-foreground">Edits save automatically.</p>
+      </div>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-left text-xs">
+        {rows.map(([k, v]) => (
+          <div key={k} className="contents">
+            <dt>
+              <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">{k}</kbd>
+            </dt>
+            <dd className="text-muted-foreground">{v}</dd>
+          </div>
+        ))}
+      </dl>
     </div>
   )
 }
@@ -382,13 +804,17 @@ function BinaryView({ file, path }: { file: Extract<OpenedFile, { text: false }>
     return () => URL.revokeObjectURL(u)
   }, [file])
   if (file.type.startsWith('image/')) {
-    return <div className="binary">{url && <img src={url} alt={path} />}</div>
+    return (
+      <div className="flex h-full items-center justify-center overflow-auto bg-[conic-gradient(var(--muted)_25%,transparent_0_50%,var(--muted)_0_75%,transparent_0)] bg-[length:16px_16px] p-6">
+        {url && <img src={url} alt={path} className="enter max-h-full max-w-full rounded shadow-md" />}
+      </div>
+    )
   }
   return (
-    <div className="binary hint">
-      <p>{path}</p>
+    <div className="flex h-full flex-col items-center justify-center gap-1 text-sm text-muted-foreground">
+      <p className="font-mono text-foreground">{path}</p>
       <p>
-        {file.type || 'binary file'} · {(file.size / 1024).toFixed(1)} KB · read-only
+        {file.type || 'Binary file'} · {(file.size / 1024).toFixed(1)} KB · read-only
       </p>
     </div>
   )

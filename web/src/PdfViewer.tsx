@@ -1,4 +1,9 @@
-import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Maximize2, Minus, Plus } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { cn } from '@/lib/utils'
 import * as pdfjs from 'pdfjs-dist'
 import type { PDFDocumentLoadingTask, PDFDocumentProxy } from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
@@ -12,13 +17,16 @@ type Props = {
   version: number // bump to reload the PDF after a compile
   highlight?: Highlight
   onInverse: (page: number, x: number, y: number) => void
+  toolbar?: ReactNode // left side of the toolbar (compile status)
+  actions?: ReactNode // right side, after zoom
+  toolbarTarget?: HTMLElement | null // render the toolbar there (shared header row) instead of its own row
 }
 
 type Size = { w: number; h: number } // page size in PDF points
 
 // Continuous-scroll viewer. Pages are laid out at their final size up front
 // (so scroll position survives a reload) and rendered when they come into view.
-export default function PdfViewer({ projectId, version, highlight, onInverse }: Props) {
+export default function PdfViewer({ projectId, version, highlight, onInverse, toolbar, actions, toolbarTarget }: Props) {
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null)
   const [sizes, setSizes] = useState<Size[]>([])
   const [scale, setScale] = useState<number | 'fit'>('fit')
@@ -131,51 +139,79 @@ export default function PdfViewer({ projectId, version, highlight, onInverse }: 
     if (p && scroller.current) scroller.current.scrollTop = p.offsetTop - 8
   }
 
+  const zoomLabel = scale === 'fit' ? 'Fit' : `${Math.round(s * 100)}%`
+  const bar = (
+    <>
+        {toolbar}
+        <span className="flex-1" />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" className="gap-1 font-normal tabular-nums" disabled={!doc}>
+              <Maximize2 /> {zoomLabel} <ChevronDown className="opacity-60" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-40">
+            <DropdownMenuItem onSelect={() => zoom('fit')}>
+              Zoom to fit <Check className={cn('ml-auto', scale !== 'fit' && 'invisible')} />
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            {[0.5, 0.75, 1, 1.25, 1.5, 2].map((z) => (
+              <DropdownMenuItem key={z} onSelect={() => zoom(z)}>
+                {z * 100}% <Check className={cn('ml-auto', scale !== z && 'invisible')} />
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        {actions}
+    </>
+  )
   return (
-    <div className="pdf">
-      <div className="pdf-bar">
-        <button onClick={() => goTo(current - 1)} disabled={current <= 1} aria-label="Previous page">
-          ‹
-        </button>
-        <input
-          className="pdf-page"
-          aria-label="Page"
-          value={current}
-          onChange={(e) => {
-            const n = Number(e.target.value)
-            if (n >= 1 && n <= sizes.length) goTo(n)
-          }}
-        />
-        <span className="hint">/ {sizes.length}</span>
-        <button onClick={() => goTo(current + 1)} disabled={current >= sizes.length} aria-label="Next page">
-          ›
-        </button>
-        <span className="spacer" />
-        <button onClick={() => zoom(Math.max(0.25, s / 1.2))} aria-label="Zoom out">
-          −
-        </button>
-        <span className="hint">{Math.round(s * 100)}%</span>
-        <button onClick={() => zoom(Math.min(5, s * 1.2))} aria-label="Zoom in">
-          +
-        </button>
-        <button onClick={() => zoom('fit')} disabled={scale === 'fit'}>
-          Fit
-        </button>
-      </div>
-      <div className="pdf-scroll" ref={scroller} onScroll={onScroll}>
-        {message && <p className="hint pdf-message">{message}</p>}
-        {doc &&
-          sizes.map((size, i) => (
-            <Page
-              key={i}
-              doc={doc}
-              n={i + 1}
-              size={size}
-              scale={s}
-              highlight={highlight?.page === i + 1 ? highlight : undefined}
-              onInverse={onInverse}
+    <div className="flex min-h-0 flex-1 flex-col">
+      {toolbarTarget ? createPortal(<>{bar}</>, toolbarTarget) : <div className="flex h-11 shrink-0 items-center gap-1 border-b px-2">{bar}</div>}
+      <div className="relative min-h-0 flex-1">
+        <div className="absolute inset-0 overflow-auto bg-pdf p-4" ref={scroller} onScroll={onScroll}>
+          {message && <p className="enter mt-24 text-center text-sm text-muted-foreground">{message}</p>}
+          {doc &&
+            sizes.map((size, i) => (
+              <Page
+                key={i}
+                doc={doc}
+                n={i + 1}
+                size={size}
+                scale={s}
+                highlight={highlight?.page === i + 1 ? highlight : undefined}
+                onInverse={onInverse}
+              />
+            ))}
+        </div>
+        {doc && sizes.length > 0 && (
+          // Floating pager: page navigation without leaving the document.
+          <div className="enter absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center whitespace-nowrap gap-0.5 rounded-full border bg-popover/90 p-1 text-sm shadow-lg backdrop-blur">
+            <Button variant="ghost" size="icon-sm" className="rounded-full" onClick={() => goTo(current - 1)} disabled={current <= 1} aria-label="Previous page">
+              <ChevronLeft />
+            </Button>
+            <input
+              className="w-8 rounded-md bg-transparent text-center tabular-nums outline-none focus-visible:bg-accent"
+              aria-label="Page"
+              value={current}
+              onChange={(e) => {
+                const n = Number(e.target.value)
+                if (n >= 1 && n <= sizes.length) goTo(n)
+              }}
             />
-          ))}
+            <span className="pr-1 whitespace-nowrap text-muted-foreground tabular-nums">/ {sizes.length}</span>
+            <Button variant="ghost" size="icon-sm" className="rounded-full" onClick={() => goTo(current + 1)} disabled={current >= sizes.length} aria-label="Next page">
+              <ChevronRight />
+            </Button>
+            <span className="mx-0.5 h-4 w-px bg-border" />
+            <Button variant="ghost" size="icon-sm" className="rounded-full" onClick={() => zoom(Math.max(0.25, s / 1.2))} aria-label="Zoom out">
+              <Minus />
+            </Button>
+            <Button variant="ghost" size="icon-sm" className="rounded-full" onClick={() => zoom(Math.min(5, s * 1.2))} aria-label="Zoom in">
+              <Plus />
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -234,8 +270,15 @@ function Page({ doc, n, size, scale, highlight, onInverse }: { doc: PDFDocumentP
   }
 
   return (
-    <div className="pdf-page-box" data-page={n} ref={box} style={{ width: size.w * scale, height: size.h * scale }} onClick={onClick} title="Cmd/Ctrl+click: go to source">
-      <canvas ref={canvas} style={{ width: '100%', height: '100%' }} />
+    <div
+      className="relative mx-auto mb-4 bg-white shadow-[0_1px_3px_rgb(0_0_0/0.12),0_0_0_1px_rgb(0_0_0/0.04)]"
+      data-page={n}
+      ref={box}
+      style={{ width: size.w * scale, height: size.h * scale }}
+      onClick={onClick}
+      title="Cmd/Ctrl+click: go to source"
+    >
+      <canvas ref={canvas} className="block size-full" />
       {flash && (
         <div
           className="sync-highlight"

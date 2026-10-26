@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, describe, stream, type ChatGPTStatus } from './api'
 import PlanBadge from './PlanBadge'
+import { Button } from '@/components/ui/button'
 
 type Model = { slug: string; display_name: string }
 
@@ -56,15 +57,15 @@ export default function Dev({ status, refresh }: { status: ChatGPTStatus | null;
   }
 
   return (
-    <div className="page">
-      <h1>SIWC spike</h1>
+    <div className="mx-auto max-w-3xl space-y-4 p-6">
+      <h1 className="text-xl font-semibold">SIWC spike</h1>
       <p>
-        {status?.status.signed_in ? `Signed in as ${status.status.email}` : 'Not signed in.'} <a href="/settings">Settings</a>
+        {status?.status.signed_in ? `Signed in as ${status.status.email}` : 'Not signed in.'} <a className="underline" href="/settings">Settings</a>
       </p>
-      <div className="composer">
-        <textarea rows={3} value={prompt} onChange={(e) => setPrompt(e.target.value)} />
-        <div className="row">
-          <select value={model} onChange={(e) => setModel(e.target.value)} aria-label="Model">
+      <div className="space-y-2 rounded-xl border bg-card p-3">
+        <textarea className="w-full resize-none rounded-md border bg-background p-2 text-sm" rows={3} value={prompt} onChange={(e) => setPrompt(e.target.value)} />
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <select className="rounded-md border bg-background px-2 py-1" value={model} onChange={(e) => setModel(e.target.value)} aria-label="Model">
             {models.map((m) => (
               <option key={m.slug} value={m.slug}>
                 {m.display_name || m.slug}
@@ -76,21 +77,21 @@ export default function Dev({ status, refresh }: { status: ChatGPTStatus | null;
             <input type="checkbox" checked={tools} onChange={(e) => setTools(e.target.checked)} /> function tool
           </label>
           {status?.status.plan_granted && <PlanBadge manageUsage={status.manage_usage} />}
-          <span className="spacer" />
-          <button onClick={expire} disabled={running}>
+          <span className="flex-1" />
+          <Button variant="secondary" size="sm" onClick={expire} disabled={running}>
             Expire token
-          </button>
+          </Button>
           {running ? (
-            <button onClick={() => abort.current?.abort()}>Stop</button>
+            <Button size="sm" variant="secondary" onClick={() => abort.current?.abort()}>Stop</Button>
           ) : (
-            <button onClick={send} disabled={!prompt || !model}>
+            <Button size="sm" onClick={send} disabled={!prompt || !model}>
               Send
-            </button>
+            </Button>
           )}
         </div>
       </div>
-      {text && <pre className="output">{text}</pre>}
-      {log.length > 0 && <pre className="log">{log.join('\n')}</pre>}
+      {text && <pre className="rounded-xl border bg-card p-3 text-sm whitespace-pre-wrap">{text}</pre>}
+      {log.length > 0 && <pre className="rounded-xl border bg-muted p-3 text-xs whitespace-pre-wrap text-muted-foreground">{log.join('\n')}</pre>}
     </div>
   )
 }

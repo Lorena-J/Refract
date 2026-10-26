@@ -29,6 +29,7 @@ var (
 		"something bad happened inside XeTeX",
 		"the XeTeX engine had an unrecoverable error",
 		"warnings were issued by the TeX engine",
+		"errors were issued by the TeX engine", // -Z continue-on-errors summary
 		"halted on potentially-recoverable error",
 	}
 	reUndefined = regexp.MustCompile("(?:LaTeX|Package \\w+) Warning: (Reference|Citation) `([^']+)' on page \\S+ undefined on input line (\\d+)")

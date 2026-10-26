@@ -10,14 +10,14 @@ test('open project, edit, compile, see the PDF', async ({ page, request }) => {
   expect((await request.patch(`/api/projects/${project.id}`, { headers: api, data: { main_file: 'main.tex' } })).ok()).toBeTruthy()
 
   await page.goto(`/p/${project.id}`)
-  await page.getByRole('button', { name: 'main.tex' }).click()
+  await page.getByRole('button', { name: 'main.tex' }).first().click()
   const editor = page.locator('.cm-content')
   await editor.click()
   await page.keyboard.press('ControlOrMeta+End')
   await page.keyboard.type('% edited in the browser\n')
   await page.keyboard.press('ControlOrMeta+Enter') // saves, then compiles
 
-  await expect(page.locator('.compile-bar .hint')).toHaveText(/Compiled in/, { timeout: 90_000 })
+  await expect(page.getByRole('button', { name: 'Compile status and problems' })).toContainText(/Compiled/, { timeout: 90_000 })
   const canvas = page.locator('[data-page="1"] canvas')
   await expect.poll(() => canvas.evaluate((c: HTMLCanvasElement) => c.width)).toBeGreaterThan(0)
 

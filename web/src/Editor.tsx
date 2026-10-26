@@ -2,17 +2,7 @@ import { useEffect, useRef } from 'react'
 import { basicSetup } from 'codemirror'
 import { EditorSelection, EditorState, Prec } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
-import { StreamLanguage } from '@codemirror/language'
-import { stex } from '@codemirror/legacy-modes/mode/stex'
-
-const theme = EditorView.theme({
-  '&': { height: '100%', backgroundColor: 'var(--bg)', color: 'var(--fg)' },
-  '.cm-scroller': { fontFamily: 'ui-monospace, monospace', lineHeight: '1.5' },
-  '.cm-gutters': { backgroundColor: 'var(--bg)', color: 'var(--muted)', borderRight: '1px solid var(--border)' },
-  '.cm-activeLine, .cm-activeLineGutter': { backgroundColor: 'var(--active-line)' },
-  '&.cm-focused .cm-cursor': { borderLeftColor: 'var(--fg)' },
-  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': { backgroundColor: 'var(--selection)' },
-})
+import { latex } from '@/lib/editor'
 
 type Props = {
   path: string
@@ -37,9 +27,7 @@ export default function Editor({ path, states, initial, onChange, onSave, onComp
 
   const extensions = useRef([
     basicSetup,
-    StreamLanguage.define(stex),
-    EditorView.lineWrapping,
-    theme,
+    latex,
     // Highest precedence: basicSetup binds Mod-Enter to "insert blank line".
     Prec.highest(
       keymap.of([
@@ -105,5 +93,5 @@ export default function Editor({ path, states, initial, onChange, onSave, onComp
     v.focus()
   }, [jump, path])
 
-  return <div className="editor-host" ref={host} />
+  return <div className="h-full" ref={host} />
 }
