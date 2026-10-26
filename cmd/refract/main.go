@@ -15,15 +15,15 @@ import (
 	"syscall"
 	"time"
 
-	"refract/internal/agent"
-	"refract/internal/ai"
-	"refract/internal/assistant"
-	"refract/internal/auth"
-	"refract/internal/compile"
-	"refract/internal/projects"
-	"refract/internal/siwc"
-	"refract/internal/store"
-	"refract/web"
+	"github.com/ponytojas/Refract/internal/agent"
+	"github.com/ponytojas/Refract/internal/ai"
+	"github.com/ponytojas/Refract/internal/assistant"
+	"github.com/ponytojas/Refract/internal/auth"
+	"github.com/ponytojas/Refract/internal/compile"
+	"github.com/ponytojas/Refract/internal/projects"
+	"github.com/ponytojas/Refract/internal/siwc"
+	"github.com/ponytojas/Refract/internal/store"
+	"github.com/ponytojas/Refract/web"
 )
 
 func main() {

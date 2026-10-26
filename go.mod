@@ -1,4 +1,4 @@
-module refract
+module github.com/ponytojas/Refract
 
 go 1.27.3
 

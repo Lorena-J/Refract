@@ -17,9 +17,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"refract/internal/agent"
-	"refract/internal/ai"
-	"refract/internal/projects"
+	"github.com/ponytojas/Refract/internal/agent"
+	"github.com/ponytojas/Refract/internal/ai"
+	"github.com/ponytojas/Refract/internal/projects"
 )
 
 var (

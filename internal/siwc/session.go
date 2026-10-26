@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"refract/internal/store"
+	"github.com/ponytojas/Refract/internal/store"
 )
 
 // ErrNotSignedIn means there are no usable credentials: run `refract login` and import them.

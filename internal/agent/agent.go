@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"refract/internal/ai"
-	"refract/internal/compile"
+	"github.com/ponytojas/Refract/internal/ai"
+	"github.com/ponytojas/Refract/internal/compile"
 )
 
 // Agent runs one assistant turn.

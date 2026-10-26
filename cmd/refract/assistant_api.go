@@ -7,10 +7,10 @@ import (
 	"log/slog"
 	"net/http"
 
-	"refract/internal/agent"
-	"refract/internal/ai"
-	"refract/internal/assistant"
-	"refract/internal/projects"
+	"github.com/ponytojas/Refract/internal/agent"
+	"github.com/ponytojas/Refract/internal/ai"
+	"github.com/ponytojas/Refract/internal/assistant"
+	"github.com/ponytojas/Refract/internal/projects"
 )
 
 type assistantAPI struct {

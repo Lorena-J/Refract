@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"refract/internal/store"
+	"github.com/ponytojas/Refract/internal/store"
 )
 
 type entry struct {

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"sync"
 
-	"refract/internal/siwc"
+	"github.com/ponytojas/Refract/internal/siwc"
 )
 
 // TokenSource is what the SIWC provider needs from siwc.Session.

@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	"refract/internal/compile"
-	"refract/internal/projects"
+	"github.com/ponytojas/Refract/internal/compile"
+	"github.com/ponytojas/Refract/internal/projects"
 )
 
 type compileAPI struct {

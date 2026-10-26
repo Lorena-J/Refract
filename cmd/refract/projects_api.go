@@ -13,7 +13,7 @@ import (
 	"os"
 	"strings"
 
-	"refract/internal/projects"
+	"github.com/ponytojas/Refract/internal/projects"
 )
 
 type projectsAPI struct {

@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"refract/internal/ai"
-	"refract/internal/compile"
+	"github.com/ponytojas/Refract/internal/ai"
+	"github.com/ponytojas/Refract/internal/compile"
 )
 
 // fakeProvider replays scripted model responses, one per Stream call, and

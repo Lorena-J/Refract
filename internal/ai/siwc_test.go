@@ -9,7 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"refract/internal/siwc"
+	"github.com/ponytojas/Refract/internal/siwc"
 )
 
 type fakeTokens struct {

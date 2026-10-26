@@ -21,7 +21,7 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	jose "github.com/go-jose/go-jose/v4"
 
-	"refract/internal/store"
+	"github.com/ponytojas/Refract/internal/store"
 )
 
 const testClient = "oaiapp_test"

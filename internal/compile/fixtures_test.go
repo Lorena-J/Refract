@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"refract/internal/projects"
-	"refract/internal/store"
+	"github.com/ponytojas/Refract/internal/projects"
+	"github.com/ponytojas/Refract/internal/store"
 )
 
 // TestFixtures compiles every private Prism export in fixtures/ (gitignored).

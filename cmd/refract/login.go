@@ -14,7 +14,7 @@ import (
 	"runtime"
 	"strings"
 
-	"refract/internal/siwc"
+	"github.com/ponytojas/Refract/internal/siwc"
 )
 
 // runLogin is `refract login`: sign in with ChatGPT on this machine (the

@@ -14,11 +14,11 @@ import (
 	"testing"
 	"time"
 
-	"refract/internal/agent"
-	"refract/internal/ai"
-	"refract/internal/compile"
-	"refract/internal/projects"
-	"refract/internal/store"
+	"github.com/ponytojas/Refract/internal/agent"
+	"github.com/ponytojas/Refract/internal/ai"
+	"github.com/ponytojas/Refract/internal/compile"
+	"github.com/ponytojas/Refract/internal/projects"
+	"github.com/ponytojas/Refract/internal/store"
 )
 
 // fakeProvider replays one scripted response per model call. before, if set,

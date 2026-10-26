@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"time"
 
-	"refract/internal/ai"
-	"refract/internal/siwc"
+	"github.com/ponytojas/Refract/internal/ai"
+	"github.com/ponytojas/Refract/internal/siwc"
 )
 
 type api struct {
