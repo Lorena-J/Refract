@@ -1,7 +1,7 @@
 // Package siwc implements Sign in with ChatGPT (open-source plan usage flow):
 // local loopback login, credential import on the server, rotating refresh and
 // sign-out. Endpoints and rules follow
-// https://developers.openai.com/siwc/token-sharing-open-source (see IMPLEMENTATION.md).
+// https://developers.openai.com/siwc/token-sharing-open-source.
 package siwc
 
 import (
