@@ -16,7 +16,7 @@ import (
 )
 
 // fakeProvider replays scripted model responses, one per Stream call, and
-// records the requests. No real AI calls in tests (PLAN.md §8).
+// records the requests. No real AI calls in tests.
 type fakeProvider struct {
 	script   [][]ai.Event
 	requests []ai.Request

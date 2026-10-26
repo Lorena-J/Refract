@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 const doc = '\\documentclass{article}\n\\begin{document}\nHello from the smoke test.\n\\end{document}\n'
 const api = { 'X-Refract': '1' }
 
-// PLAN.md §8: open project → edit → compile → see PDF.
+// Open project → edit → compile → see PDF.
 test('open project, edit, compile, see the PDF', async ({ page, request }) => {
   const project = await (await request.post('/api/projects', { headers: api, data: { name: 'Smoke' } })).json()
   expect((await request.put(`/api/projects/${project.id}/file?path=main.tex`, { headers: api, data: doc })).ok()).toBeTruthy()

@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-// Limits caps an import (PLAN.md §5). A field, not config: tests shrink it.
+// Limits caps an import. A field, not config: tests shrink it.
 type Limits struct {
 	MaxBytes int64 // total uncompressed size
 	MaxFiles int

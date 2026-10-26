@@ -61,7 +61,7 @@ export type ChatGPTStatus = {
   default_model: string
 }
 
-// User-facing text per error kind (PLAN.md §4.4).
+// User-facing text per error kind.
 export function describe(e: ApiError): string {
   switch (e.kind) {
     case 'not_signed_in':

@@ -18,7 +18,7 @@ type Agent struct {
 	Compiler      compile.Compiler
 	Model         string
 	Effort        string // reasoning effort; empty: the model's default
-	MaxIterations int           // model calls per turn (PLAN.md §4.6: default 25)
+	MaxIterations int           // model calls per turn (default 25)
 	Timeout       time.Duration // whole turn
 }
 

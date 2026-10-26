@@ -93,7 +93,7 @@ type Status struct {
 	LimitReached bool   `json:"limit_reached"`
 }
 
-// ErrorKind is what the UI needs to tell the user (PLAN.md §4.4).
+// ErrorKind is what the UI needs to tell the user.
 type ErrorKind string
 
 const (

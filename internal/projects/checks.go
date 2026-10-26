@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// Warning is a non-blocking portability problem (PLAN.md §4.2).
+// Warning is a non-blocking portability problem.
 type Warning struct {
 	File    string `json:"file"`
 	Line    int    `json:"line"`

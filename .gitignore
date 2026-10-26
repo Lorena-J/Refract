@@ -9,3 +9,6 @@ web/dist/*
 /refract
 web/test-results/
 web/playwright-report/
+
+# Private planning notes
+PLAN.md
