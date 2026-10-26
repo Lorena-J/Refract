@@ -1,0 +1,96 @@
+// Command refract serves the Refract API and the embedded web UI.
+package main
+
+import (
+	"cmp"
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"syscall"
+	"time"
+
+	"refract/internal/auth"
+	"refract/internal/store"
+	"refract/web"
+)
+
+func main() {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+	if err := run(); err != nil {
+		slog.Error("fatal", "err", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	dataDir := cmp.Or(os.Getenv("REFRACT_DATA_DIR"), "/data")
+	addr := cmp.Or(os.Getenv("REFRACT_ADDR"), ":8080")
+
+	guard, err := authMiddleware(ctx)
+	if err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+		return err
+	}
+	db, err := store.Open(filepath.Join(dataDir, "refract.db"))
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	app := http.NewServeMux()
+	app.Handle("/", web.Handler())
+
+	mux := http.NewServeMux()
+	// Outside auth: the container platform's health check hits the origin directly.
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		if err := db.PingContext(r.Context()); err != nil {
+			http.Error(w, "db unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.Write([]byte("ok"))
+	})
+	mux.Handle("/", guard(auth.RequireCSRFHeader(app)))
+
+	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		srv.Shutdown(shutdownCtx)
+	}()
+
+	slog.Info("listening", "addr", addr, "data_dir", dataDir)
+	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
+}
+
+// authMiddleware picks the web UI guard from REFRACT_AUTH. It fails closed:
+// running without auth must be requested explicitly.
+func authMiddleware(ctx context.Context) (func(http.Handler) http.Handler, error) {
+	switch mode := cmp.Or(os.Getenv("REFRACT_AUTH"), "cloudflare"); mode {
+	case "cloudflare":
+		team, aud := os.Getenv("REFRACT_CF_TEAM_DOMAIN"), os.Getenv("REFRACT_CF_AUD")
+		if team == "" || aud == "" {
+			return nil, errors.New("REFRACT_AUTH=cloudflare needs REFRACT_CF_TEAM_DOMAIN and REFRACT_CF_AUD (or set REFRACT_AUTH=none to run unprotected)")
+		}
+		return auth.CloudflareAccess(ctx, team, aud), nil
+	case "none":
+		slog.Warn("REFRACT_AUTH=none: the web UI is unprotected; only use this locally or behind your own auth")
+		return func(h http.Handler) http.Handler { return h }, nil
+	default:
+		return nil, fmt.Errorf("REFRACT_AUTH=%q: want cloudflare or none", mode)
+	}
+}

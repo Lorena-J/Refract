@@ -1,0 +1,41 @@
+:root {
+  --bg: #fff;
+  --fg: #1a1a1a;
+  --muted: #6b6b6b;
+  --border: #e5e5e5;
+  font-family: system-ui, -apple-system, sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161616;
+    --fg: #e8e8e8;
+    --muted: #8a8a8a;
+    --border: #2c2c2c;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+
+.layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr) minmax(0, 1fr);
+  height: 100%;
+}
+
+.pane {
+  padding: 16px;
+  color: var(--muted);
+  overflow: auto;
+  border-right: 1px solid var(--border);
+}
+.pane:last-child { border-right: none; }
+
+/* Desktop-first; on a narrow window just stack instead of overflowing. */
+@media (max-width: 800px) {
+  .layout { grid-template-columns: 1fr; grid-auto-rows: minmax(200px, auto); height: auto; }
+  .pane { border-right: none; border-bottom: 1px solid var(--border); }
+}

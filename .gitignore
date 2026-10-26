@@ -1,0 +1,9 @@
+# Never commit user papers, data or secrets.
+fixtures/
+data/
+.env*
+
+node_modules/
+web/dist/*
+!web/dist/.gitkeep
+/refract
