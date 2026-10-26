@@ -637,6 +637,19 @@
   color: var(--foreground);
   font-size: var(--editor-font-size, 13.5px);
 }
+/* Quick-action proposal: removed text struck through, new text inserted beside it. */
+.cm-quick-del {
+  background: color-mix(in oklch, var(--destructive) 16%, transparent);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in oklch, var(--destructive) 70%, transparent);
+  border-radius: 2px;
+}
+.cm-quick-ins {
+  background: color-mix(in oklch, var(--success) 20%, transparent);
+  border-radius: 2px;
+  white-space: pre-wrap;
+}
+
 /* Room for the floating assistant bar under the last line. */
 .cm-content {
   padding-bottom: 6rem;

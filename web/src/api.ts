@@ -10,12 +10,13 @@ export class RequestError extends Error {
 }
 
 // body: an object is sent as JSON; a string, Blob or FormData is sent as is.
-export async function api<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+export async function api<T>(path: string, init: { method?: string; body?: unknown; signal?: AbortSignal } = {}): Promise<T> {
   const raw = typeof init.body === 'string' || init.body instanceof Blob || init.body instanceof FormData
   const res = await fetch(path, {
     method: init.method ?? 'GET',
     headers: init.body === undefined || raw ? headers : { ...headers, 'Content-Type': 'application/json' },
     body: init.body === undefined ? undefined : raw ? (init.body as BodyInit) : JSON.stringify(init.body),
+    signal: init.signal,
   })
   if (res.status === 204) return undefined as T
   const data = await res.json().catch(() => ({ error: { kind: 'other', message: `HTTP ${res.status}` } }))

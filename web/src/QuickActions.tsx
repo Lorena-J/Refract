@@ -1,0 +1,258 @@
+import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref } from 'react'
+import type { EditorView } from '@codemirror/view'
+import { ArrowUp, BookOpen, Check, Pencil, RotateCcw, Scissors, Sparkles, SpellCheck, Square, Table, X } from 'lucide-react'
+import { api, errorText } from './api'
+import { Button } from '@/components/ui/button'
+import { ShimmerText } from '@/components/ui/chatcn/shimmer-text'
+import Markdown from '@/components/Markdown'
+import { accept, proposal, propose, reject } from '@/lib/proposal'
+import { getPrefs } from '@/lib/prefs'
+import { mod } from '@/lib/shortcuts'
+import { cn } from '@/lib/utils'
+
+type Action = 'improve' | 'shorten' | 'grammar' | 'table' | 'explain' | 'custom'
+
+const actions: { id: Action; label: string; icon: typeof Sparkles }[] = [
+  { id: 'improve', label: 'Improve', icon: Sparkles },
+  { id: 'shorten', label: 'Shorten', icon: Scissors },
+  { id: 'grammar', label: 'Fix grammar', icon: SpellCheck },
+  { id: 'table', label: 'Table', icon: Table },
+  { id: 'explain', label: 'Explain', icon: BookOpen },
+]
+
+const working: Record<Action, string> = {
+  improve: 'Improving',
+  shorten: 'Shortening',
+  grammar: 'Fixing grammar',
+  table: 'Building the table',
+  explain: 'Explaining',
+  custom: 'Editing',
+}
+
+const CONTEXT = 2000 // characters of context on each side
+
+type Job = { from: number; to: number; action: Action; instruction: string }
+
+export type QuickHandle = {
+  ask: () => boolean // Mod-K: open the instruction field
+  cancel: () => boolean // Esc: stop a request or close a result
+}
+
+type Props = {
+  view: EditorView
+  path: string
+  dragging: boolean
+  handle: Ref<QuickHandle>
+}
+
+// Floating toolbar over the editor selection: one-shot AI edits (§4.7), shown
+// as an inline diff to accept (Tab) or reject (Esc).
+export default function QuickActions({ view, path, dragging, handle }: Props) {
+  const [job, setJob] = useState<Job | null>(null) // running, or finished with an error/explanation
+  const [running, setRunning] = useState(false)
+  const [error, setError] = useState('')
+  const [explanation, setExplanation] = useState('')
+  const [asking, setAsking] = useState(false)
+  const [instruction, setInstruction] = useState('')
+  const [within, setWithin] = useState(false) // focus is inside the toolbar
+  const abort = useRef<AbortController | null>(null)
+  const bar = useRef<HTMLDivElement>(null)
+  const input = useRef<HTMLInputElement>(null)
+  const [left, setLeft] = useState(0)
+
+  const pending = proposal(view.state)
+  const sel = view.state.selection.main
+  const range = pending ?? job ?? (sel.empty ? null : sel)
+
+  function reset() {
+    abort.current?.abort()
+    setJob(null)
+    setRunning(false)
+    setError('')
+    setExplanation('')
+    setAsking(false)
+  }
+
+  async function run(action: Action, text = instruction) {
+    const r = pending ?? (sel.empty ? null : sel)
+    if (!r) return
+    if (pending) reject(view)
+    const { from, to } = r
+    const doc = view.state.doc
+    const j = { from, to, action, instruction: text }
+    abort.current?.abort()
+    abort.current = new AbortController()
+    setJob(j)
+    setRunning(true)
+    setError('')
+    setExplanation('')
+    setAsking(false)
+    try {
+      const res = await api<{ text: string }>('/api/quick', {
+        method: 'POST',
+        signal: abort.current.signal,
+        body: {
+          action,
+          instruction: text,
+          selection: doc.sliceString(from, to),
+          before: doc.sliceString(Math.max(0, from - CONTEXT), from),
+          after: doc.sliceString(to, Math.min(doc.length, to + CONTEXT)),
+          file: path,
+          model: getPrefs().model,
+        },
+      })
+      if (action === 'explain') setExplanation(res.text)
+      else if (res.text === doc.sliceString(from, to)) setError('No changes to suggest.')
+      else if (view.state.sliceDoc(from, to) !== doc.sliceString(from, to)) setError('The text changed while the assistant was working. Try again.')
+      else {
+        propose(view, from, to, res.text)
+        setJob(null)
+        view.focus()
+      }
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') setError(errorText(e))
+      else setJob(null)
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  useImperativeHandle(handle, () => ({
+    ask() {
+      if (sel.empty && !pending) return false
+      setAsking(true)
+      requestAnimationFrame(() => input.current?.focus())
+      return true
+    },
+    cancel() {
+      if (!job && !asking) return false
+      reset()
+      view.focus()
+      return true
+    },
+  }))
+
+  // A new selection starts over (a running request keeps its own range).
+  useEffect(() => {
+    if (running) return
+    setJob(null)
+    setError('')
+    setExplanation('')
+    setAsking(false)
+  }, [sel.from, sel.to])
+
+  const visible = !dragging && (view.hasFocus || within || !!job || !!pending)
+  const a = range && visible ? view.coordsAtPos(range.from) : null
+  const box = view.dom.getBoundingClientRect()
+  const above = a ? a.top - box.top - 44 : 0
+  const below = a && range ? (view.coordsAtPos(range.to)?.bottom ?? a.bottom) - box.top + 8 : 0
+  const top = above >= 4 ? above : below
+  const wantLeft = a ? a.left - box.left : 0
+
+  // Keep the toolbar inside the editor horizontally (its width depends on its state).
+  useLayoutEffect(() => {
+    const w = bar.current?.offsetWidth ?? 0
+    setLeft(Math.max(8, Math.min(wantLeft, box.width - w - 8)))
+  })
+
+  if (!a) return null
+  return (
+    <div
+      ref={bar}
+      className="absolute z-30 flex flex-col items-start gap-1.5"
+      style={{ top, left }}
+      onFocus={() => setWithin(true)}
+      onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && setWithin(false)}
+      onMouseDown={(e) => e.target instanceof HTMLInputElement || e.preventDefault()} // keep the editor selection
+    >
+      <div
+        className="flex h-9 items-center gap-0.5 rounded-xl border bg-popover p-1 text-xs text-popover-foreground shadow-lg transition-[opacity,scale] duration-150 ease-out starting:scale-[0.97] starting:opacity-0"
+        role="toolbar"
+        aria-label="Quick actions"
+      >
+        {running && job ? (
+          <>
+            <ShimmerText className="px-2 font-normal">{working[job.action]}…</ShimmerText>
+            <Button size="icon-xs" variant="ghost" onClick={reset} aria-label="Stop">
+              <Square className="fill-current" />
+            </Button>
+          </>
+        ) : pending ? (
+          <>
+            <Button size="xs" onClick={() => accept(view)}>
+              <Check /> Accept <kbd className="opacity-60">Tab</kbd>
+            </Button>
+            <Button size="xs" variant="ghost" onClick={() => reject(view)}>
+              <X /> Reject <kbd className="opacity-60">Esc</kbd>
+            </Button>
+          </>
+        ) : error ? (
+          <>
+            <span className={cn('max-w-80 truncate px-2', error.startsWith('No changes') ? 'text-muted-foreground' : 'text-destructive')} title={error}>
+              {error}
+            </span>
+            {job && (
+              <Button size="icon-xs" variant="ghost" onClick={() => run(job.action, job.instruction)} aria-label="Retry">
+                <RotateCcw />
+              </Button>
+            )}
+            <Button size="icon-xs" variant="ghost" onClick={reset} aria-label="Close">
+              <X />
+            </Button>
+          </>
+        ) : asking ? (
+          <form
+            className="flex items-center gap-1"
+            onSubmit={(e) => {
+              e.preventDefault()
+              if (instruction.trim()) run('custom')
+            }}
+          >
+            <input
+              ref={input}
+              value={instruction}
+              onChange={(e) => setInstruction(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setAsking(false)
+                  view.focus()
+                }
+              }}
+              placeholder="Tell the assistant what to change…"
+              aria-label="Instruction"
+              className="h-7 w-72 bg-transparent px-2 text-xs outline-none placeholder:text-muted-foreground"
+            />
+            <Button type="submit" size="icon-xs" className="rounded-full" disabled={!instruction.trim()} aria-label="Apply instruction">
+              <ArrowUp />
+            </Button>
+          </form>
+        ) : (
+          <>
+            {actions.map((x) => (
+              <Button key={x.id} size="xs" variant="ghost" className={cn('text-muted-foreground hover:text-foreground', x.id === 'explain' && 'ml-0.5')} onClick={() => run(x.id)}>
+                <x.icon /> {x.label}
+              </Button>
+            ))}
+            <span className="mx-0.5 h-4 w-px bg-border" />
+            <Button size="xs" variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => setAsking(true)} title={`${mod}K`}>
+              <Pencil /> Ask…
+            </Button>
+          </>
+        )}
+      </div>
+
+      {explanation && (
+        <div className="enter max-h-72 w-[min(28rem,calc(100vw-2rem))] overflow-auto rounded-xl border bg-popover p-3 text-sm text-popover-foreground shadow-lg">
+          <div className="mb-1 flex items-center justify-between">
+            <span className="text-xs font-medium text-muted-foreground">Explanation</span>
+            <Button size="icon-xs" variant="ghost" onClick={reset} aria-label="Close explanation">
+              <X />
+            </Button>
+          </div>
+          <Markdown text={explanation} />
+        </div>
+      )}
+    </div>
+  )
+}

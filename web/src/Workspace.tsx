@@ -634,6 +634,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                   onCompile={compile}
                   onSync={syncToPDF}
                   onSelect={setSelLines}
+                  quick={!!status?.status.signed_in && status.status.plan_granted}
                   jump={jump}
                 />
               )}

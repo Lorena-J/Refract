@@ -1,6 +1,8 @@
 package main
 
 import (
+	"cmp"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +12,8 @@ import (
 	"time"
 
 	"github.com/ponytojas/Refract/internal/ai"
+	"github.com/ponytojas/Refract/internal/assistant"
+	"github.com/ponytojas/Refract/internal/quick"
 	"github.com/ponytojas/Refract/internal/siwc"
 )
 
@@ -17,6 +21,7 @@ type api struct {
 	session  *siwc.Session
 	provider *ai.SIWC
 	model    string // default model (REFRACT_MODEL_AGENT)
+	quick    string // default model for quick actions (REFRACT_MODEL_QUICK)
 }
 
 func (a *api) routes(mux *http.ServeMux, dev bool) {
@@ -25,6 +30,7 @@ func (a *api) routes(mux *http.ServeMux, dev bool) {
 	mux.HandleFunc("POST /api/chatgpt/signout", a.signOut)
 	mux.HandleFunc("POST /api/chatgpt/welcome-seen", a.welcomeSeen)
 	mux.HandleFunc("GET /api/chatgpt/models", a.models)
+	mux.HandleFunc("POST /api/quick", a.quickAction)
 	if dev {
 		mux.HandleFunc("POST /api/dev/expire", a.devExpire)
 		mux.HandleFunc("POST /api/dev/chat", a.devChat)
@@ -89,6 +95,64 @@ func (a *api) models(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, ms)
+}
+
+// choose resolves a model pick against the plan's models: the UI's pick, else
+// the configured model, else the plan's first. Unknown efforts fall back to
+// the model's default.
+func (a *api) choose(ctx context.Context, want assistant.Choice, configured string) (assistant.Choice, error) {
+	ms, err := a.provider.Models(ctx)
+	if err != nil {
+		return assistant.Choice{}, err
+	}
+	slug := cmp.Or(want.Model, configured)
+	m, effort, ok := ai.Pick(ms, slug, want.Effort)
+	switch {
+	case ok:
+		return assistant.Choice{Model: m.Slug, Effort: effort}, nil
+	case want.Model == "" && slug != "":
+		return assistant.Choice{Model: slug}, nil // configured, possibly unlisted: trust it
+	case len(ms) == 0:
+		return assistant.Choice{}, errors.New("no models available on this ChatGPT plan; set REFRACT_MODEL_AGENT")
+	default:
+		return assistant.Choice{}, fmt.Errorf("model %q is not available on this ChatGPT plan", want.Model)
+	}
+}
+
+// quickAction runs one quick action on a selection and returns the
+// replacement text (or, for "explain", the explanation).
+func (a *api) quickAction(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		quick.Request
+		Model string `json:"model"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10)).Decode(&in); err != nil {
+		httpError(w, err, http.StatusBadRequest)
+		return
+	}
+	if err := in.Validate(); err != nil {
+		httpError(w, err, http.StatusBadRequest)
+		return
+	}
+	// Quick actions should feel instant: light reasoning whatever the composer uses.
+	c, err := a.choose(r.Context(), assistant.Choice{Model: in.Model, Effort: "low"}, a.quick)
+	if err == nil {
+		var text string
+		if text, err = quick.Run(r.Context(), a.provider, c.Model, c.Effort, in.Request); err == nil {
+			writeJSON(w, map[string]string{"text": text})
+			return
+		}
+	}
+	if r.Context().Err() != nil {
+		return // the user cancelled
+	}
+	var ae *ai.Error
+	if !errors.As(err, &ae) {
+		ae = &ai.Error{Kind: ai.ErrOther, Message: err.Error()}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusBadGateway)
+	json.NewEncoder(w).Encode(map[string]any{"error": ae})
 }
 
 func (a *api) devExpire(w http.ResponseWriter, r *http.Request) {

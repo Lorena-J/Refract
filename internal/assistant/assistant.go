@@ -70,7 +70,7 @@ type Choice struct {
 type Service struct {
 	DB       *sql.DB
 	Projects *projects.Service
-	Agent    agent.Agent                              // template; Model and Effort are filled by ModelFor
+	Agent    agent.Agent                                   // template; Model and Effort are filled by ModelFor
 	ModelFor func(context.Context, Choice) (Choice, error) // resolves the user's choice for the agent loop
 
 	mu      sync.Mutex
