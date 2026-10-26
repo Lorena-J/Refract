@@ -10,5 +10,6 @@ web/dist/*
 web/test-results/
 web/playwright-report/
 
-# Private planning notes
+# Private planning notes (kept out of the repo)
 PLAN.md
+IMPLEMENTATION.md
