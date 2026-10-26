@@ -43,7 +43,11 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	dataDir := cmp.Or(os.Getenv("REFRACT_DATA_DIR"), "/data")
+	// Absolute: tectonic and synctex run in other working directories.
+	dataDir, err := filepath.Abs(cmp.Or(os.Getenv("REFRACT_DATA_DIR"), "/data"))
+	if err != nil {
+		return err
+	}
 	addr := cmp.Or(os.Getenv("REFRACT_ADDR"), ":8080")
 
 	guard, err := authMiddleware(ctx)

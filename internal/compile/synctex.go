@@ -72,6 +72,9 @@ func (s *SyncTeX) Inverse(ctx context.Context, projectDir, mainFile string, page
 }
 
 func buildPaths(projectDir, mainFile string) (pdf, root string, err error) {
+	if projectDir, err = filepath.Abs(projectDir); err != nil { // synctex records absolute paths
+		return "", "", err
+	}
 	root, err = filepath.EvalSymlinks(projectDir)
 	if err != nil {
 		return "", "", err

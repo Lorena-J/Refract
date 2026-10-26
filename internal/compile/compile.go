@@ -46,6 +46,11 @@ type Tectonic struct {
 const maxOutput = 1 << 20
 
 func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*Result, error) {
+	// tectonic runs in the main file's folder: a relative --outdir would point elsewhere.
+	projectDir, err := filepath.Abs(projectDir)
+	if err != nil {
+		return nil, err
+	}
 	outDir := filepath.Join(projectDir, filepath.FromSlash(BuildDir))
 	if err := os.MkdirAll(outDir, 0o755); err != nil { // tectonic requires it to exist
 		return nil, err

@@ -152,6 +152,21 @@ func TestCompileOKWithSynctexAndWarnings(t *testing.T) {
 	}
 }
 
+// make dev uses REFRACT_DATA_DIR=./data: a relative project dir must work.
+func TestCompileRelativeProjectDir(t *testing.T) {
+	tc := tectonic(t)
+	base := t.TempDir()
+	write(t, base, "data/p/sub/main.tex", "\\documentclass{article}\n\\begin{document}\nHi\n\\end{document}\n")
+	t.Chdir(base)
+	res, err := tc.Compile(context.Background(), "data/p", "sub/main.tex")
+	if err != nil || !res.OK || res.PDF == "" {
+		t.Fatalf("compile: %+v %v", res, err)
+	}
+	if _, err := (&SyncTeX{}).Forward(context.Background(), "data/p", "sub/main.tex", "sub/main.tex", 3, 0); err != nil && !strings.Contains(err.Error(), "executable file not found") {
+		t.Fatalf("forward sync with relative dir: %v", err)
+	}
+}
+
 const infiniteLoop = "\\documentclass{article}\n\\begin{document}\n\\def\\x{\\x}\\x\n\\end{document}\n"
 
 func TestCompileTimeoutKillsTheBuild(t *testing.T) {
