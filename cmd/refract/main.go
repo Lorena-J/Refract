@@ -17,6 +17,7 @@ import (
 
 	"github.com/ponytojas/Refract/internal/agent"
 	"github.com/ponytojas/Refract/internal/ai"
+	"github.com/ponytojas/Refract/internal/arxiv"
 	"github.com/ponytojas/Refract/internal/assistant"
 	"github.com/ponytojas/Refract/internal/auth"
 	"github.com/ponytojas/Refract/internal/compile"
@@ -100,6 +101,7 @@ func run() error {
 		Timeout:  timeout,
 	}}}
 
+	papers := &arxiv.Client{HTTP: &http.Client{Timeout: 30 * time.Second}, BaseURL: "https://export.arxiv.org/api/query"}
 	asa := &assistantAPI{svc: &assistant.Service{
 		DB:       db,
 		Projects: pa.svc,
@@ -107,6 +109,7 @@ func run() error {
 			Provider:      a.provider,
 			Compiler:      ca.runner.Compiler,
 			MaxIterations: 25,
+			Arxiv:         papers,
 			Timeout:       15 * time.Minute,
 		},
 		ModelFor: func(ctx context.Context, want assistant.Choice) (assistant.Choice, error) {
@@ -122,6 +125,7 @@ func run() error {
 	pa.routes(app)
 	ca.routes(app)
 	asa.routes(app)
+	(&arxivAPI{client: papers, projects: pa.svc}).routes(app)
 	app.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 	app.Handle("/", web.Handler())
 

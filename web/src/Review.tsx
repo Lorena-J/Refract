@@ -121,7 +121,7 @@ export default function Review({ turn, onAccept, onReject, onClose }: Props) {
   )
 }
 
-function DiffView({ before, after }: { before: string; after: string }) {
+export function DiffView({ before, after }: { before: string; after: string }) {
   const host = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const view = new EditorView({

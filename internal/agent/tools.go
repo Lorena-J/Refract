@@ -17,6 +17,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/ponytojas/Refract/internal/ai"
+	"github.com/ponytojas/Refract/internal/arxiv"
 	"github.com/ponytojas/Refract/internal/compile"
 	"github.com/ponytojas/Refract/internal/projects"
 )
@@ -33,6 +34,7 @@ type Tools struct {
 	Dir      string
 	MainFile string
 	Compiler compile.Compiler
+	Arxiv    *arxiv.Client // nil: no arXiv tools
 }
 
 func schema(props string, required ...string) json.RawMessage {
@@ -48,7 +50,7 @@ func (t *Tools) Definitions() []ai.Tool {
 	fn := func(name, desc string, params json.RawMessage) ai.Tool {
 		return ai.Tool{Type: "function", Name: name, Description: desc, Parameters: params}
 	}
-	return []ai.Tool{
+	defs := []ai.Tool{
 		fn("list_files", "List every file in the project with its size in bytes.", schema(``)),
 		fn("read_file", "Read a text file. Long files are returned in parts: use start_line and end_line (1-based, inclusive) to read more.",
 			schema(`"path":{"type":"string"},"start_line":{"type":["integer","null"]},"end_line":{"type":["integer","null"]}`, "path", "start_line", "end_line")),
@@ -61,6 +63,15 @@ func (t *Tools) Definitions() []ai.Tool {
 		fn("compile", "Compile the project's main file. Returns errors and warnings with file and line. Set include_log to also get Tectonic's output.",
 			schema(`"include_log":{"type":["boolean","null"]}`, "include_log")),
 	}
+	if t.Arxiv != nil {
+		defs = append(defs,
+			fn("arxiv_search", "Search arXiv. Returns matching papers: id, title, authors, year and the start of the abstract. Every word must match; ti: and au: limit a word to the title or the authors.",
+				schema(`"query":{"type":"string"}`, "query")),
+			fn("cite_arxiv", "Add an arXiv paper to the project's bibliography (.bib), built from arXiv's metadata, and return its citation key. Does nothing if it is already there.",
+				schema(`"id":{"type":"string"}`, "id")),
+		)
+	}
+	return defs
 }
 
 // Call runs one tool. It never fails the turn: problems are reported to the
@@ -84,6 +95,7 @@ func (t *Tools) call(ctx context.Context, name, args string) (string, string, er
 		NewText    string  `json:"new_text"`
 		Content    string  `json:"content"`
 		IncludeLog *bool   `json:"include_log"`
+		ID         string  `json:"id"`
 	}
 	if args != "" {
 		if err := json.Unmarshal([]byte(args), &a); err != nil {
@@ -106,6 +118,16 @@ func (t *Tools) call(ctx context.Context, name, args string) (string, string, er
 		return "Wrote " + a.Path + ".", "wrote " + a.Path, t.writeFile(a.Path, a.Content)
 	case "compile":
 		return t.compile(ctx, a.IncludeLog != nil && *a.IncludeLog)
+	case "arxiv_search":
+		if t.Arxiv != nil {
+			out, err := t.arxivSearch(ctx, a.Query)
+			return out, fmt.Sprintf("searched arXiv for %q", a.Query), err
+		}
+	case "cite_arxiv":
+		if t.Arxiv != nil {
+			out, err := t.citeArxiv(ctx, a.ID)
+			return out, "cited arXiv:" + a.ID, err
+		}
 	}
 	return "", name, fmt.Errorf("unknown tool %q", name)
 }
@@ -302,4 +324,52 @@ func (t *Tools) compile(ctx context.Context, includeLog bool) (string, string, e
 		act = fmt.Sprintf("compiled: %d error(s)", len(errs))
 	}
 	return b.String(), act, nil
+}
+
+func (t *Tools) arxivSearch(ctx context.Context, query string) (string, error) {
+	ps, err := t.Arxiv.Search(ctx, query, 8)
+	if err != nil {
+		return "", err
+	}
+	if len(ps) == 0 {
+		return "No papers found.", nil
+	}
+	var b strings.Builder
+	for _, p := range ps {
+		authors := strings.Join(p.Authors, ", ")
+		if len(p.Authors) > 4 {
+			authors = strings.Join(p.Authors[:3], ", ") + " et al."
+		}
+		summary := p.Summary
+		if len(summary) > 300 {
+			summary = summary[:300] + "…"
+		}
+		fmt.Fprintf(&b, "%s — %s (%s, %d)\n  %s\n", p.ID, p.Title, authors, p.Published.Year(), summary)
+	}
+	return b.String(), nil
+}
+
+// citeArxiv appends the paper to the bibliography the project uses (see arxiv.BibTarget).
+func (t *Tools) citeArxiv(ctx context.Context, id string) (string, error) {
+	p, err := t.Arxiv.Get(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	root, err := os.OpenRoot(t.Dir)
+	if err != nil {
+		return "", err
+	}
+	defer root.Close()
+	c, err := arxiv.Cite(root, t.MainFile, *p)
+	if err != nil {
+		return "", err
+	}
+	if !c.Added {
+		return fmt.Sprintf("Already in %s as %s. Cite it with \\cite{%s}.", c.Path, c.Key, c.Key), nil
+	}
+	msg := fmt.Sprintf("Added %q to %s as %s. Cite it with \\cite{%s}.", p.Title, c.Path, c.Key, c.Key)
+	if c.NeedsSetup {
+		msg += fmt.Sprintf(" No .tex file loads a bibliography yet: add \\bibliographystyle{plain} and \\bibliography{%s} where the references should appear (or \\addbibresource{%s} with biblatex).", strings.TrimSuffix(c.Path, ".bib"), c.Path)
+	}
+	return msg, nil
 }

@@ -12,7 +12,11 @@ import (
 	"time"
 
 	"github.com/ponytojas/Refract/internal/ai"
+	"github.com/ponytojas/Refract/internal/arxiv"
 	"github.com/ponytojas/Refract/internal/compile"
+	"net/http"
+	"net/http/httptest"
+	"slices"
 )
 
 // fakeProvider replays scripted model responses, one per Stream call, and
@@ -231,5 +235,38 @@ func TestEffortIsSent(t *testing.T) {
 		if (effort == "") != (got == nil) || (got != nil && got.Effort != effort) {
 			t.Errorf("effort %q: request reasoning = %+v", effort, got)
 		}
+	}
+}
+
+func TestCiteArxiv(t *testing.T) {
+	body, err := os.ReadFile("../arxiv/testdata/search.xml") // a real arXiv answer; Get uses its first paper
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write(body) }))
+	defer srv.Close()
+	dir := setup(t)
+	os.WriteFile(filepath.Join(dir, "main.tex"), []byte("\\bibliography{refs}\n"), 0o644)
+	tl := &Tools{Dir: dir, MainFile: "main.tex", Arxiv: &arxiv.Client{HTTP: srv.Client(), BaseURL: srv.URL}}
+
+	if !slices.ContainsFunc(tl.Definitions(), func(d ai.Tool) bool { return d.Name == "cite_arxiv" }) {
+		t.Fatal("cite_arxiv not offered")
+	}
+	out, _ := tl.Call(context.Background(), "cite_arxiv", `{"id":"2604.21816"}`)
+	if !strings.Contains(out, `\cite{sadani2026tool}`) || !strings.Contains(out, "refs.bib") {
+		t.Fatalf("cite = %q", out)
+	}
+	bib, _ := os.ReadFile(filepath.Join(dir, "refs.bib"))
+	if !strings.Contains(string(bib), "@misc{sadani2026tool,") || !strings.Contains(string(bib), "eprint = {2604.21816}") {
+		t.Errorf("refs.bib =\n%s", bib)
+	}
+	if out, _ := tl.Call(context.Background(), "cite_arxiv", `{"id":"2604.21816"}`); !strings.HasPrefix(out, "Already in refs.bib") {
+		t.Errorf("second cite = %q", out)
+	}
+	if out, _ := tl.Call(context.Background(), "cite_arxiv", `{"id":"../../etc"}`); !strings.HasPrefix(out, "Error:") {
+		t.Errorf("bad id = %q", out)
+	}
+	if slices.ContainsFunc((&Tools{Dir: dir}).Definitions(), func(d ai.Tool) bool { return d.Name == "arxiv_search" }) {
+		t.Error("arXiv tools offered without a client")
 	}
 }

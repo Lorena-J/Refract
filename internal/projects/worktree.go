@@ -63,20 +63,7 @@ func (s *Service) FinishTurn(ctx context.Context, id, turn, base, message string
 
 // TurnChanges lists files that differ between base and the turn's branch.
 func (s *Service) TurnChanges(ctx context.Context, id, turn, base string) ([]Change, error) {
-	out, err := git(ctx, s.Path(id), "diff", "--name-status", "--no-renames", "-z", base, branch(turn))
-	if err != nil {
-		return nil, err
-	}
-	changes := []Change{}
-	fields := strings.Split(strings.TrimSuffix(out, "\x00"), "\x00")
-	for i := 0; i+1 < len(fields); i += 2 {
-		st := map[string]string{"A": "added", "M": "modified", "D": "deleted"}[fields[i][:1]]
-		if st == "" {
-			st = "modified"
-		}
-		changes = append(changes, Change{Path: fields[i+1], Status: st})
-	}
-	return changes, nil
+	return diffNames(ctx, s.Path(id), base, branch(turn))
 }
 
 // TurnFile returns a file's content at base and on the turn's branch (nil when absent).
@@ -84,14 +71,7 @@ func (s *Service) TurnFile(ctx context.Context, id, turn, base, path string) (be
 	if path, err = checkPath(path); err != nil {
 		return nil, nil, err
 	}
-	show := func(rev string) []byte {
-		out, err := git(ctx, s.Path(id), "show", rev+":"+path)
-		if err != nil {
-			return nil
-		}
-		return []byte(out)
-	}
-	return show(base), show(branch(turn)), nil
+	return show(ctx, s.Path(id), base, path), show(ctx, s.Path(id), branch(turn), path), nil
 }
 
 // ErrConflict means accepting would conflict with changes made since the turn started.

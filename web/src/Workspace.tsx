@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { EditorState } from '@codemirror/state'
 import { usePanelRef } from 'react-resizable-panels'
 import {
+  BookMarked,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -9,6 +10,7 @@ import {
   FileText,
   FolderOpen,
   FolderPlus,
+  History as HistoryIcon,
   Loader2,
   MessageSquare,
   MessageSquarePlus,
@@ -23,6 +25,8 @@ import { toast } from 'sonner'
 import { api, errorText, mkdir, move, readFile, removeFile, writeFile, type ChatGPTStatus, type FileEntry, type OpenedFile, type Project } from './api'
 import Assistant, { type Chat, type EditorContext, type Turn } from './Assistant'
 import Review from './Review'
+import History from './History'
+import CiteArxiv, { type Citation } from './CiteArxiv'
 import { Autosaver, type SaveStatus } from './autosave'
 import CompileStatus, { type CompileResult } from './CompileStatus'
 import Editor from './Editor'
@@ -86,6 +90,9 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
   const [highlight, setHighlight] = useState<Highlight | undefined>()
   const [chatOpen, setChatOpen] = useState(false)
   const [chatFocus, setChatFocus] = useState(0)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [citeOpen, setCiteOpen] = useState(false)
+  const [insert, setInsert] = useState<{ path: string; text: string } | undefined>()
   const [selLines, setSelLines] = useState('')
   const [sideTab, setSideTab] = useState<'files' | 'chats'>('files')
   const [review, setReview] = useState<Turn | null>(null)
@@ -245,6 +252,18 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
     const res = await api<{ turn: Turn }>(`/api/turns/${review.id}/reject`, { method: 'POST' })
     setTurnUpdate(res.turn)
     setReview(null)
+  }
+
+  async function cited(c: Citation) {
+    await reloadFromDisk([c.path]) // the .bib may be open
+    const target = active && active.endsWith('.tex') && loaded.current.get(active)?.text ? active : undefined
+    if (target) setInsert({ path: target, text: `\\cite{${c.key}}` })
+    const where = c.added ? `Added to ${c.path}` : `Already in ${c.path}`
+    toast.success(target ? `${where} · \\cite{${c.key}} inserted` : `${where} as ${c.key}`, {
+      description: c.needs_setup
+        ? `No .tex file loads a bibliography yet: add \\bibliography{${c.path.replace(/\.bib$/, '')}} (or \\addbibresource{${c.path}}).`
+        : undefined,
+    })
   }
 
   async function jumpTo(path: string, line: number) {
@@ -415,6 +434,22 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
     { id: 'ws:newfile', group: 'Actions', label: 'New file', icon: FileText, run: () => create('', 'file') },
     { id: 'ws:newfolder', group: 'Actions', label: 'New folder', icon: FolderPlus, run: () => create('', 'folder') },
     { id: 'ws:upload', group: 'Actions', label: 'Upload files', icon: Upload, run: () => uploadInput.current?.click() },
+    {
+      id: 'ws:history',
+      group: 'Actions',
+      label: 'Project history',
+      icon: HistoryIcon,
+      keywords: 'versions restore undo commits',
+      run: () => setHistoryOpen(true),
+    },
+    {
+      id: 'ws:cite',
+      group: 'Actions',
+      label: 'Cite from arXiv…',
+      icon: BookMarked,
+      keywords: 'bibliography bibtex reference paper',
+      run: () => setCiteOpen(true),
+    },
     { id: 'ws:sidebar', group: 'Actions', label: sidebarCollapsed ? 'Show the sidebar' : 'Hide the sidebar', icon: PanelLeft, run: toggleSidebar },
     ...files
       .filter((f) => !f.dir)
@@ -483,6 +518,12 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                 <DropdownMenuContent align="start" className="w-64">
                   <DropdownMenuItem render={<a href="/" />}>
                     <ChevronLeft /> All projects
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setHistoryOpen(true)}>
+                    <HistoryIcon /> History
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setCiteOpen(true)}>
+                    <BookMarked /> Cite from arXiv…
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuGroup>
@@ -712,6 +753,8 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                   onCompile={compile}
                   onSync={syncToPDF}
                   onSelect={setSelLines}
+                  insert={insert}
+                  onInserted={() => setInsert(undefined)}
                   quick={!!status?.status.signed_in && status.status.plan_granted}
                   jump={jump}
                 />
@@ -795,6 +838,18 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
           </form>
         </DialogContent>
       </Dialog>
+
+      <History
+        projectId={id}
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        beforeRestore={() => autosave.flushAll()}
+        onRestored={async () => {
+          await reloadFromDisk(tabs)
+          setReview(null)
+        }}
+      />
+      <CiteArxiv projectId={id} open={citeOpen} onClose={() => setCiteOpen(false)} onCited={cited} />
 
       <AlertDialog open={!!confirm} onOpenChange={(o) => !o && setConfirm(null)}>
         <AlertDialogContent>

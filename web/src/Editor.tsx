@@ -24,11 +24,13 @@ type Props = {
   onSync: (path: string, line: number, col: number) => void // forward sync (Mod-J)
   onSelect?: (lines: string) => void // selected lines ("3" or "3–9"), "" when nothing is selected
   jump?: { path: string; line: number; n: number } // n changes on every request
+  insert?: { path: string; text: string } // replace the selection with text, then onInserted
+  onInserted?: () => void
   quick?: boolean // show the quick-actions toolbar on selections (AI available)
 }
 
 // One EditorView; each open file keeps its own EditorState, swapped on tab switch.
-export default function Editor({ path, states, initial, onChange, onSave, onCompile, onSync, onSelect, jump, quick }: Props) {
+export default function Editor({ path, states, initial, onChange, onSave, onCompile, onSync, onSelect, jump, insert, onInserted, quick }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
   const current = useRef(path)
@@ -171,6 +173,14 @@ export default function Editor({ path, states, initial, onChange, onSave, onComp
     v.dispatch({ selection: EditorSelection.cursor(line.from), effects: EditorView.scrollIntoView(line.from, { y: 'center' }) })
     v.focus()
   }, [jump, path])
+
+  useEffect(() => {
+    const v = view.current!
+    if (!insert || insert.path !== path) return
+    v.dispatch(v.state.replaceSelection(insert.text), { scrollIntoView: true, userEvent: 'input' })
+    v.focus()
+    onInserted?.()
+  }, [insert, path])
 
   return (
     <div className="relative h-full">

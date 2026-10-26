@@ -37,6 +37,57 @@ func (a *projectsAPI) routes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/projects/{id}/file", a.removeFile)
 	mux.HandleFunc("POST /api/projects/{id}/mkdir", a.mkdir)
 	mux.HandleFunc("POST /api/projects/{id}/move", a.move)
+	mux.HandleFunc("GET /api/projects/{id}/history", a.history)
+	mux.HandleFunc("GET /api/projects/{id}/history/{hash}", a.commitDiff)
+	mux.HandleFunc("POST /api/projects/{id}/history/{hash}/restore", a.restore)
+}
+
+func (a *projectsAPI) history(w http.ResponseWriter, r *http.Request) {
+	cs, err := a.svc.History(r.Context(), r.PathValue("id"), 300)
+	if err != nil {
+		projectError(w, err)
+		return
+	}
+	writeJSON(w, cs)
+}
+
+func (a *projectsAPI) commitDiff(w http.ResponseWriter, r *http.Request) {
+	d, err := a.svc.CommitDiff(r.Context(), r.PathValue("id"), r.PathValue("hash"))
+	if err != nil {
+		projectError(w, err)
+		return
+	}
+	writeJSON(w, d)
+}
+
+// restore brings back one file (path set) or the whole project as of a
+// commit, as a new commit. before restores a file as it was before the
+// commit (to undo a deletion).
+func (a *projectsAPI) restore(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Path   string `json:"path"`
+		Before bool   `json:"before"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&in); err != nil {
+		httpError(w, err, http.StatusBadRequest)
+		return
+	}
+	id, rev := r.PathValue("id"), r.PathValue("hash")
+	var commit string
+	var err error
+	if in.Path == "" {
+		commit, err = a.svc.RestoreProject(r.Context(), id, rev)
+	} else {
+		if in.Before {
+			rev += "^"
+		}
+		commit, err = a.svc.RestoreFile(r.Context(), id, rev, in.Path)
+	}
+	if err != nil {
+		projectError(w, err)
+		return
+	}
+	writeJSON(w, map[string]string{"commit": commit})
 }
 
 func (a *projectsAPI) listFiles(w http.ResponseWriter, r *http.Request) {
@@ -251,7 +302,7 @@ func projectError(w http.ResponseWriter, err error) {
 		httpError(w, err, http.StatusNotFound)
 	case errors.Is(err, fs.ErrExist):
 		httpError(w, err, http.StatusConflict)
-	case errors.Is(err, projects.ErrUnsafePath), errors.Is(err, projects.ErrBadPath), errors.Is(err, projects.ErrTooLarge), errors.Is(err, zip.ErrFormat):
+	case errors.Is(err, projects.ErrUnsafePath), errors.Is(err, projects.ErrBadPath), errors.Is(err, projects.ErrBadRevision), errors.Is(err, projects.ErrTooLarge), errors.Is(err, zip.ErrFormat):
 		httpError(w, err, http.StatusBadRequest)
 	default:
 		var mbe *http.MaxBytesError

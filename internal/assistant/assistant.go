@@ -346,12 +346,7 @@ func (s *Service) history(ctx context.Context, chatID string) ([]agent.Message, 
 }
 
 // FileDiff is one pending file's before/after content for the review view.
-type FileDiff struct {
-	projects.Change
-	Before string `json:"before"`
-	After  string `json:"after"`
-	Binary bool   `json:"binary"`
-}
+type FileDiff = projects.FileDiff
 
 func (s *Service) Diff(ctx context.Context, turnID string) ([]FileDiff, error) {
 	t, c, err := s.turn(ctx, turnID)
@@ -364,13 +359,7 @@ func (s *Service) Diff(ctx context.Context, turnID string) ([]FileDiff, error) {
 		if err != nil {
 			return nil, err
 		}
-		d := FileDiff{Change: f}
-		if utf8.Valid(before) && utf8.Valid(after) && !slices.Contains(before, 0) && !slices.Contains(after, 0) {
-			d.Before, d.After = string(before), string(after)
-		} else {
-			d.Binary = true
-		}
-		out = append(out, d)
+		out = append(out, projects.NewFileDiff(f, before, after))
 	}
 	return out, nil
 }
