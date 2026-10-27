@@ -1,6 +1,7 @@
 package users
 
 import (
+	"cmp"
 	"context"
 	"crypto/pbkdf2"
 	"crypto/rand"
@@ -159,6 +160,27 @@ func (s *Service) HasPassword(ctx context.Context, userID string) (bool, error) 
 	var n int
 	err := s.DB.QueryRowContext(ctx, `SELECT count(*) FROM users WHERE id = ? AND password != ''`, userID).Scan(&n)
 	return n > 0, err
+}
+
+// Rename changes a user's email, keeping everything they own. Moving from
+// REFRACT_AUTH=none to a sign-in mode is "rename local you@example.com".
+func (s *Service) Rename(ctx context.Context, from, to string) error {
+	from, to = normEmail(from), normEmail(to)
+	if !strings.Contains(to, "@") || strings.ContainsAny(to, " \t\r\n") {
+		return fmt.Errorf("%q is not an email address", to)
+	}
+	if taken, err := s.Exists(ctx, to); err != nil || taken {
+		return cmp.Or(err, fmt.Errorf("%s already has an account", to))
+	}
+	res, err := s.DB.ExecContext(ctx, `UPDATE users SET email = ? WHERE email = ?`, to, from)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("there is no account %q", from)
+	}
+	s.cache.Delete(from)
+	return nil
 }
 
 // Exists reports whether a user with this email exists.

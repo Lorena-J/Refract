@@ -43,6 +43,8 @@ docker exec refract refract users add ana@example.com
 docker exec refract refract users list
 ```
 
+Moving an installation from `REFRACT_AUTH=none` to a sign-in mode: its data belongs to the account `local`, so give that account your email before signing in (`refract users rename local you@example.com`), then `refract users add you@example.com` for a password.
+
 ### Sign in with OpenID Connect (optional, `REFRACT_AUTH=password`)
 
 Google, Microsoft Entra, Keycloak, Authentik, Authelia and other OpenID Connect providers can add a *Continue with …* button. Register Refract with the provider as a web application with the redirect URI `<REFRACT_PUBLIC_URL>/api/auth/oidc/callback`, then set `REFRACT_PUBLIC_URL`, `REFRACT_OIDC_ISSUER`, `REFRACT_OIDC_CLIENT_ID`, `REFRACT_OIDC_CLIENT_SECRET` and optionally `REFRACT_OIDC_NAME`. The provider's verified email must belong to an existing account, unless it is listed in `REFRACT_OIDC_ALLOWED`, which then creates the account on first sign-in.

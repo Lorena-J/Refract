@@ -18,8 +18,9 @@ import (
 // runUsers manages accounts for REFRACT_AUTH=password, on the server's own
 // database (same REFRACT_DATA_DIR and REFRACT_SECRET_KEY as the server).
 func runUsers(args []string) error {
-	if len(args) == 0 || (args[0] != "list" && (args[0] != "add" || len(args) != 2)) {
-		return errors.New("usage: refract users add <email> | refract users list")
+	valid := len(args) == 1 && args[0] == "list" || len(args) == 2 && args[0] == "add" || len(args) == 3 && args[0] == "rename"
+	if !valid {
+		return errors.New("usage: refract users add <email> | refract users rename <email> <new email> | refract users list")
 	}
 	key, err := store.ParseKey(os.Getenv("REFRACT_SECRET_KEY"))
 	if err != nil {
@@ -49,6 +50,13 @@ func runUsers(args []string) error {
 			}
 			fmt.Printf("%s\t%s\n", email, state)
 		}
+		return nil
+	}
+	if args[0] == "rename" {
+		if err := svc.Rename(ctx, args[1], args[2]); err != nil {
+			return err
+		}
+		fmt.Printf("%s is now %s, with all its projects and settings.\n", args[1], args[2])
 		return nil
 	}
 	// A generated password: nothing to type into a shell history or a

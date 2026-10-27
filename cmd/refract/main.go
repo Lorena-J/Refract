@@ -45,6 +45,9 @@ Usage:
   refract users add <email>
                      create an account, or reset its password (REFRACT_AUTH=password);
                      prints a generated password
+  refract users rename <email> <new email>
+                     change an account's email, keeping its data ("local" is the
+                     account used with REFRACT_AUTH=none)
   refract users list list accounts
   refract version    print the version
 `

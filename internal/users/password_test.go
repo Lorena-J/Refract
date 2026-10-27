@@ -127,3 +127,21 @@ func TestSessionGuard(t *testing.T) {
 		}
 	}
 }
+
+func TestRenameKeepsData(t *testing.T) {
+	s, ctx := newService(t), context.Background()
+	local, _ := s.Resolve(ctx, auth.LocalIdentity)
+	s.Resolve(ctx, "bob@example.com")
+	if err := s.Rename(ctx, "local", "bob@example.com"); err == nil {
+		t.Fatal("renamed onto an existing account")
+	}
+	if err := s.Rename(ctx, "nobody", "x@example.com"); err == nil {
+		t.Fatal("renamed a missing account")
+	}
+	if err := s.Rename(ctx, "local", "Ana@Example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if u, _ := s.Resolve(ctx, "ana@example.com"); u.ID != local.ID {
+		t.Fatalf("got %+v, want id %s", u, local.ID)
+	}
+}
