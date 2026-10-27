@@ -95,17 +95,19 @@ export default {
   Cite: 'Citar',
 
   // api.ts
-  'Not signed in to ChatGPT. Run `refract login` and upload the credentials in Settings.':
-    'No has iniciado sesión en ChatGPT. Ejecuta `refract login` y sube las credenciales en Ajustes.',
+  'No AI connected. Sign in with ChatGPT (run `refract login` and upload the credentials) or add an API provider in Settings → Assistant.':
+    'No hay IA conectada. Inicia sesión con ChatGPT (ejecuta `refract login` y sube las credenciales) o añade un proveedor por API en Ajustes → Asistente.',
   'ChatGPT plan usage was not granted. Run `refract login` again and allow plan usage.':
     'No se concedió el uso del plan de ChatGPT. Vuelve a ejecutar `refract login` y permite el uso del plan.',
   'You have reached a usage limit on your ChatGPT plan or for this app. Review it in ChatGPT settings → Usage.':
     'Has alcanzado un límite de uso de tu plan de ChatGPT o de esta app. Revísalo en los ajustes de ChatGPT → Uso.',
   'ChatGPT plan usage is not available for this account: {message}': 'El uso del plan de ChatGPT no está disponible para esta cuenta: {message}',
-  'This model is not available on your ChatGPT plan. Pick another one.': 'Este modelo no está disponible en tu plan de ChatGPT. Elige otro.',
+  'This model is not available. Pick another one.': 'Este modelo no está disponible. Elige otro.',
+  'The provider rejected the API key: {message}': 'El proveedor ha rechazado la clave de API: {message}',
+  'The provider has no credit left on this API key: {message}': 'Esta clave de API no tiene crédito disponible en el proveedor: {message}',
   'Request not supported on plan usage ({param}): {message}': 'Petición no admitida con el uso del plan ({param}): {message}',
   unknown: 'desconocido',
-  'ChatGPT is temporarily unavailable. Try again shortly. ({message})': 'ChatGPT no está disponible temporalmente. Vuelve a intentarlo en breve. ({message})',
+  'The AI provider is temporarily unavailable. Try again shortly. ({message})': 'El proveedor de IA no está disponible temporalmente. Vuelve a intentarlo en breve. ({message})',
   'Download failed: HTTP {status}': 'Error en la descarga: HTTP {status}',
   'Add a reference': 'Añadir una referencia',
   'Find a paper that supports the selected text, or paste a DOI, arXiv id or URL. The citation is placed in your selection for you to review.':

@@ -49,7 +49,7 @@ export default function AccountMenu({ status, compact }: { status: ChatGPTStatus
               {email ?? t('Not signed in')} <ChevronsUpDown className="size-3 shrink-0 text-muted-foreground" />
             </span>
             <span className="block truncate text-xs text-muted-foreground">
-              {status?.status.plan_granted ? t('Using ChatGPT plan') : t('ChatGPT not connected')}
+              {status?.status.plan_granted ? t('Using ChatGPT plan') : status?.ai_ready ? t('Using API providers') : t('ChatGPT not connected')}
             </span>
           </span>
         )}

@@ -15,6 +15,7 @@ import (
 	"github.com/ponytojas/Refract/internal/ai"
 	"github.com/ponytojas/Refract/internal/assistant"
 	"github.com/ponytojas/Refract/internal/auth"
+	"github.com/ponytojas/Refract/internal/providers"
 	"github.com/ponytojas/Refract/internal/quick"
 	"github.com/ponytojas/Refract/internal/siwc"
 )
@@ -24,15 +25,19 @@ type api struct {
 	model string        // default model (REFRACT_MODEL_AGENT)
 	quick string        // default model for quick actions (REFRACT_MODEL_QUICK)
 
+	providers *providers.Store // users' API-key providers
+	outbound  *http.Client     // for those providers (see providers.HTTPClient)
+
 	users sync.Map // user id → *userAI
 }
 
-// userAI is one user's ChatGPT session and provider, kept for the life of the
-// server: the session serializes that user's token refreshes, the provider
-// remembers their usage-limit state.
+// userAI is one user's ChatGPT session and AI, kept for the life of the
+// server: the session serializes that user's token refreshes, the ChatGPT
+// provider remembers their usage-limit state, the router their model lists.
 type userAI struct {
-	session  *siwc.Session
-	provider *ai.SIWC
+	session *siwc.Session
+	chatgpt *ai.SIWC
+	router  *providers.Router
 }
 
 func (a *api) forUser(ctx context.Context) *userAI {
@@ -41,12 +46,17 @@ func (a *api) forUser(ctx context.Context) *userAI {
 		return v.(*userAI)
 	}
 	s := &siwc.Session{DB: a.base.DB, Key: a.base.Key, OAuth: a.base.OAuth, AllowedSubject: a.base.AllowedSubject, Owner: u.ID}
-	v, _ := a.users.LoadOrStore(u.ID, &userAI{session: s, provider: &ai.SIWC{Tokens: s, BaseURL: siwc.Resource, HTTP: &http.Client{}}})
+	chatgpt := &ai.SIWC{Tokens: s, BaseURL: siwc.Resource, HTTP: &http.Client{}}
+	router := &providers.Router{ChatGPT: chatgpt, HTTP: a.outbound, Configs: func(ctx context.Context) ([]providers.Config, error) {
+		return a.providers.List(ctx, u.ID)
+	}}
+	v, _ := a.users.LoadOrStore(u.ID, &userAI{session: s, chatgpt: chatgpt, router: router})
 	return v.(*userAI)
 }
 
-// providerFor is the request user's AI provider.
-func (a *api) providerFor(ctx context.Context) ai.Provider { return a.forUser(ctx).provider }
+// providerFor is the request user's AI: their ChatGPT plan or API providers,
+// by model.
+func (a *api) providerFor(ctx context.Context) ai.Provider { return a.forUser(ctx).router }
 
 func (a *api) routes(mux *http.ServeMux, dev bool) {
 	mux.HandleFunc("GET /api/me", func(w http.ResponseWriter, r *http.Request) {
@@ -57,7 +67,11 @@ func (a *api) routes(mux *http.ServeMux, dev bool) {
 	mux.HandleFunc("POST /api/chatgpt/credentials", a.importCredentials)
 	mux.HandleFunc("POST /api/chatgpt/signout", a.signOut)
 	mux.HandleFunc("POST /api/chatgpt/welcome-seen", a.welcomeSeen)
-	mux.HandleFunc("GET /api/chatgpt/models", a.models)
+	mux.HandleFunc("GET /api/models", a.models)
+	mux.HandleFunc("GET /api/providers", a.listProviders)
+	mux.HandleFunc("PUT /api/providers/{id}", a.saveProvider)
+	mux.HandleFunc("DELETE /api/providers/{id}", a.deleteProvider)
+	mux.HandleFunc("POST /api/providers/{id}/test", a.testProvider)
 	mux.HandleFunc("POST /api/quick", a.quickAction)
 	if dev {
 		mux.HandleFunc("POST /api/dev/expire", a.devExpire)
@@ -66,13 +80,21 @@ func (a *api) routes(mux *http.ServeMux, dev bool) {
 }
 
 func (a *api) status(w http.ResponseWriter, r *http.Request) {
-	seen, err := a.forUser(r.Context()).session.WelcomeSeen(r.Context())
+	u := a.forUser(r.Context())
+	seen, err := u.session.WelcomeSeen(r.Context())
 	if err != nil {
 		httpError(w, err, http.StatusInternalServerError)
 		return
 	}
+	cs, err := a.providers.List(r.Context(), requestUser(r.Context()))
+	if err != nil {
+		httpError(w, err, http.StatusInternalServerError)
+		return
+	}
+	st := u.chatgpt.Status(r.Context())
 	writeJSON(w, map[string]any{
-		"status":        a.forUser(r.Context()).provider.Status(r.Context()),
+		"status":        st,
+		"ai_ready":      st.SignedIn && st.PlanGranted || len(cs) > 0,
 		"welcome_seen":  seen,
 		"manage_usage":  siwc.ManageUsage,
 		"default_model": a.model,
@@ -110,7 +132,7 @@ func (a *api) welcomeSeen(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) models(w http.ResponseWriter, r *http.Request) {
-	ms, err := a.forUser(r.Context()).provider.Models(r.Context())
+	ms, err := a.forUser(r.Context()).router.Models(r.Context())
 	if err != nil {
 		var e *ai.Error
 		if errors.As(err, &e) {
@@ -125,25 +147,30 @@ func (a *api) models(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, ms)
 }
 
-// choose resolves a model pick against the plan's models: the UI's pick, else
-// the configured model, else the plan's first. Unknown efforts fall back to
+// choose resolves a model pick against the user's models: the UI's pick, else
+// the configured model, else the first listed. Unknown efforts fall back to
 // the model's default.
 func (a *api) choose(ctx context.Context, want assistant.Choice, configured string) (assistant.Choice, error) {
-	ms, err := a.forUser(ctx).provider.Models(ctx)
+	u := a.forUser(ctx)
+	ms, err := u.router.Models(ctx)
 	if err != nil {
 		return assistant.Choice{}, err
 	}
 	slug := cmp.Or(want.Model, configured)
 	m, effort, ok := ai.Pick(ms, slug, want.Effort)
+	if !ok && want.Model == "" {
+		m, effort, ok = ai.Pick(ms, "", "")
+		if st := u.chatgpt.Status(ctx); slug != "" && st.SignedIn && st.PlanGranted {
+			return assistant.Choice{Model: slug}, nil // configured, possibly unlisted on the plan: trust it
+		}
+	}
 	switch {
 	case ok:
 		return assistant.Choice{Model: m.Slug, Effort: effort}, nil
-	case want.Model == "" && slug != "":
-		return assistant.Choice{Model: slug}, nil // configured, possibly unlisted: trust it
 	case len(ms) == 0:
-		return assistant.Choice{}, errors.New("no models available on this ChatGPT plan; set REFRACT_MODEL_AGENT")
+		return assistant.Choice{}, &ai.Error{Kind: ai.ErrNotSignedIn, Message: "no models available: sign in with ChatGPT or add an API provider in Settings"}
 	default:
-		return assistant.Choice{}, fmt.Errorf("model %q is not available on this ChatGPT plan", want.Model)
+		return assistant.Choice{}, fmt.Errorf("model %q is not available", want.Model)
 	}
 }
 

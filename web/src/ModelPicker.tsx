@@ -29,6 +29,13 @@ const effortName: Record<string, string> = {
 }
 const effortLabel = (e: string) => effortName[e] ?? e
 
+// Models by provider, in the server's order; one unnamed group when there is a single provider.
+function groups(models: Model[]): [string, Model[]][] {
+  const by = new Map<string, Model[]>()
+  for (const m of models) by.set(m.provider_name ?? '', [...(by.get(m.provider_name ?? '') ?? []), m])
+  return by.size > 1 ? [...by] : [['', models]]
+}
+
 // "GPT-6.1-Sol Medium ▾" in the composer, like Prism's: reasoning levels up front, models in a submenu.
 export default function ModelPicker({ models, model, effort, compact }: { models: Model[]; model?: Model; effort: string; compact?: boolean }) {
   if (!model) return null
@@ -75,14 +82,20 @@ export default function ModelPicker({ models, model, effort, compact }: { models
             <span className="ml-auto truncate pl-3">{model.display_name}</span>
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent className="max-h-[min(70vh,520px)] w-72">
-            {models.map((m) => (
-              <DropdownMenuItem key={m.slug} onClick={() => setPref('model', m.slug)} className="items-start">
-                <span className="min-w-0 flex-1">
-                  <span className="block">{m.display_name}</span>
-                  {m.description && <span className="block text-xs text-muted-foreground">{m.description}</span>}
-                </span>
-                <Check className={cn('mt-0.5', m.slug !== model.slug && 'invisible')} />
-              </DropdownMenuItem>
+            {groups(models).map(([name, ms], i) => (
+              <DropdownMenuGroup key={name}>
+                {i > 0 && <DropdownMenuSeparator />}
+                {name && <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">{name}</DropdownMenuLabel>}
+                {ms.map((m) => (
+                  <DropdownMenuItem key={m.slug} onClick={() => setPref('model', m.slug)} className="items-start">
+                    <span className="min-w-0 flex-1">
+                      <span className="block">{m.display_name}</span>
+                      {m.description && <span className="block text-xs text-muted-foreground">{m.description}</span>}
+                    </span>
+                    <Check className={cn('mt-0.5', m.slug !== model.slug && 'invisible')} />
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuGroup>
             ))}
           </DropdownMenuSubContent>
         </DropdownMenuSub>

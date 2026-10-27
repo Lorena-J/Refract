@@ -55,10 +55,19 @@ export async function stream(path: string, body: unknown, onEvent: (ev: any) => 
 }
 
 export type Effort = { effort: string; description: string }
-export type Model = { slug: string; display_name: string; description: string; default_effort: string; efforts: Effort[] }
+export type Model = {
+  slug: string
+  display_name: string
+  description: string
+  default_effort: string
+  efforts: Effort[]
+  provider?: string // "chatgpt" or a configured provider's id
+  provider_name?: string
+}
 
 export type ChatGPTStatus = {
   status: { provider: string; signed_in: boolean; plan_granted: boolean; email?: string; limit_reached: boolean }
+  ai_ready: boolean // ChatGPT plan or at least one API provider
   welcome_seen: boolean
   manage_usage: string
   default_model: string
@@ -68,7 +77,7 @@ export type ChatGPTStatus = {
 export function describe(e: ApiError): string {
   switch (e.kind) {
     case 'not_signed_in':
-      return t('Not signed in to ChatGPT. Run `refract login` and upload the credentials in Settings.')
+      return t('No AI connected. Sign in with ChatGPT (run `refract login` and upload the credentials) or add an API provider in Settings → Assistant.')
     case 'plan_not_granted':
       return t('ChatGPT plan usage was not granted. Run `refract login` again and allow plan usage.')
     case 'usage_limit':
@@ -76,11 +85,15 @@ export function describe(e: ApiError): string {
     case 'not_eligible':
       return t('ChatGPT plan usage is not available for this account: {message}', { message: e.message })
     case 'model_unavailable':
-      return t('This model is not available on your ChatGPT plan. Pick another one.')
+      return t('This model is not available. Pick another one.')
+    case 'invalid_key':
+      return t('The provider rejected the API key: {message}', { message: e.message })
+    case 'quota':
+      return t('The provider has no credit left on this API key: {message}', { message: e.message })
     case 'unsupported':
       return t('Request not supported on plan usage ({param}): {message}', { param: e.param ?? t('unknown'), message: e.message })
     case 'unavailable':
-      return t('ChatGPT is temporarily unavailable. Try again shortly. ({message})', { message: e.message })
+      return t('The AI provider is temporarily unavailable. Try again shortly. ({message})', { message: e.message })
     default:
       return e.message
   }
@@ -139,3 +152,6 @@ export async function writeFile(id: string, path: string, body: string | Blob) {
 export const removeFile = (id: string, path: string) => api(fileURL(id, path), { method: 'DELETE' })
 export const mkdir = (id: string, path: string) => api(`/api/projects/${id}/mkdir?path=${encodeURIComponent(path)}`, { method: 'POST' })
 export const move = (id: string, from: string, to: string) => api(`/api/projects/${id}/move`, { method: 'POST', body: { from, to } })
+
+// Fired after the user changes their API providers, so open model pickers reload.
+export const modelsChanged = () => window.dispatchEvent(new Event('refract:models'))

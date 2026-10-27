@@ -18,7 +18,7 @@ export default function Dev({ status, refresh }: { status: ChatGPTStatus | null;
 
   useEffect(() => {
     if (!status?.status.signed_in) return
-    api<Model[]>('/api/chatgpt/models')
+    api<Model[]>('/api/models')
       .then((ms) => {
         setModels(ms ?? [])
         setModel((m) => m || status.default_model || ms?.[0]?.slug || '')

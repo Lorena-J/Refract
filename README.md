@@ -2,7 +2,7 @@
 
 # Refract
 
-A private, single-user LaTeX workspace with an AI assistant, for your own server. Edit, compile with Tectonic and read the PDF side by side; ask the assistant for changes and review them as diffs; find real papers to cite; keep every version in git.
+A private LaTeX workspace with an AI assistant, for your own server. Edit, compile with Tectonic and read the PDF side by side; ask the assistant for changes and review them as diffs; find real papers to cite; keep every version in git.
 
 - **Editor and PDF**: CodeMirror, Tectonic, SyncTeX (⌘J / ⌘-click), problems with "Fix with AI".
 - **Assistant**: works on a copy of the project and proposes a diff you accept or reject. Quick actions on any selection (improve, shorten, fix grammar, table, explain, free instruction) shown as inline diffs.
@@ -10,7 +10,7 @@ A private, single-user LaTeX workspace with an AI assistant, for your own server
 - **History and sync**: every saved version is a git commit; restore any file or version; push and pull to GitHub or any https git remote.
 - English and Spanish UI, light and dark themes.
 
-The AI uses your ChatGPT plan ("Sign in with ChatGPT"), so there is no API key to pay for.
+The AI uses your ChatGPT plan ("Sign in with ChatGPT"), your own API keys (OpenAI, Anthropic, Google Gemini, OpenRouter, Mistral, DeepSeek, xAI, Groq or any OpenAI-compatible endpoint), or local models through Ollama, all in the same model picker.
 
 ## Run it
 
@@ -28,7 +28,7 @@ Keep `REFRACT_SECRET_KEY` stable: it encrypts the stored tokens. Refract has no 
 
 ### Users
 
-Everyone your Access policy lets in gets their own Refract account, identified by the email in the Access token: their own projects, chats, ChatGPT sign-in and GitHub account. Nothing is shared between users. The first person to sign in adopts the data of an installation from before multi-user support. With `REFRACT_AUTH=none` there is a single local user.
+Everyone your Access policy lets in gets their own Refract account, identified by the email in the Access token: their own projects, chats, ChatGPT sign-in, API providers and GitHub account. Nothing is shared between users. The first person to sign in adopts the data of an installation from before multi-user support. With `REFRACT_AUTH=none` there is a single local user.
 
 ### Connect ChatGPT
 
@@ -39,6 +39,12 @@ refract login
 ```
 
 Choose *Continue with ChatGPT* in the browser, then upload the credential file it writes in **Settings → Assistant**. Each user uploads their own. To restrict the server to one ChatGPT account, set `REFRACT_ALLOWED_SUBJECT` to the subject `refract login` prints. On macOS, a binary downloaded with a browser is quarantined because it isn't signed: run `xattr -d com.apple.quarantine refract` once.
+
+### API keys and local models (optional)
+
+Instead of, or next to, ChatGPT: add providers in **Settings → Assistant → API providers**. Their models appear in the model picker, grouped by provider. Keys are encrypted with `REFRACT_SECRET_KEY`, belong to the user who added them, and are never sent back to the browser. Spending is between you and the provider: Refract sets no limits.
+
+For Ollama, LM Studio or vLLM, use the base URL the Refract server can reach (for example `http://host.docker.internal:11434` from a container). Provider URLs may point to private and loopback addresses; link-local addresses (cloud metadata services) are refused.
 
 ### Connect GitHub (optional)
 

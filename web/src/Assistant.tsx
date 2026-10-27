@@ -121,12 +121,16 @@ export default function Assistant(p: Props) {
     else send(p.request.text)
   }, [p.request?.n])
 
-  const usable = !!p.status?.status.signed_in && p.status.status.plan_granted
+  const usable = !!p.status?.ai_ready
   useEffect(() => {
     if (!usable) return
-    api<Model[]>('/api/chatgpt/models')
-      .then(setModels)
-      .catch(() => {}) // the server falls back to its default model
+    const load = () =>
+      api<Model[]>('/api/models')
+        .then(setModels)
+        .catch(() => {}) // the server falls back to its default model
+    load()
+    window.addEventListener('refract:models', load)
+    return () => window.removeEventListener('refract:models', load)
   }, [usable])
   const choice = resolveChoice(models, prefs.model, prefs.effort)
 
@@ -230,7 +234,7 @@ export default function Assistant(p: Props) {
   }
 
   const plan = p.status?.status
-  const notice = error || (plan && !plan.signed_in ? describe({ kind: 'not_signed_in', message: '' }) : '')
+  const notice = error || (p.status && !p.status.ai_ready ? describe({ kind: 'not_signed_in', message: '' }) : '')
   const title = p.chats.find((c) => c.id === p.chatId)?.title ?? t('New chat')
   const last = turns[turns.length - 1]
   const pendingReview = last?.status === 'review' ? last : undefined

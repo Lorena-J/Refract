@@ -588,7 +588,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
       .map((p) => ({ id: `project:${p.id}`, group: 'Projects', label: p.name, icon: FolderOpen, run: () => (window.location.href = `/p/${p.id}`) })),
   ])
 
-  const aiReady = !!status?.status.signed_in && status.status.plan_granted
+  const aiReady = !!status?.ai_ready
   const docked = prefs.chatDocked
   const assistant = (asPanel: boolean) => (
     <Assistant

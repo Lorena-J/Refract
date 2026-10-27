@@ -24,6 +24,7 @@ import (
 	"github.com/ponytojas/Refract/internal/github"
 	"github.com/ponytojas/Refract/internal/openalex"
 	"github.com/ponytojas/Refract/internal/projects"
+	"github.com/ponytojas/Refract/internal/providers"
 	"github.com/ponytojas/Refract/internal/siwc"
 	"github.com/ponytojas/Refract/internal/store"
 	"github.com/ponytojas/Refract/internal/users"
@@ -104,6 +105,9 @@ func run() error {
 		base:  session,
 		model: os.Getenv("REFRACT_MODEL_AGENT"),
 		quick: os.Getenv("REFRACT_MODEL_QUICK"),
+
+		providers: &providers.Store{DB: db, Key: key},
+		outbound:  providers.HTTPClient(),
 	}
 
 	pa := &projectsAPI{

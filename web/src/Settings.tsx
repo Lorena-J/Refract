@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { CheckCircle2, Code2, Copy, ExternalLink, GitBranch, Keyboard, Loader2, Monitor, Moon, Sparkles, Sun, SunMoon, Upload } from 'lucide-react'
+import { CheckCircle2, Code2, Copy, ExternalLink, GitBranch, Keyboard, Loader2, Monitor, Moon, Plus, Sparkles, Sun, SunMoon, Upload } from 'lucide-react'
 import { toast } from 'sonner'
-import { api, describe, errorText, RequestError, type ChatGPTStatus } from './api'
+import { api, describe, errorText, modelsChanged, RequestError, type ChatGPTStatus } from './api'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import {
   SettingsGroup,
@@ -15,7 +17,7 @@ import {
   SettingsSwitch,
 } from '@/components/ui/chatcn/settings-panel'
 import { getPrefs, openSettings, setPref, usePrefs, useSettingsSection, type Prefs } from '@/lib/prefs'
-import { t } from '@/lib/i18n'
+import { t, tn } from '@/lib/i18n'
 import { shortcutGroups } from '@/lib/shortcuts'
 import { setTheme, useTheme, type Theme } from '@/lib/theme'
 import PlanBadge from './PlanBadge'
@@ -38,7 +40,7 @@ export default function SettingsDialog({ status, onChange }: Props) {
             <SettingsNavItem value="editor" icon={<Code2 />}>
               {t('Editor')}
             </SettingsNavItem>
-            <SettingsNavItem value="assistant" icon={<Sparkles />} meta={status?.status.signed_in ? undefined : t('Off')}>
+            <SettingsNavItem value="assistant" icon={<Sparkles />} meta={status?.ai_ready ? undefined : t('Off')}>
               {t('Assistant')}
             </SettingsNavItem>
             <SettingsNavItem value="integrations" icon={<GitBranch />}>
@@ -147,7 +149,7 @@ function AssistantPane({ status, onChange }: Props) {
 
   const s = status?.status
   return (
-    <SettingsPane value="assistant" title={t('Assistant')} description={t('Refract uses your ChatGPT plan for AI requests.')}>
+    <SettingsPane value="assistant" title={t('Assistant')} description={t('Refract uses your ChatGPT plan or your own API keys for AI requests.')}>
       <SettingsGroup title={t('ChatGPT account')}>
         {!status ? (
           <SettingsRow label={t('Loading…')} />
@@ -200,6 +202,7 @@ function AssistantPane({ status, onChange }: Props) {
           </SettingsRow>
         )}
       </SettingsGroup>
+      <Providers onChange={() => api<ChatGPTStatus>('/api/chatgpt/status').then(onChange, () => {})} />
       <SettingsGroup title={t('Chat')}>
         <SettingsRow label={t('When collapsed')} description={t('Keep an input bar under the editor, or tuck the chat into a bubble.')}>
           <SettingsSegmented
@@ -224,6 +227,177 @@ function AssistantPane({ status, onChange }: Props) {
         }}
       />
     </SettingsPane>
+  )
+}
+
+type Kind = { id: string; name: string; needs_key: boolean; base_url: string; needs_base: boolean; key_help_url?: string }
+type ProviderConfig = { id: string; kind: string; name: string; base_url?: string; models?: string[]; has_key: boolean }
+type ProvidersState = { kinds: Kind[]; configured: ProviderConfig[] }
+type Draft = { id: string; kind: string; name: string; api_key: string; base_url: string; models: string; editing: boolean }
+
+const blank = (kind: Kind, taken: string[]): Draft => {
+  let id = kind.id
+  for (let n = 2; taken.includes(id); n++) id = `${kind.id}-${n}`
+  return { id, kind: kind.id, name: '', api_key: '', base_url: '', models: '', editing: false }
+}
+
+// API-key providers (OpenAI, Anthropic, Gemini, OpenRouter, Ollama…). Keys go
+// to the server, sealed; the browser only learns that one is saved.
+function Providers({ onChange }: { onChange: () => void }) {
+  const [state, setState] = useState<ProvidersState | null>(null)
+  const [draft, setDraft] = useState<Draft | null>(null)
+  const [busy, setBusy] = useState('')
+
+  useEffect(() => {
+    api<ProvidersState>('/api/providers').then(setState, (e) => toast.error(errorText(e)))
+  }, [])
+
+  const changed = (s: ProvidersState) => {
+    setState(s)
+    onChange()
+    modelsChanged()
+  }
+  async function save(d: Draft) {
+    setBusy('save')
+    try {
+      const body = { kind: d.kind, name: d.name.trim(), api_key: d.api_key.trim(), base_url: d.base_url.trim(), models: d.models.split(/[\s,]+/).filter(Boolean) }
+      changed(await api<ProvidersState>(`/api/providers/${encodeURIComponent(d.id)}`, { method: 'PUT', body }))
+      setDraft(null)
+      test(d.id)
+    } catch (e) {
+      toast.error(errorText(e))
+    } finally {
+      setBusy('')
+    }
+  }
+  async function test(id: string) {
+    setBusy(id)
+    try {
+      const r = await api<{ models: number }>(`/api/providers/${encodeURIComponent(id)}/test`, { method: 'POST' })
+      toast.success(tn(r.models, 'Connected: {n} model available', 'Connected: {n} models available'))
+    } catch (e) {
+      toast.error(errorText(e))
+    } finally {
+      setBusy('')
+    }
+  }
+  async function remove(id: string) {
+    setBusy(id)
+    try {
+      changed(await api<ProvidersState>(`/api/providers/${encodeURIComponent(id)}`, { method: 'DELETE' }))
+    } catch (e) {
+      toast.error(errorText(e))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  if (!state) return null
+  const kindOf = (id: string) => state.kinds.find((k) => k.id === id)
+  const kind = draft && kindOf(draft.kind)
+  return (
+    <SettingsGroup title={t('API providers')} description={t('Use your own API keys or a local model server. Their models appear in the model picker.')}>
+      {state.configured.map((c) => (
+        <SettingsRow
+          key={c.id}
+          label={c.name || kindOf(c.kind)?.name || c.kind}
+          description={[kindOf(c.kind)?.name, c.base_url, c.has_key ? t('key saved') : ''].filter(Boolean).join(' · ')}
+        >
+          <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => test(c.id)}>
+            {busy === c.id ? <Loader2 className="animate-spin" /> : null} {t('Test')}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={!!busy}
+            onClick={() => setDraft({ id: c.id, kind: c.kind, name: c.name, api_key: '', base_url: c.base_url ?? '', models: (c.models ?? []).join(', '), editing: true })}
+          >
+            {t('Edit')}
+          </Button>
+          <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => remove(c.id)}>
+            {t('Remove')}
+          </Button>
+        </SettingsRow>
+      ))}
+      {draft && kind ? (
+        <SettingsRow stacked label={draft.editing ? t('Edit {name}', { name: draft.name || kind.name }) : t('Add a provider')}>
+          <form
+            className="grid w-full gap-2"
+            onSubmit={(e) => {
+              e.preventDefault()
+              save(draft)
+            }}
+          >
+            {!draft.editing && (
+              <Select
+                value={draft.kind}
+                items={state.kinds.map((k) => ({ value: k.id, label: k.name }))}
+                onValueChange={(v) => {
+                  const k = v && kindOf(v)
+                  if (k) setDraft(blank(k, state.configured.map((c) => c.id)))
+                }}
+              >
+                <SelectTrigger size="sm" className="w-full" aria-label={t('Provider')}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {state.kinds.map((k) => (
+                    <SelectItem key={k.id} value={k.id}>
+                      {k.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder={t('Name (optional)')} aria-label={t('Name')} />
+            {(kind.needs_key || kind.id === 'compat') && (
+              <Input
+                type="password"
+                autoComplete="off"
+                value={draft.api_key}
+                onChange={(e) => setDraft({ ...draft, api_key: e.target.value })}
+                placeholder={draft.editing ? t('API key (leave empty to keep the saved one)') : kind.needs_key ? t('API key') : t('API key (if the server needs one)')}
+                aria-label={t('API key')}
+                required={kind.needs_key && !draft.editing}
+              />
+            )}
+            <Input
+              value={draft.base_url}
+              onChange={(e) => setDraft({ ...draft, base_url: e.target.value })}
+              placeholder={kind.base_url || 'https://…/v1'}
+              aria-label={t('Base URL')}
+              required={kind.needs_base}
+            />
+            <Input
+              value={draft.models}
+              onChange={(e) => setDraft({ ...draft, models: e.target.value })}
+              placeholder={t('Extra model ids, comma-separated (optional)')}
+              aria-label={t('Extra model ids')}
+            />
+            <div className="flex items-center gap-2">
+              {kind.key_help_url && (
+                <a className="text-xs text-muted-foreground underline" href={kind.key_help_url} target="_blank" rel="noreferrer">
+                  {t('Get an API key')}
+                </a>
+              )}
+              <span className="flex-1" />
+              <Button type="button" size="sm" variant="ghost" onClick={() => setDraft(null)}>
+                {t('Cancel')}
+              </Button>
+              <Button type="submit" size="sm" disabled={!!busy}>
+                {busy === 'save' && <Loader2 className="animate-spin" />} {t('Save')}
+              </Button>
+            </div>
+          </form>
+        </SettingsRow>
+      ) : (
+        <SettingsRow label={state.configured.length ? t('Another provider') : t('No API providers yet')}>
+          <Button size="sm" variant="secondary" onClick={() => setDraft(blank(state.kinds[0], state.configured.map((c) => c.id)))}>
+            <Plus /> {t('Add provider')}
+          </Button>
+        </SettingsRow>
+      )}
+    </SettingsGroup>
   )
 }
 

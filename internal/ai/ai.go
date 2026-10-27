@@ -106,6 +106,8 @@ const (
 	ErrModelUnavailable ErrorKind = "model_unavailable"
 	ErrUnsupported      ErrorKind = "unsupported"
 	ErrUnavailable      ErrorKind = "unavailable" // transient: retry later
+	ErrInvalidKey       ErrorKind = "invalid_key" // an API provider rejected the key
+	ErrQuota            ErrorKind = "quota"       // an API provider's credit ran out
 	ErrOther            ErrorKind = "other"
 )
 

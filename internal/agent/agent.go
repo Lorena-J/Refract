@@ -99,7 +99,9 @@ func (a *Agent) Run(ctx context.Context, in Input, emit func(Event)) (string, er
 				reply.WriteString(ev.Text)
 				emit(Event{Type: "text", Text: ev.Text})
 			case ai.EventItem:
-				req.Input = append(req.Input, ev.Item) // replayed: the route is stateless
+				if len(ev.Item) > 0 {
+					req.Input = append(req.Input, ev.Item) // replayed: the route is stateless
+				}
 				if ev.Call != nil {
 					calls = append(calls, ev.Call)
 				}

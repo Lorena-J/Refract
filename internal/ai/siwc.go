@@ -56,7 +56,9 @@ type Model struct {
 	DisplayName   string   `json:"display_name"`
 	Description   string   `json:"description"`
 	DefaultEffort string   `json:"default_effort"`
-	Efforts       []Effort `json:"efforts"` // reasoning levels, lightest first; empty: no reasoning control
+	Efforts       []Effort `json:"efforts"`                 // reasoning levels, lightest first; empty: no reasoning control
+	Provider      string   `json:"provider,omitempty"`      // "chatgpt" or a configured provider's id
+	ProviderName  string   `json:"provider_name,omitempty"` // shown as the group in the picker
 }
 
 // Effort is one reasoning level of a model.
