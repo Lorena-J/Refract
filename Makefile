@@ -1,12 +1,19 @@
-.PHONY: dev dev-api dev-web build web test login docker e2e
+.PHONY: dev dev-api dev-web build web test login users docker e2e
 
 # Go API on :8080 + Vite on :5173 (proxies /api). Open http://localhost:5173.
 dev:
 	$(MAKE) -j2 dev-api dev-web
 
 # Set REFRACT_ALLOWED_SUBJECT (printed by `make login`) and optionally REFRACT_MODEL_AGENT in your shell.
+# With a sign-in page: make dev AUTH=password (accounts: make users ARGS="add you@example.com").
+AUTH ?= none
+DEV_ENV = REFRACT_DATA_DIR=./data REFRACT_SECRET_KEY=$$(cat data/dev.key)
 dev-api: data/dev.key
-	REFRACT_AUTH=none REFRACT_DEV=1 REFRACT_DATA_DIR=./data REFRACT_SECRET_KEY=$$(cat data/dev.key) go run ./cmd/refract
+	REFRACT_AUTH=$(AUTH) REFRACT_DEV=1 $(DEV_ENV) go run ./cmd/refract
+
+# Accounts in the dev data: make users ARGS="list" | ARGS="add you@example.com" | ARGS="rename local you@example.com"
+users: data/dev.key
+	$(DEV_ENV) go run ./cmd/refract users $(ARGS)
 
 # Local-only encryption key for dev data; data/ is gitignored.
 data/dev.key:
