@@ -231,11 +231,52 @@ func TestStreamRetriesWithoutEffort(t *testing.T) {
 }
 
 func TestEffortOptions(t *testing.T) {
-	if o, _ := effortOptions("openai", "high"); o["reasoning_effort"] != "high" || o["store"] != false {
+	if o, _ := effortOptions("openai", "gpt-5", "high", true); o["reasoning_effort"] != "high" || o["store"] != false || o["reasoning_summary"] != "auto" {
 		t.Fatalf("openai %v", o)
 	}
-	if _, max := effortOptions("anthropic", "low"); max <= 2048 {
+	if _, max := effortOptions("anthropic", "claude-sonnet-4-5", "low", true); max <= 2048 {
 		t.Fatal("anthropic max_tokens must exceed the thinking budget")
+	}
+	if o, _ := effortOptions("anthropic", "claude-sonnet-4-5", "none", true); o["thinking"] != nil {
+		t.Fatal("none must not enable thinking")
+	}
+	g := func(model string) map[string]any {
+		o, _ := effortOptions("google", model, "high", true)
+		return o["google"].(map[string]any)["thinkingConfig"].(map[string]any)
+	}
+	if tc := g("gemini-2.5-pro"); tc["thinkingBudget"] != 24576 || tc["thinkingLevel"] != nil {
+		t.Fatalf("gemini 2.5 %v", tc)
+	}
+	if tc := g("gemini-3-pro"); tc["thinkingLevel"] != "high" || tc["includeThoughts"] != true {
+		t.Fatalf("gemini 3 %v", tc)
+	}
+	if o, _ := effortOptions("openrouter", "x", "low", true); fmt.Sprint(o["reasoning"]) != "map[effort:low]" {
+		t.Fatalf("openrouter %v", o)
+	}
+}
+
+func TestEffortsFor(t *testing.T) {
+	for _, c := range []struct {
+		kind, id string
+		reasons  bool
+		want     string
+	}{
+		{"openai", "gpt-5.1", false, "medium"},
+		{"openai", "gpt-5-chat-latest", false, ""},
+		{"openai", "gpt-4o", false, ""},
+		{"openai", "o3", false, "medium"},
+		{"anthropic", "claude-sonnet-4-5", false, "none"},
+		{"anthropic", "claude-3-5-sonnet-latest", false, ""},
+		{"google", "gemini-2.5-flash", false, "medium"},
+		{"google", "gemini-2.0-flash", false, ""},
+		{"openrouter", "x/y", true, "medium"},
+		{"openrouter", "x/z", false, ""},
+		{"mistral", "mistral-large", false, ""},
+	} {
+		efforts, def := effortsFor(c.kind, c.id, c.reasons)
+		if def != c.want || (def == "") != (len(efforts) == 0) {
+			t.Errorf("%s %s: got %v %q", c.kind, c.id, efforts, def)
+		}
 	}
 }
 

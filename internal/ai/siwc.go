@@ -33,6 +33,7 @@ type SIWC struct {
 	mu           sync.Mutex
 	limitReached bool            // set by a usage-limit error, cleared by the next success
 	badEfforts   map[string]bool // "model/effort" the API rejected: not offered again
+	noSummary    bool            // the route refused reasoning summaries: stop asking
 }
 
 func (p *SIWC) Status(ctx context.Context) Status {
@@ -150,6 +151,13 @@ func Pick(ms []Model, slug, effort string) (m Model, eff string, ok bool) {
 func (p *SIWC) Stream(ctx context.Context, req Request) (<-chan Event, error) {
 	// Plan route requirements: stateless and streamed. Reasoning items come
 	// back encrypted so they can be replayed in the next call's input.
+	p.mu.Lock()
+	if p.noSummary && req.Reasoning != nil && req.Reasoning.Summary != "" {
+		r := *req.Reasoning
+		r.Summary = ""
+		req.Reasoning = &r
+	}
+	p.mu.Unlock()
 	body, err := json.Marshal(struct {
 		Request
 		Store   bool     `json:"store"`
@@ -161,6 +169,12 @@ func (p *SIWC) Stream(ctx context.Context, req Request) (<-chan Event, error) {
 	}
 	resp, err := p.do(ctx, "POST", "/responses", body)
 	var ae *Error
+	if errors.As(err, &ae) && ae.Param == "reasoning.summary" && req.Reasoning != nil {
+		p.mu.Lock()
+		p.noSummary = true
+		p.mu.Unlock()
+		return p.Stream(ctx, req)
+	}
 	if errors.As(err, &ae) && ae.Param == "reasoning.effort" && req.Reasoning != nil {
 		// A level the models list offers but the API refuses: remember it and
 		// answer with the model's default level instead of failing the request.
@@ -170,7 +184,11 @@ func (p *SIWC) Stream(ctx context.Context, req Request) (<-chan Event, error) {
 		}
 		p.badEfforts[req.Model+"/"+req.Reasoning.Effort] = true
 		p.mu.Unlock()
-		req.Reasoning = nil
+		if req.Reasoning.Summary != "" {
+			req.Reasoning = &Reasoning{Summary: req.Reasoning.Summary}
+		} else {
+			req.Reasoning = nil
+		}
 		return p.Stream(ctx, req)
 	}
 	if err != nil {
@@ -305,6 +323,10 @@ func parseEvent(data []byte) (ev *Event, final bool) {
 	switch e.Type {
 	case "response.output_text.delta":
 		return &Event{Type: EventText, Text: e.Delta}, false
+	case "response.reasoning_summary_text.delta":
+		return &Event{Type: EventReasoning, Text: e.Delta}, false
+	case "response.reasoning_summary_part.done":
+		return &Event{Type: EventReasoning, Text: "\n\n"}, false // paragraphs of the summary
 	case "response.output_item.done":
 		ev := &Event{Type: EventItem, Item: e.Item}
 		var it struct {

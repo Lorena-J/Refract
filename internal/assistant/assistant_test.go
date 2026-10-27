@@ -359,3 +359,34 @@ func TestChatsArePerUser(t *testing.T) {
 	_, err = s.Reject(ben, turn.ID)
 	isNotFound("reject", err)
 }
+
+// A chat remembers the model it used, and a turn keeps the model's reasoning.
+func TestChatModelAndReasoning(t *testing.T) {
+	s, _, projectID, chatID := setup(t, &fakeProvider{script: [][]ai.Event{{
+		{Type: ai.EventReasoning, Text: "Reading the "},
+		{Type: ai.EventReasoning, Text: "introduction."},
+		{Type: ai.EventText, Text: "Looks fine."},
+		{Type: ai.EventCompleted},
+	}}})
+	ctx := context.Background()
+	var streamed string
+	turn, err := s.Ask(ctx, chatID, "Check the intro", Context{}, Choice{Model: "anthropic:claude-x", Effort: "high"}, func(e agent.Event) {
+		if e.Type == "reasoning" {
+			streamed += e.Text
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if streamed != "Reading the introduction." || turn.Reasoning != streamed {
+		t.Fatalf("streamed %q, turn %q", streamed, turn.Reasoning)
+	}
+	turns, _ := s.Turns(ctx, chatID)
+	if turns[0].Reasoning != streamed {
+		t.Fatalf("stored reasoning %q", turns[0].Reasoning)
+	}
+	chats, _ := s.Chats(ctx, projectID)
+	if chats[0].Model != "anthropic:claude-x" {
+		t.Fatalf("chat %+v", chats[0])
+	}
+}

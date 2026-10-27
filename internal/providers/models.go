@@ -13,12 +13,42 @@ import (
 	"github.com/ponytojas/Refract/internal/ai"
 )
 
-// Reasoning levels offered per family, mapped to each API in effortOptions.
-// A model that turns reasoning down gets retried without it (see Stream).
-var efforts = map[string][]ai.Effort{
-	"openai":    {{Effort: "low", Description: "Faster, lighter reasoning"}, {Effort: "medium", Description: "Balanced"}, {Effort: "high", Description: "Deeper reasoning"}},
-	"anthropic": {{Effort: "low", Description: "Short extended thinking"}, {Effort: "medium", Description: "Balanced extended thinking"}, {Effort: "high", Description: "Long extended thinking"}},
-	"google":    {{Effort: "low", Description: "Faster, lighter thinking"}, {Effort: "high", Description: "Deeper thinking"}},
+var (
+	low    = ai.Effort{Effort: "low", Description: "Faster, lighter reasoning"}
+	medium = ai.Effort{Effort: "medium", Description: "Balanced"}
+	high   = ai.Effort{Effort: "high", Description: "Deeper reasoning"}
+
+	// Anthropic models before extended thinking (Claude 3.7).
+	claudeNoThinking = regexp.MustCompile(`^claude-(instant|2|3-(haiku|sonnet|opus|5))`)
+)
+
+// effortsFor is what a model offers in the reasoning menu, mapped to each API
+// in effortOptions. Models that don't take a reasoning setting offer none
+// (they reason, or not, by themselves). reasons is what the provider's model
+// list says, where it says it (OpenRouter).
+func effortsFor(kind, id string, reasons bool) (efforts []ai.Effort, def string) {
+	switch {
+	case kind == "openai" && openaiReasoning(id), kind == "openrouter" && reasons:
+		return []ai.Effort{low, medium, high}, "medium"
+	case kind == "anthropic" && strings.HasPrefix(id, "claude-") && !claudeNoThinking.MatchString(id):
+		return []ai.Effort{{Effort: "none", Description: "Answer without extended thinking"}, low, medium, high}, "none"
+	case kind == "google" && strings.HasPrefix(id, "gemini-3"):
+		return []ai.Effort{low, high}, "high"
+	case kind == "google" && strings.HasPrefix(id, "gemini-2.5"):
+		return []ai.Effort{low, medium, high}, "medium"
+	}
+	return []ai.Effort{}, ""
+}
+
+// openaiReasoning: o-series, GPT-5 (but not its chat variant) and codex models.
+func openaiReasoning(id string) bool {
+	return regexp.MustCompile(`^o\d`).MatchString(id) || strings.HasPrefix(id, "gpt-5") && !strings.HasPrefix(id, "gpt-5-chat") || strings.HasPrefix(id, "codex-")
+}
+
+// listed is one model from a provider's list.
+type listed struct {
+	id, name string
+	reasons  bool // the provider says it takes a reasoning setting
 }
 
 // Not chat models, in OpenAI's list (it returns every model the key can use).
@@ -28,7 +58,7 @@ var openaiNonChat = regexp.MustCompile(`audio|realtime|tts|transcribe|whisper|da
 // user typed in. Slugs are prefixed with the config's id.
 func ListModels(ctx context.Context, hc *http.Client, c Config) ([]ai.Model, error) {
 	k, _ := kind(c.Kind)
-	var ids [][2]string // id, display name
+	var ids []listed
 	if k.listsModels {
 		var err error
 		if ids, err = fetchModels(ctx, hc, c, k); err != nil && len(c.Models) == 0 {
@@ -36,16 +66,17 @@ func ListModels(ctx context.Context, hc *http.Client, c Config) ([]ai.Model, err
 		}
 	}
 	for _, m := range c.Models {
-		ids = append(ids, [2]string{m, m})
+		ids = append(ids, listed{id: m, name: m})
 	}
 	seen := map[string]bool{}
 	out := []ai.Model{}
-	for _, id := range ids {
-		if seen[id[0]] {
+	for _, m := range ids {
+		if seen[m.id] {
 			continue
 		}
-		seen[id[0]] = true
-		out = append(out, ai.Model{Slug: c.ID + ":" + id[0], DisplayName: id[1], Efforts: append([]ai.Effort{}, efforts[c.Kind]...)})
+		seen[m.id] = true
+		efforts, def := effortsFor(c.Kind, m.id, m.reasons)
+		out = append(out, ai.Model{Slug: c.ID + ":" + m.id, DisplayName: m.name, Efforts: efforts, DefaultEffort: def})
 	}
 	if out == nil {
 		out = []ai.Model{}
@@ -53,7 +84,7 @@ func ListModels(ctx context.Context, hc *http.Client, c Config) ([]ai.Model, err
 	return out, nil
 }
 
-func fetchModels(ctx context.Context, hc *http.Client, c Config, k Kind) ([][2]string, error) {
+func fetchModels(ctx context.Context, hc *http.Client, c Config, k Kind) ([]listed, error) {
 	u := strings.TrimRight(c.base(), "/") + k.modelsPath
 	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
 	if err != nil {
@@ -82,7 +113,7 @@ func fetchModels(ctx context.Context, hc *http.Client, c Config, k Kind) ([][2]s
 	case resp.StatusCode != http.StatusOK:
 		return nil, fmt.Errorf("%s answered HTTP %d listing models", k.Name, resp.StatusCode)
 	}
-	var out [][2]string
+	var out []listed
 	switch c.Kind {
 	case "google":
 		var r struct {
@@ -97,7 +128,7 @@ func fetchModels(ctx context.Context, hc *http.Client, c Config, k Kind) ([][2]s
 		}
 		for _, m := range r.Models {
 			if slices.Contains(m.Methods, "generateContent") {
-				out = append(out, [2]string{strings.TrimPrefix(m.Name, "models/"), m.DisplayName})
+				out = append(out, listed{id: strings.TrimPrefix(m.Name, "models/"), name: m.DisplayName})
 			}
 		}
 	case "ollama":
@@ -110,14 +141,15 @@ func fetchModels(ctx context.Context, hc *http.Client, c Config, k Kind) ([][2]s
 			return nil, err
 		}
 		for _, m := range r.Models {
-			out = append(out, [2]string{m.Name, m.Name})
+			out = append(out, listed{id: m.Name, name: m.Name})
 		}
 	default: // OpenAI-style {"data":[{"id","name"|"display_name"}]}
 		var r struct {
 			Data []struct {
-				ID          string `json:"id"`
-				Name        string `json:"name"`
-				DisplayName string `json:"display_name"`
+				ID          string   `json:"id"`
+				Name        string   `json:"name"`
+				DisplayName string   `json:"display_name"`
+				Params      []string `json:"supported_parameters"` // OpenRouter
 			} `json:"data"`
 		}
 		if err := json.Unmarshal(body, &r); err != nil {
@@ -133,9 +165,9 @@ func fetchModels(ctx context.Context, hc *http.Client, c Config, k Kind) ([][2]s
 			} else if m.Name != "" {
 				name = m.Name
 			}
-			out = append(out, [2]string{m.ID, name})
+			out = append(out, listed{id: m.ID, name: name, reasons: slices.Contains(m.Params, "reasoning")})
 		}
 	}
-	slices.SortStableFunc(out, func(a, b [2]string) int { return strings.Compare(a[1], b[1]) })
+	slices.SortStableFunc(out, func(a, b listed) int { return strings.Compare(a.name, b.name) })
 	return out, nil
 }

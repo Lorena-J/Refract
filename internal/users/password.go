@@ -97,8 +97,7 @@ func (s *Service) SetPassword(ctx context.Context, email, pw string) (auth.User,
 	return u, err
 }
 
-// Login checks an email and password.
-// ponytail: failures are counted per email in memory (lost on restart); per-IP limits if that's not enough.
+// Login checks an email and password. Failures are counted per email, in memory.
 func (s *Service) Login(ctx context.Context, email, pw string) (auth.User, error) {
 	email = normEmail(email)
 	if !s.allowAttempt(email) {

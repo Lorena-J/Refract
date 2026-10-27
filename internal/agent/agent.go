@@ -40,7 +40,7 @@ type Input struct {
 
 // Event is streamed to the chat panel.
 type Event struct {
-	Type     string    `json:"type"` // text | activity
+	Type     string    `json:"type"` // text | reasoning | activity
 	Text     string    `json:"text,omitempty"`
 	Activity string    `json:"activity,omitempty"`
 	Error    *ai.Error `json:"error,omitempty"`
@@ -78,7 +78,7 @@ func (a *Agent) Run(ctx context.Context, in Input, emit func(Event)) (string, er
 		Tools:        tools.Definitions(),
 	}
 	if a.Effort != "" {
-		req.Reasoning = &ai.Reasoning{Effort: a.Effort}
+		req.Reasoning = &ai.Reasoning{Effort: a.Effort, Summary: "auto"}
 	}
 	for _, m := range in.History {
 		b, _ := json.Marshal(m)
@@ -98,6 +98,8 @@ func (a *Agent) Run(ctx context.Context, in Input, emit func(Event)) (string, er
 			case ai.EventText:
 				reply.WriteString(ev.Text)
 				emit(Event{Type: "text", Text: ev.Text})
+			case ai.EventReasoning:
+				emit(Event{Type: "reasoning", Text: ev.Text})
 			case ai.EventItem:
 				if len(ev.Item) > 0 {
 					req.Input = append(req.Input, ev.Item) // replayed: the route is stateless

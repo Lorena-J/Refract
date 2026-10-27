@@ -28,8 +28,10 @@ type Request struct {
 }
 
 // Reasoning sets how hard the model thinks: one of the model's Efforts.
+// Summary "auto" asks for a readable summary of the reasoning (EventReasoning).
 type Reasoning struct {
-	Effort string `json:"effort"`
+	Effort  string `json:"effort,omitempty"`
+	Summary string `json:"summary,omitempty"`
 }
 
 // Tool is a function tool definition.
@@ -60,6 +62,7 @@ const (
 	EventItem                       // Item holds a finished output item; Call is set for function calls
 	EventCompleted                  // the only success signal; Usage is set
 	EventError                      // Err is set; the stream ends
+	EventReasoning                  // Text holds a delta of the model's reasoning (summary), shown apart from the answer
 )
 
 // Event is one streamed event. The channel closes after EventCompleted or EventError.

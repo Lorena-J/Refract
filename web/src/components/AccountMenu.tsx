@@ -69,7 +69,7 @@ export default function AccountMenu({ status, compact }: { status: ChatGPTStatus
         <DropdownMenuItem onClick={() => openSettings()}>
           <Settings /> {t('Settings')}
         </DropdownMenuItem>
-        {status && (
+        {status?.status.signed_in && (
           <DropdownMenuItem render={<a href={status.manage_usage} target="_blank" rel="noreferrer" />}>
             <ExternalLink /> {t('Manage ChatGPT usage')}
           </DropdownMenuItem>

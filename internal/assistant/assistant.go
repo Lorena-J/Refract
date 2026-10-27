@@ -33,6 +33,8 @@ type Chat struct {
 	ID        string    `json:"id"`
 	ProjectID string    `json:"project_id"`
 	Title     string    `json:"title"`
+	Model     string    `json:"model"`  // last used, "" before the first turn
+	Effort    string    `json:"effort"` //
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -43,6 +45,7 @@ type Turn struct {
 	ChatID    string            `json:"chat_id"`
 	Message   string            `json:"message"`
 	Reply     string            `json:"reply"`
+	Reasoning string            `json:"reasoning,omitempty"` // the model's reasoning summary, when it gives one
 	Activity  []string          `json:"activity"`
 	Status    string            `json:"status"` // running | review | done | accepted | rejected | failed | stopped
 	Error     *ai.Error         `json:"error,omitempty"`
@@ -121,7 +124,7 @@ func (s *Service) Chats(ctx context.Context, projectID string) ([]Chat, error) {
 	if _, err := s.Projects.Get(ctx, projectID); err != nil {
 		return nil, err
 	}
-	rows, err := s.DB.QueryContext(ctx, `SELECT id, project_id, title, created_at, updated_at FROM chats WHERE project_id = ? ORDER BY updated_at DESC`, projectID)
+	rows, err := s.DB.QueryContext(ctx, `SELECT id, project_id, title, model, effort, created_at, updated_at FROM chats WHERE project_id = ? ORDER BY updated_at DESC`, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +133,7 @@ func (s *Service) Chats(ctx context.Context, projectID string) ([]Chat, error) {
 	for rows.Next() {
 		var c Chat
 		var created, updated int64
-		if err := rows.Scan(&c.ID, &c.ProjectID, &c.Title, &created, &updated); err != nil {
+		if err := rows.Scan(&c.ID, &c.ProjectID, &c.Title, &c.Model, &c.Effort, &created, &updated); err != nil {
 			return nil, err
 		}
 		c.CreatedAt, c.UpdatedAt = time.Unix(created, 0), time.Unix(updated, 0)
@@ -142,8 +145,8 @@ func (s *Service) Chats(ctx context.Context, projectID string) ([]Chat, error) {
 func (s *Service) chat(ctx context.Context, id string) (*Chat, error) {
 	var c Chat
 	var created, updated int64
-	err := s.DB.QueryRowContext(ctx, `SELECT id, project_id, title, created_at, updated_at FROM chats WHERE id = ?`, id).
-		Scan(&c.ID, &c.ProjectID, &c.Title, &created, &updated)
+	err := s.DB.QueryRowContext(ctx, `SELECT id, project_id, title, model, effort, created_at, updated_at FROM chats WHERE id = ?`, id).
+		Scan(&c.ID, &c.ProjectID, &c.Title, &c.Model, &c.Effort, &created, &updated)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -160,13 +163,13 @@ func (s *Service) chat(ctx context.Context, id string) (*Chat, error) {
 	return &c, nil
 }
 
-const turnCols = `id, chat_id, message, reply, activity, status, error, base, files, commits, created_at`
+const turnCols = `id, chat_id, message, reply, reasoning, activity, status, error, base, files, commits, created_at`
 
 func scanTurn(row interface{ Scan(...any) error }) (*Turn, error) {
 	var t Turn
 	var activity, errJSON, files, commits string
 	var created int64
-	if err := row.Scan(&t.ID, &t.ChatID, &t.Message, &t.Reply, &activity, &t.Status, &errJSON, &t.Base, &files, &commits, &created); err != nil {
+	if err := row.Scan(&t.ID, &t.ChatID, &t.Message, &t.Reply, &t.Reasoning, &activity, &t.Status, &errJSON, &t.Base, &files, &commits, &created); err != nil {
 		return nil, err
 	}
 	json.Unmarshal([]byte(activity), &t.Activity)
@@ -223,10 +226,10 @@ func (s *Service) save(ctx context.Context, t *Turn) error {
 		errJSON = string(b)
 	}
 	now := time.Now().Unix()
-	_, err := s.DB.ExecContext(ctx, `INSERT INTO turns (`+turnCols+`, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT (id) DO UPDATE SET reply = excluded.reply, activity = excluded.activity, status = excluded.status,
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO turns (`+turnCols+`, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (id) DO UPDATE SET reply = excluded.reply, reasoning = excluded.reasoning, activity = excluded.activity, status = excluded.status,
 		error = excluded.error, base = excluded.base, files = excluded.files, commits = excluded.commits, updated_at = excluded.updated_at`,
-		t.ID, t.ChatID, t.Message, t.Reply, string(activity), t.Status, errJSON, t.Base, string(files), string(commits), t.CreatedAt.Unix(), now)
+		t.ID, t.ChatID, t.Message, t.Reply, t.Reasoning, string(activity), t.Status, errJSON, t.Base, string(files), string(commits), t.CreatedAt.Unix(), now)
 	if err != nil {
 		return err
 	}
@@ -299,6 +302,9 @@ func (s *Service) Ask(ctx context.Context, chatID, text string, ec Context, want
 	if err != nil {
 		return fail("failed", err)
 	}
+	if _, err := s.DB.ExecContext(ctx, `UPDATE chats SET model = ?, effort = ? WHERE id = ?`, choice.Model, choice.Effort, chatID); err != nil {
+		return fail("failed", err)
+	}
 	base, dir, err := s.Projects.StartTurn(ctx, p.ID, t.ID)
 	if err != nil {
 		return fail("failed", err)
@@ -311,8 +317,11 @@ func (s *Service) Ask(ctx context.Context, chatID, text string, ec Context, want
 		a.Provider = s.Provider(ctx)
 	}
 	t.Reply, err = a.Run(ctx, agent.Input{Dir: dir, MainFile: p.MainFile, History: history, Message: t.Message}, func(e agent.Event) {
-		if e.Type == "activity" {
+		switch e.Type {
+		case "activity":
 			t.Activity = append(t.Activity, e.Activity)
+		case "reasoning":
+			t.Reasoning += e.Text
 		}
 		emit(e)
 	})

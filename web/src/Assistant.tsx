@@ -45,13 +45,14 @@ export type Turn = {
   id: string
   message: string
   reply: string
+  reasoning?: string // the model's reasoning summary, when it gives one
   activity: string[]
   status: 'running' | 'review' | 'done' | 'accepted' | 'rejected' | 'failed' | 'stopped'
   error?: ApiError
   files: { path: string; status: string }[]
   commits: string[]
 }
-export type Chat = { id: string; title: string; updated_at: string }
+export type Chat = { id: string; title: string; model: string; effort: string; updated_at: string }
 export type EditorContext = { open_file: string; selection: string; from_line: number; to_line: number }
 
 type Props = {
@@ -134,6 +135,14 @@ export default function Assistant(p: Props) {
   }, [usable])
   const choice = resolveChoice(models, prefs.model, prefs.effort)
 
+  // Each chat continues with the model it last used; new chats take the last pick.
+  const chat = p.chats.find((c) => c.id === p.chatId)
+  useEffect(() => {
+    if (!chat?.model) return
+    setPref('model', chat.model)
+    if (chat.effort) setPref('effort', chat.effort)
+  }, [p.chatId, chat?.model, chat?.effort])
+
   const open = p.open || !!p.docked
   const bubble = !open && prefs.chatBubble
 
@@ -183,6 +192,7 @@ export default function Assistant(p: Props) {
         },
         (ev) => {
           if (ev.type === 'text') update((t) => ({ ...t, reply: t.reply + ev.text }))
+          if (ev.type === 'reasoning') update((t) => ({ ...t, reasoning: (t.reasoning ?? '') + ev.text }))
           if (ev.type === 'activity') update((t) => ({ ...t, activity: [...t.activity, ev.activity] }))
           if (ev.type === 'turn') {
             setTurns((ts) => [...ts.filter((t) => t.id !== 'pending' && t.id !== ev.turn.id), ev.turn])
@@ -545,6 +555,29 @@ export default function Assistant(p: Props) {
   )
 }
 
+// The model's reasoning summary: shown while it thinks, folded once it answers.
+function Reasoning({ text, live }: { text: string; live: boolean }) {
+  const [open, setOpen] = useState(false)
+  const shown = live || open
+  return (
+    <div>
+      <button
+        className="flex items-center gap-1 text-xs text-muted-foreground transition-colors duration-100 hover:text-foreground"
+        onClick={() => setOpen(!open)}
+        aria-expanded={shown}
+      >
+        <ChevronRight className={cn('size-3.5 transition-transform duration-150 ease-out', shown && 'rotate-90')} />
+        {live ? <ShimmerText className="font-normal">{t('Thinking')}</ShimmerText> : t('Reasoning')}
+      </button>
+      {shown && (
+        <div className="enter mt-1.5 ml-1.5 max-h-56 overflow-y-auto border-l pl-3 text-xs leading-relaxed text-muted-foreground">
+          <Markdown text={text} />
+        </div>
+      )}
+    </div>
+  )
+}
+
 function TurnView({ turn, status, reviewing, onReview }: { turn: Turn; status: ChatGPTStatus | null; reviewing: boolean; onReview: () => void }) {
   const [showSteps, setShowSteps] = useState(false)
   const request = turn.message.split('\n\n[Open file:')[0]
@@ -587,7 +620,9 @@ function TurnView({ turn, status, reviewing, onReview }: { turn: Turn; status: C
           </div>
         ))}
 
-      <ThinkingIndicator active={running && turn.activity.length === 0 && !turn.reply} />
+      {turn.reasoning?.trim() && <Reasoning text={turn.reasoning} live={running && !turn.reply} />}
+
+      <ThinkingIndicator active={running && turn.activity.length === 0 && !turn.reply && !turn.reasoning?.trim()} />
 
       {turn.reply && (
         <div className="group/reply">

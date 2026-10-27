@@ -58,6 +58,10 @@ var migrations = []string{
 		expires_at INTEGER NOT NULL
 	);
 	CREATE INDEX sessions_user ON sessions(user_id)`,
+	// Each chat remembers the model it last used; turns keep the model's reasoning.
+	`ALTER TABLE chats ADD COLUMN model TEXT NOT NULL DEFAULT '';
+	ALTER TABLE chats ADD COLUMN effort TEXT NOT NULL DEFAULT '';
+	ALTER TABLE turns ADD COLUMN reasoning TEXT NOT NULL DEFAULT ''`,
 }
 
 // Open opens (creating if needed) the database at path and applies pending migrations.

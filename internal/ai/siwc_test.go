@@ -249,3 +249,45 @@ func TestRejectedEffortIsLearned(t *testing.T) {
 		t.Errorf("efforts after = %+v", ms[0].Efforts)
 	}
 }
+
+func TestReasoningSummary(t *testing.T) {
+	var bodies []string
+	p := provider(t, signedIn(), func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		bodies = append(bodies, string(b))
+		if strings.Contains(string(b), `"summary"`) && len(bodies) == 1 {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":{"message":"Unsupported parameter: 'reasoning.summary'.","type":"invalid_request_error","param":"reasoning.summary","code":"unsupported_parameter"}}`)
+			return
+		}
+		fmt.Fprint(w, sse(
+			`{"type":"response.reasoning_summary_text.delta","delta":"Checking "}`,
+			`{"type":"response.reasoning_summary_text.delta","delta":"the file"}`,
+			`{"type":"response.reasoning_summary_part.done"}`,
+			`{"type":"response.output_text.delta","delta":"Done"}`,
+			`{"type":"response.completed","response":{"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}`))
+	})
+	run := func() (reasoning, text string) {
+		ch, err := p.Stream(context.Background(), Request{Model: "m", Input: []json.RawMessage{UserMessage("hi")}, Reasoning: &Reasoning{Effort: "low", Summary: "auto"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for ev := range ch {
+			switch ev.Type {
+			case EventReasoning:
+				reasoning += ev.Text
+			case EventText:
+				text += ev.Text
+			}
+		}
+		return
+	}
+	if r, txt := run(); r != "Checking the file\n\n" || txt != "Done" {
+		t.Fatalf("reasoning %q text %q", r, txt)
+	}
+	// Refused once: retried without it, and not asked for again.
+	run()
+	if len(bodies) != 3 || strings.Contains(bodies[1], `"summary"`) || strings.Contains(bodies[2], `"summary"`) || !strings.Contains(bodies[2], `"effort":"low"`) {
+		t.Fatalf("requests %q", bodies)
+	}
+}

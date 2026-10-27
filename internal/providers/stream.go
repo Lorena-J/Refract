@@ -66,24 +66,36 @@ func (p *Provider) model(id string) provider.LanguageModel {
 	}
 }
 
-// effortOptions maps a reasoning level to each API's own setting.
-func effortOptions(kind, effort string) (opts map[string]any, maxTokens int) {
+// effortOptions maps a reasoning level (see effortsFor) to each API's own
+// setting. summary asks for readable reasoning where it is optional.
+func effortOptions(kind, model, effort string, summary bool) (opts map[string]any, maxTokens int) {
 	opts = map[string]any{}
 	if kind == "openai" {
 		opts["store"] = false // stateless: reasoning comes back encrypted and is replayed
 	}
-	if effort == "" {
+	if effort == "" || effort == "none" {
 		return opts, 0
 	}
 	switch kind {
 	case "openai":
 		opts["reasoning_effort"] = effort
+		if summary {
+			opts["reasoning_summary"] = "auto"
+		}
+	case "openrouter":
+		opts["reasoning"] = map[string]any{"effort": effort}
 	case "anthropic":
 		budget := map[string]int{"low": 2048, "medium": 8192, "high": 24576}[effort]
 		opts["thinking"] = map[string]any{"type": "enabled", "budgetTokens": budget}
 		return opts, budget + 16384 // max_tokens must leave room for the answer
 	case "google":
-		opts["google"] = map[string]any{"thinkingConfig": map[string]any{"thinkingLevel": effort, "includeThoughts": true}}
+		tc := map[string]any{"includeThoughts": summary}
+		if strings.HasPrefix(model, "gemini-2.5") {
+			tc["thinkingBudget"] = map[string]int{"low": 1024, "medium": 8192, "high": 24576}[effort]
+		} else {
+			tc["thinkingLevel"] = effort
+		}
+		opts["google"] = map[string]any{"thinkingConfig": tc}
 	}
 	return opts, 0
 }
@@ -102,14 +114,18 @@ func (p *Provider) Stream(ctx context.Context, req ai.Request) (<-chan ai.Event,
 	if err != nil {
 		return nil, err
 	}
-	effort := ""
+	effort, summary := "", false
 	if req.Reasoning != nil {
-		effort = req.Reasoning.Effort
+		effort, summary = req.Reasoning.Effort, req.Reasoning.Summary != ""
 	}
-	ts, err := p.start(ctx, req, msgs, effort)
+	ts, err := p.start(ctx, req, msgs, effort, summary)
+	// The model doesn't take part of the reasoning setting: drop the summary
+	// (OpenAI requires a verified organization for it), then the level.
+	if err != nil && summary && effort != "" && badRequest(err) {
+		ts, err = p.start(ctx, req, msgs, effort, false)
+	}
 	if err != nil && effort != "" && badRequest(err) {
-		// The model doesn't take that reasoning setting: answer with its default.
-		ts, err = p.start(ctx, req, msgs, "")
+		ts, err = p.start(ctx, req, msgs, "", false)
 	}
 	if err != nil {
 		return nil, mapError(err, p.Config)
@@ -129,6 +145,10 @@ func (p *Provider) Stream(ctx context.Context, req ai.Request) (<-chan ai.Event,
 			switch chunk.Type {
 			case provider.ChunkText:
 				if !send(ai.Event{Type: ai.EventText, Text: chunk.Text}) {
+					return
+				}
+			case provider.ChunkReasoning:
+				if !send(ai.Event{Type: ai.EventReasoning, Text: chunk.Text}) {
 					return
 				}
 			case provider.ChunkError:
@@ -159,8 +179,8 @@ func (p *Provider) Stream(ctx context.Context, req ai.Request) (<-chan ai.Event,
 	return ch, nil
 }
 
-func (p *Provider) start(ctx context.Context, req ai.Request, msgs []provider.Message, effort string) (*goai.TextStream, error) {
-	popts, maxTokens := effortOptions(p.Config.Kind, effort)
+func (p *Provider) start(ctx context.Context, req ai.Request, msgs []provider.Message, effort string, summary bool) (*goai.TextStream, error) {
+	popts, maxTokens := effortOptions(p.Config.Kind, req.Model, effort, summary)
 	opts := []goai.Option{
 		goai.WithMessages(msgs...),
 		goai.WithMaxSteps(1),   // our agent runs the tool loop

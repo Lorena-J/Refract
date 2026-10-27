@@ -47,6 +47,8 @@ export default {
   Copy: 'Copiar',
 
   // ModelPicker
+  'Search models': 'Buscar modelos',
+  'No models match': 'Ningún modelo coincide',
   None: 'Ninguno',
   Minimal: 'Mínimo',
   Low: 'Bajo',
