@@ -110,6 +110,38 @@ A reference: \cite{example2024}.
 	}
 }
 
+func TestCompileBOMMainWithFontsAndBibliography(t *testing.T) {
+	tc := tectonic(t)
+	tc.Fonts = fonts.NewResolver(t.TempDir())
+	dir := t.TempDir()
+	source := "\ufeff" + `\documentclass{article}
+\usepackage{fontspec}
+\setmainfont{Latin Modern Sans}
+\begin{document}
+A reference: \cite{example2024}.
+\bibliographystyle{plain}
+\bibliography{references}
+\end{document}
+`
+	write(t, dir, "main.tex", source)
+	write(t, dir, "references.bib", `@article{example2024,author={Example, Ada},title={Synthetic bibliography test},journal={Example Journal},year={2024}}`)
+	res, err := tc.Compile(context.Background(), dir, "main.tex")
+	if err != nil || !res.OK || res.PDF == "" {
+		t.Fatalf("compile: %+v %v", res, err)
+	}
+	log, err := os.ReadFile(filepath.Join(dir, BuildDir, "main.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(log), "main.bbl") || strings.Contains(string(log), "No file main.bbl") || strings.Contains(string(log), "undefined") {
+		t.Fatalf("BOM document's bibliography was not resolved: %s", log)
+	}
+	original, err := os.ReadFile(filepath.Join(dir, "main.tex"))
+	if err != nil || string(original) != source {
+		t.Fatal("original source, including its BOM, changed")
+	}
+}
+
 func TestCompileFontsAndAPABibliography(t *testing.T) {
 	if os.Getenv("REFRACT_TEST_BIBER") != "1" {
 		t.Skip("set REFRACT_TEST_BIBER=1 with a Biber matching the TeX bundle")

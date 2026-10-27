@@ -2,6 +2,7 @@ package compile
 
 import (
 	"bufio"
+	"bytes"
 	"compress/gzip"
 	"fmt"
 	"io"
@@ -46,6 +47,9 @@ func fontSource(projectDir, mainFile, setup string) (string, error) {
 			if err != nil {
 				return err
 			}
+			// A leading UTF-8 BOM must not move into the middle of the line
+			// when setup is prepended. Leave the original file untouched.
+			b = bytes.TrimPrefix(b, []byte{0xef, 0xbb, 0xbf})
 			// No newline is inserted: the original source's line numbers stay
 			// unchanged, including diagnostics and SyncTeX.
 			prefix := strings.ReplaceAll(setup, "\n", " ") + " "

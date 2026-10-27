@@ -90,3 +90,31 @@ func TestRestoreSyncPaths(t *testing.T) {
 		t.Fatalf("incorrect SyncTeX paths: %s", b)
 	}
 }
+
+func TestFontSourceStripsOnlyLeadingBOM(t *testing.T) {
+	dir := t.TempDir()
+	source := "\ufeff\\documentclass{article}\n% Embedded BOM stays: \ufeff\n"
+	write(t, dir, "main.tex", source)
+	if err := os.MkdirAll(filepath.Join(dir, ".refract"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stage, err := fontSource(dir, "main.tex", "\\relax\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(stage)
+	b, err := os.ReadFile(filepath.Join(stage, "main.tex"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(string(b), strings.TrimPrefix(source, "\ufeff")) || strings.Count(string(b), "\ufeff") != 1 {
+		t.Fatalf("staged source must remove only the leading BOM: %q", b)
+	}
+	if strings.Count(string(b), "\n") != strings.Count(source, "\n") {
+		t.Fatal("source line numbers changed")
+	}
+	original, err := os.ReadFile(filepath.Join(dir, "main.tex"))
+	if err != nil || string(original) != source {
+		t.Fatal("original source was changed")
+	}
+}
