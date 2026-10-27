@@ -36,7 +36,7 @@ func init() {
 	}
 }
 
-// ponytail: common Latin accents only; anything else is dropped from keys.
+// Folds common Latin accents; other non-ASCII letters are dropped from keys.
 var fold = strings.NewReplacer("á", "a", "à", "a", "ä", "a", "â", "a", "ã", "a", "å", "a", "é", "e", "è", "e", "ë", "e", "ê", "e",
 	"í", "i", "ì", "i", "ï", "i", "î", "i", "ó", "o", "ò", "o", "ö", "o", "ô", "o", "õ", "o", "ø", "o", "ú", "u", "ù", "u", "ü", "u", "û", "u",
 	"ñ", "n", "ç", "c", "ß", "ss", "ł", "l", "š", "s", "ž", "z", "č", "c", "ć", "c", "ř", "r")

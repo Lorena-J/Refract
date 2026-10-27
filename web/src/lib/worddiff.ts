@@ -7,7 +7,7 @@ export type Op = { op: 'eq' | 'del' | 'ins'; text: string }
 const token = /\s+|[\p{L}\p{N}_]+|[^\s\p{L}\p{N}_]/gu
 const tokens = (s: string) => s.match(token) ?? []
 
-// ponytail: O(n·m) LCS; past this many cells, show a plain replace instead.
+// The LCS is O(n·m): past this many cells, show a plain replace instead.
 const MAX_CELLS = 2_000_000
 
 export function wordDiff(a: string, b: string): Op[] {
