@@ -121,4 +121,6 @@ export default {
   'Search by keywords, title, author or id.': 'Busca por palabras clave, título, autor o id.',
   'cited {n} time': 'citado {n} vez',
   'cited {n} times': 'citado {n} veces',
+  'Float over the editor': 'Flotar sobre el editor',
+  'Dock to the side': 'Anclar a un lado',
 } as Record<string, string>

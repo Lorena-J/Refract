@@ -1,6 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, ChevronDown, ChevronLeft, ChevronRight, Maximize2, Minus, Plus } from 'lucide-react'
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Download, FileCode, Maximize2, Minus, Plus, ZoomIn, ZoomOut } from 'lucide-react'
+import { toast } from 'sonner'
+import { download, errorText } from './api'
+import { WithContextMenu, type MenuEntry } from '@/components/Menu'
+import { mod } from '@/lib/shortcuts'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
@@ -140,6 +144,32 @@ export default function PdfViewer({ projectId, version, highlight, onInverse, to
     if (p && scroller.current) scroller.current.scrollTop = p.offsetTop - 8
   }
 
+  // Right click: where on which page, for "Go to source here".
+  const point = useRef<{ page: number; x: number; y: number } | null>(null)
+  function rememberPoint(e: MouseEvent) {
+    const page = (e.target as HTMLElement).closest<HTMLElement>('[data-page]')
+    if (!page) return (point.current = null)
+    const r = page.getBoundingClientRect()
+    point.current = { page: Number(page.dataset.page), x: (e.clientX - r.left) / s, y: (e.clientY - r.top) / s }
+  }
+  const menu = (): MenuEntry[] => {
+    const p = point.current
+    return [
+      { label: t('Go to source here'), icon: FileCode, shortcut: `${mod}+click`, disabled: !p, onSelect: () => p && onInverse(p.page, p.x, p.y) },
+      '-',
+      { label: t('Zoom in'), icon: ZoomIn, disabled: !doc, onSelect: () => zoom(Math.min(4, s * 1.25)) },
+      { label: t('Zoom out'), icon: ZoomOut, disabled: !doc, onSelect: () => zoom(Math.max(0.25, s / 1.25)) },
+      { label: t('Zoom to fit'), icon: Maximize2, disabled: !doc, onSelect: () => zoom('fit') },
+      '-',
+      {
+        label: t('Download PDF'),
+        icon: Download,
+        disabled: !doc,
+        onSelect: () => download(`/api/projects/${projectId}/pdf`, 'document.pdf').catch((err) => toast.error(errorText(err))),
+      },
+    ]
+  }
+
   const zoomLabel = scale === 'fit' ? t('Fit') : `${Math.round(s * 100)}%`
   const bar = (
     <>
@@ -168,13 +198,15 @@ export default function PdfViewer({ projectId, version, highlight, onInverse, to
     <div className="flex min-h-0 flex-1 flex-col">
       {toolbarTarget ? createPortal(<>{bar}</>, toolbarTarget) : <div className="flex h-11 shrink-0 items-center gap-1 border-b px-2">{bar}</div>}
       <div className="relative min-h-0 flex-1">
-        <div className="absolute inset-0 overflow-auto bg-pdf p-4" ref={scroller} onScroll={onScroll}>
-          {message && <p className="enter mt-24 text-center text-sm text-muted-foreground">{message}</p>}
-          {doc &&
-            sizes.map((size, i) => (
-              <Page key={i} doc={doc} n={i + 1} size={size} scale={s} highlight={highlight?.page === i + 1 ? highlight : undefined} onInverse={onInverse} />
-            ))}
-        </div>
+        <WithContextMenu items={menu} className="absolute inset-0">
+          <div className="absolute inset-0 overflow-auto bg-pdf p-4" ref={scroller} onScroll={onScroll} onContextMenu={rememberPoint}>
+            {message && <p className="enter mt-24 text-center text-sm text-muted-foreground">{message}</p>}
+            {doc &&
+              sizes.map((size, i) => (
+                <Page key={i} doc={doc} n={i + 1} size={size} scale={s} highlight={highlight?.page === i + 1 ? highlight : undefined} onInverse={onInverse} />
+              ))}
+          </div>
+        </WithContextMenu>
         {doc && sizes.length > 0 && (
           // Floating pager: page navigation without leaving the document.
           <div className="enter absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center whitespace-nowrap gap-0.5 rounded-full border bg-popover/90 p-1 text-sm shadow-lg backdrop-blur">

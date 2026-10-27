@@ -223,4 +223,6 @@ export default {
   'Git remote…': 'Remoto git…',
   'Push to the remote': 'Enviar al remoto',
   'Pull from the remote': 'Traer del remoto',
+  'Go to source here': 'Ir al código aquí',
+  'Download PDF': 'Descargar PDF',
 } as Record<string, string>

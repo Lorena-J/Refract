@@ -80,6 +80,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { ago } from '@/lib/time'
 import { WithContextMenu, type MenuEntry } from '@/components/Menu'
 import { useCommands } from '@/lib/commands'
+import { usePrefs } from '@/lib/prefs'
 import { editorShortcuts, mod } from '@/lib/shortcuts'
 import { cn } from '@/lib/utils'
 import { t } from '@/lib/i18n'
@@ -114,6 +115,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
   const [chatFocus, setChatFocus] = useState(0)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [gitOpen, setGitOpen] = useState(false)
+  const prefs = usePrefs()
   const [citing, setCiting] = useState<{ target: CiteTarget | null; suggest: boolean } | null>(null)
   const [proposal, setProposal] = useState<{ path: string; from: number; to: number; original: string; text: string } | undefined>()
   const [insert, setInsert] = useState<{ path: string; text: string } | undefined>()
@@ -587,6 +589,32 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
   ])
 
   const aiReady = !!status?.status.signed_in && status.status.plan_granted
+  const docked = prefs.chatDocked
+  const assistant = (asPanel: boolean) => (
+    <Assistant
+      projectId={id}
+      status={status}
+      chats={chats}
+      chatId={chatId}
+      onChatId={setChatId}
+      onChatsChanged={loadChats}
+      getContext={editorContext}
+      contextLabel={active && current?.text ? `${active.split('/').pop()}${selLines ? ` · L${selLines}` : ''}` : undefined}
+      beforeSend={() => autosave.flushAll()}
+      onReview={(t) => {
+        setReview(t)
+        setChatOpen(false) // the diff takes the editor
+      }}
+      reviewing={review?.id}
+      turnUpdate={turnUpdate}
+      open={chatOpen}
+      onOpen={setChatOpen}
+      focus={chatFocus}
+      request={aiRequest}
+      docked={asPanel}
+    />
+  )
+
   const current = active ? loaded.current.get(active) : undefined
   const texFiles = files.filter((f) => !f.dir && f.path.toLowerCase().endsWith('.tex')).map((f) => f.path)
   const saving = active ? saveState[statuses[active] ?? 'saved'] : null
@@ -886,27 +914,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
               )}
               {!review && active && current && !current.text && <BinaryView file={current} path={active} />}
               {!review && !active && <EmptyEditor />}
-              <Assistant
-                projectId={id}
-                status={status}
-                chats={chats}
-                chatId={chatId}
-                onChatId={setChatId}
-                onChatsChanged={loadChats}
-                getContext={editorContext}
-                contextLabel={active && current?.text ? `${active.split('/').pop()}${selLines ? ` · L${selLines}` : ''}` : undefined}
-                beforeSend={() => autosave.flushAll()}
-                onReview={(t) => {
-                  setReview(t)
-                  setChatOpen(false) // the diff takes the editor
-                }}
-                reviewing={review?.id}
-                turnUpdate={turnUpdate}
-                open={chatOpen}
-                onOpen={setChatOpen}
-                focus={chatFocus}
-                request={aiRequest}
-              />
+              {!docked && assistant(false)}
             </div>
 
             {!review && saving && current?.text && (
@@ -941,6 +949,14 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
             />
           </section>
         </ResizablePanel>
+        {docked && (
+          <>
+            <ResizableHandle className="w-2 bg-transparent" />
+            <ResizablePanel id="chat" defaultSize="380px" minSize="300px" maxSize="50%">
+              {assistant(true)}
+            </ResizablePanel>
+          </>
+        )}
       </ResizablePanelGroup>
 
       <Dialog open={!!ask} onOpenChange={(o) => !o && setAsk(null)}>

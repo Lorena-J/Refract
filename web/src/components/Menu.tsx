@@ -26,15 +26,16 @@ export function WithContextMenu({ items, children, className }: { items: () => M
   return (
     <ContextMenu>
       <ContextMenuTrigger className={className}>{children}</ContextMenuTrigger>
-      <ContextMenuContent className="w-56">
-        <ContextItems items={items()} />
+      <ContextMenuContent className="w-max max-w-80 min-w-56">
+        <ContextItems items={items} />
       </ContextMenuContent>
     </ContextMenu>
   )
 }
 
-function ContextItems({ items }: { items: MenuEntry[] }) {
-  return clean(items).map((e, i) =>
+// Rendered only while the menu is open, so items reflect the state at the right click.
+function ContextItems({ items }: { items: () => MenuEntry[] }) {
+  return clean(items()).map((e, i) =>
     e === '-' ? (
       <ContextMenuSeparator key={i} />
     ) : (

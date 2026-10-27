@@ -11,6 +11,7 @@ import {
   MessageSquarePlus,
   Minimize2,
   PanelBottom,
+  PanelRight,
   Sparkles,
   Square,
   X,
@@ -67,6 +68,7 @@ type Props = {
   reviewing?: string
   turnUpdate?: Turn // a turn changed by the review view
   open: boolean // the chat sheet over the editor; collapsed it is an input bar or a bubble
+  docked?: boolean // rendered in a side panel: always open, no bar or bubble
   onOpen: (open: boolean) => void
   focus?: number // bump to focus the input
   request?: { text: string; n: number } // send this (n changes on every request)
@@ -128,7 +130,8 @@ export default function Assistant(p: Props) {
   }, [usable])
   const choice = resolveChoice(models, prefs.model, prefs.effort)
 
-  const bubble = !p.open && prefs.chatBubble
+  const open = p.open || !!p.docked
+  const bubble = !open && prefs.chatBubble
 
   // Grow the input with its content (up to a cap).
   useEffect(() => {
@@ -136,7 +139,7 @@ export default function Assistant(p: Props) {
     if (!el) return
     el.style.height = 'auto'
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`
-  }, [draft, p.open, bubble])
+  }, [draft, open, bubble])
 
   async function newChat() {
     if (running) return
@@ -205,7 +208,7 @@ export default function Assistant(p: Props) {
 
   // Esc collapses the sheet; menus portalled out of it handle their own Esc.
   function onCardKey(e: KeyboardEvent) {
-    if (e.key === 'Escape' && p.open && e.currentTarget.contains(e.target as Node)) {
+    if (e.key === 'Escape' && p.open && !p.docked && e.currentTarget.contains(e.target as Node)) {
       e.preventDefault()
       p.onOpen(false)
     }
@@ -260,51 +263,60 @@ export default function Assistant(p: Props) {
   }
 
   return (
-    <div ref={overlay} className="pointer-events-none absolute inset-0 z-20 flex flex-col justify-end p-3">
+    <div ref={overlay} className={p.docked ? 'flex h-full min-h-0 flex-col' : 'pointer-events-none absolute inset-0 z-20 flex flex-col justify-end p-3'}>
       <div
         onKeyDown={onCardKey}
-        style={p.open ? { height: sheetHeight ? sheetHeight : '55%' } : undefined}
+        style={open && !p.docked ? { height: sheetHeight ? sheetHeight : '55%' } : undefined}
         className={cn(
-          'pointer-events-auto relative mx-auto flex max-h-full w-full flex-col rounded-2xl border bg-card/95 shadow-lg backdrop-blur-md',
-          // The bar appears from the bubble's corner; the sheet just grows (its content fades in).
-          'origin-bottom-right transition-[scale,opacity] duration-200 ease-out starting:scale-95 starting:opacity-0',
-          p.open ? 'min-h-[260px]' : 'max-w-3xl',
+          'relative flex w-full flex-col',
+          p.docked
+            ? 'h-full min-h-0 overflow-hidden rounded-xl border bg-card shadow-xs'
+            : [
+                'pointer-events-auto mx-auto max-h-full rounded-2xl border bg-card/95 shadow-lg backdrop-blur-md',
+                // The bar appears from the bubble's corner; the sheet just grows (its content fades in).
+                'origin-bottom-right transition-[scale,opacity] duration-200 ease-out starting:scale-95 starting:opacity-0',
+                open ? 'min-h-[260px]' : 'max-w-3xl',
+              ],
         )}
       >
-        {p.open && (
+        {open && (
           <>
-            <div
-              role="separator"
-              aria-orientation="horizontal"
-              aria-label={t('Resize assistant')}
-              onPointerDown={startResize}
-              onPointerMove={resize}
-              onPointerUp={endResize}
-              onPointerCancel={endResize}
-              onDoubleClick={() => setPref('chatHeight', 0)}
-              className="group/handle absolute inset-x-0 -top-1.5 z-10 flex h-4 cursor-ns-resize touch-none justify-center pt-2"
-            >
-              <span className="h-1 w-10 rounded-full bg-border transition-[background-color,width] duration-150 group-hover/handle:w-14 group-hover/handle:bg-muted-foreground/50" />
-            </div>
-            <div className="enter flex h-11 shrink-0 items-center gap-1 px-2 pt-1">
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="text-muted-foreground"
-                      onClick={() => p.onOpen(false)}
-                      aria-label={t('Collapse assistant')}
-                    />
-                  }
-                >
-                  <ChevronDown />
-                </TooltipTrigger>
-                <TooltipContent>
-                  {t('Collapse')} <kbd className="ml-1 opacity-70">Esc</kbd>
-                </TooltipContent>
-              </Tooltip>
+            {!p.docked && (
+              <div
+                role="separator"
+                aria-orientation="horizontal"
+                aria-label={t('Resize assistant')}
+                onPointerDown={startResize}
+                onPointerMove={resize}
+                onPointerUp={endResize}
+                onPointerCancel={endResize}
+                onDoubleClick={() => setPref('chatHeight', 0)}
+                className="group/handle absolute inset-x-0 -top-1.5 z-10 flex h-4 cursor-ns-resize touch-none justify-center pt-2"
+              >
+                <span className="h-1 w-10 rounded-full bg-border transition-[background-color,width] duration-150 group-hover/handle:w-14 group-hover/handle:bg-muted-foreground/50" />
+              </div>
+            )}
+            <div className={cn('enter flex h-11 shrink-0 items-center gap-1 px-2', !p.docked && 'pt-1', p.docked && 'border-b')}>
+              {!p.docked && (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-muted-foreground"
+                        onClick={() => p.onOpen(false)}
+                        aria-label={t('Collapse assistant')}
+                      />
+                    }
+                  >
+                    <ChevronDown />
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {t('Collapse')} <kbd className="ml-1 opacity-70">Esc</kbd>
+                  </TooltipContent>
+                </Tooltip>
+              )}
               <DropdownMenu>
                 <DropdownMenuTrigger disabled={running} render={<Button variant="ghost" size="sm" className="min-w-0 gap-1 font-medium" />}>
                   <span className="truncate">{title}</span> <ChevronDown className="opacity-50" />
@@ -344,18 +356,40 @@ export default function Assistant(p: Props) {
                       variant="ghost"
                       size="icon-sm"
                       className="text-muted-foreground"
+                      disabled={running}
                       onClick={() => {
-                        setPref('chatBubble', !prefs.chatBubble)
-                        p.onOpen(false)
+                        setPref('chatDocked', !p.docked)
+                        p.onOpen(true)
                       }}
-                      aria-label={prefs.chatBubble ? t('Collapse to input bar') : t('Minimize to bubble')}
+                      aria-label={p.docked ? t('Float over the editor') : t('Dock to the side')}
                     />
                   }
                 >
-                  {prefs.chatBubble ? <PanelBottom /> : <Minimize2 />}
+                  {p.docked ? <PanelBottom /> : <PanelRight />}
                 </TooltipTrigger>
-                <TooltipContent>{prefs.chatBubble ? t('Collapse to input bar') : t('Minimize to bubble')}</TooltipContent>
+                <TooltipContent>{p.docked ? t('Float over the editor') : t('Dock to the side')}</TooltipContent>
               </Tooltip>
+              {!p.docked && (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-muted-foreground"
+                        onClick={() => {
+                          setPref('chatBubble', !prefs.chatBubble)
+                          p.onOpen(false)
+                        }}
+                        aria-label={prefs.chatBubble ? t('Collapse to input bar') : t('Minimize to bubble')}
+                      />
+                    }
+                  >
+                    {prefs.chatBubble ? <PanelBottom /> : <Minimize2 />}
+                  </TooltipTrigger>
+                  <TooltipContent>{prefs.chatBubble ? t('Collapse to input bar') : t('Minimize to bubble')}</TooltipContent>
+                </Tooltip>
+              )}
             </div>
 
             <Conversation className="enter min-h-0 flex-1">
@@ -391,7 +425,7 @@ export default function Assistant(p: Props) {
           </>
         )}
 
-        {!p.open && (running || pendingReview) && (
+        {!open && (running || pendingReview) && (
           <div className="enter flex items-center gap-2 border-b px-4 py-2 text-xs">
             {running ? (
               <ShimmerText className="min-w-0 truncate">{last?.activity[last.activity.length - 1] ?? t('Thinking')}</ShimmerText>
@@ -423,28 +457,28 @@ export default function Assistant(p: Props) {
           </p>
         )}
 
-        <div className={cn('shrink-0', p.open && 'p-2 pt-0')}>
+        <div className={cn('shrink-0', open && 'p-2 pt-0')}>
           <div
             className={cn(
               'flex transition-[border-color,box-shadow] duration-150',
-              p.open ? 'flex-col rounded-xl border bg-background focus-within:border-ring' : 'items-end',
+              open ? 'flex-col rounded-xl border bg-background focus-within:border-ring' : 'items-end',
             )}
           >
             <textarea
               ref={input}
               rows={1}
               value={draft}
-              placeholder={p.open ? t('Ask for a change, or ask about the document…') : t('Ask anything')}
+              placeholder={open ? t('Ask for a change, or ask about the document…') : t('Ask anything')}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={onKey}
               aria-label={t('Message the assistant')}
               className={cn(
                 'block max-h-[200px] min-w-0 flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-muted-foreground',
-                p.open ? 'px-3.5 pt-3 pb-1' : 'px-4 py-3',
+                open ? 'px-3.5 pt-3 pb-1' : 'px-4 py-3',
               )}
             />
-            <div className={cn('flex shrink-0 items-center gap-1', p.open ? 'px-2 pb-2' : 'py-2 pr-2')}>
-              {p.open && (
+            <div className={cn('flex shrink-0 items-center gap-1', open ? 'px-2 pb-2' : 'py-2 pr-2')}>
+              {open && (
                 <>
                   {p.contextLabel && (
                     <span
@@ -459,8 +493,8 @@ export default function Assistant(p: Props) {
                   {plan?.plan_granted && p.status && <PlanBadge manageUsage={p.status.manage_usage} />}
                 </>
               )}
-              <ModelPicker models={models} model={choice.model} effort={choice.effort} compact={!p.open} />
-              {!p.open && turns.length > 0 && (
+              <ModelPicker models={models} model={choice.model} effort={choice.effort} compact={!open} />
+              {!open && turns.length > 0 && (
                 <Tooltip>
                   <TooltipTrigger
                     render={
@@ -472,7 +506,7 @@ export default function Assistant(p: Props) {
                   <TooltipContent>{t('Show chat')}</TooltipContent>
                 </Tooltip>
               )}
-              {!p.open && (
+              {!open && (
                 <Tooltip>
                   <TooltipTrigger
                     render={
