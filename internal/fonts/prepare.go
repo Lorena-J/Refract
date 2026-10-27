@@ -9,9 +9,8 @@ import (
 	"time"
 )
 
-// Prepare returns a TeX driver for stdin, or an empty string when no families
-// can be resolved. Generated assets stay under .refract and original sources
-// remain the actual TeX inputs, preserving line numbers and SyncTeX mappings.
+// Prepare returns TeX font setup, or an empty string when no families can be
+// resolved. Generated assets stay under .refract; original sources are unchanged.
 func (r *Resolver) Prepare(ctx context.Context, projectDir, mainFile string) (string, error) {
 	names, err := projectFamilies(projectDir)
 	if err != nil {
@@ -103,13 +102,7 @@ func (r *Resolver) Prepare(ctx context.Context, projectDir, mainFile string) (st
 	if entries.Len() == 0 {
 		return "", nil
 	}
-	base := filepath.Base(mainFile)
-	if strings.ContainsAny(base, "{}\\%\r\n") {
-		// Such names cannot be represented safely by the driver's input token.
-		return "", nil
-	}
-	stem := strings.TrimSuffix(base, filepath.Ext(base))
-	return "\\edef\\jobname{\\detokenize{" + stem + "}}\n" + bootstrap(entries.String()) + "\n\\input{\\detokenize{" + base + "}}\n", nil
+	return bootstrap(entries.String()), nil
 }
 
 func bootstrap(entries string) string {

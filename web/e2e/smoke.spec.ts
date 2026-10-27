@@ -26,7 +26,7 @@ test('open project, edit, compile, see the PDF', async ({ page, request }) => {
   expect(saved).toContain('% edited in the browser')
 })
 
-test('import named fonts, compile without manual changes, and keep the source', async ({ page, request }) => {
+test('import named fonts and bibliography, compile, and keep the source', async ({ page, request }) => {
   const source = `\\documentclass{article}
 \\usepackage{fontspec}
 \\IfFontExistsTF{Open Sans}{\\setmainfont{Open Sans}}{\\errmessage{Open Sans not resolved}}
@@ -34,11 +34,17 @@ test('import named fonts, compile without manual changes, and keep the source', 
 \\begin{document}
 Open Sans: áéíóú ñ. \\textbf{Bold} \\textit{Italic} \\textbf{\\textit{Bold italic}}.
 \\par {\\ttfamily Latin Modern Mono.}
+A citation: \\cite{example2024}.
+\\bibliographystyle{plain}
+\\bibliography{references}
 \\end{document}
 `
   const response = await request.post('/api/projects/import-folder?name=Named%20fonts', {
     headers: api,
-    multipart: { file: { name: 'main.tex', mimeType: 'application/x-tex', buffer: Buffer.from(source) } },
+    multipart: {
+      file: { name: 'main.tex', mimeType: 'application/x-tex', buffer: Buffer.from(source) },
+      bibliography: { name: 'references.bib', mimeType: 'application/x-bibtex', buffer: Buffer.from('@article{example2024,author={Example, Ada},title={Synthetic bibliography test},journal={Example Journal},year={2024}}') },
+    },
   })
   expect(response.ok()).toBeTruthy()
   const imported = await response.json()
@@ -53,4 +59,8 @@ Open Sans: áéíóú ñ. \\textbf{Bold} \\textit{Italic} \\textbf{\\textit{Bold
   expect(await saved.text()).toBe(source)
   const checks = await request.get(`/api/projects/${imported.project.id}/checks`, { headers: api })
   expect(await checks.json()).toEqual([])
+  const log = await (await request.get(`/api/projects/${imported.project.id}/log`, { headers: api })).text()
+  expect(log).toContain('main.bbl')
+  expect(log).not.toContain('No file main.bbl')
+  expect(log).not.toContain('undefined')
 })

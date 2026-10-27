@@ -56,8 +56,16 @@ Named font. \textbf{Bold} \textit{Italic} \textbf{\textit{Bold italic}}.
 		t.Fatal("explicit file selection was overridden")
 	}
 	line := strings.Count(strings.Split(source, "Named font.")[0], "\n") + 1
-	if _, err := (&SyncTeX{}).Forward(context.Background(), dir, "sub/main.tex", "sub/main.tex", line, 0); err != nil && !strings.Contains(err.Error(), "executable file not found") {
-		t.Fatalf("SyncTeX with font driver: %v", err)
+	boxes, syncErr := (&SyncTeX{}).Forward(context.Background(), dir, "sub/main.tex", "sub/main.tex", line, 0)
+	if syncErr != nil && !strings.Contains(syncErr.Error(), "executable file not found") {
+		t.Fatalf("SyncTeX with prepared sources: %v", syncErr)
+	}
+	if syncErr == nil {
+		box := boxes[0]
+		file, _, err := (&SyncTeX{}).Inverse(context.Background(), dir, "sub/main.tex", box.Page, box.X+box.W/2, box.Y+box.H/2)
+		if err != nil || file != "sub/main.tex" {
+			t.Fatalf("inverse SyncTeX: %s %v", file, err)
+		}
 	}
 	write(t, dir, "sub/main.tex", strings.Replace(source, "Named font.", `Named font. \undefinedcommand`, 1))
 	bad, err := tc.Compile(context.Background(), dir, "sub/main.tex")
@@ -72,6 +80,65 @@ Named font. \textbf{Bold} \textit{Italic} \textbf{\textit{Bold italic}}.
 	}
 	if !found {
 		t.Fatalf("lost original source location: %+v", bad.Problems)
+	}
+}
+
+func TestCompileFontsAndBibTeX(t *testing.T) {
+	tc := tectonic(t)
+	tc.Fonts = fonts.NewResolver(t.TempDir())
+	dir := t.TempDir()
+	write(t, dir, "sub/main.tex", `\documentclass{article}
+\usepackage{fontspec}
+\setmainfont{Latin Modern Sans}
+\begin{document}
+A reference: \cite{example2024}.
+\bibliographystyle{plain}
+\bibliography{references}
+\end{document}
+`)
+	write(t, dir, "sub/references.bib", `@article{example2024,author={Example, Ada},title={Synthetic bibliography test},journal={Example Journal},year={2024}}`)
+	res, err := tc.Compile(context.Background(), dir, "sub/main.tex")
+	if err != nil || !res.OK {
+		t.Fatalf("compile: %+v %v", res, err)
+	}
+	log, err := os.ReadFile(filepath.Join(dir, BuildDir, "main.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(log), "main.bbl") || strings.Contains(string(log), "No file main.bbl") || strings.Contains(string(log), "undefined") {
+		t.Fatalf("BibTeX did not resolve the reference: %s", log)
+	}
+}
+
+func TestCompileFontsAndAPABibliography(t *testing.T) {
+	if os.Getenv("REFRACT_TEST_BIBER") != "1" {
+		t.Skip("set REFRACT_TEST_BIBER=1 with a Biber matching the TeX bundle")
+	}
+	tc := tectonic(t)
+	tc.Fonts = fonts.NewResolver(t.TempDir())
+	dir := t.TempDir()
+	write(t, dir, "paper.tex", `\documentclass{article}
+\usepackage{fontspec}
+\setmainfont{Latin Modern Sans}
+\usepackage{csquotes}
+\usepackage[backend=biber,style=apa]{biblatex}
+\addbibresource{references.bib}
+\begin{document}
+A reference: \parencite{example2024}.
+\printbibliography
+\end{document}
+`)
+	write(t, dir, "references.bib", `@article{example2024,author={Example, Ada},title={Synthetic bibliography test},journaltitle={Example Journal},date={2024}}`)
+	res, err := tc.Compile(context.Background(), dir, "paper.tex")
+	if err != nil || !res.OK {
+		t.Fatalf("compile: %+v %v", res, err)
+	}
+	log, err := os.ReadFile(filepath.Join(dir, BuildDir, "paper.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(log), "paper.bbl' found") || strings.Contains(string(log), "Empty bibliography") || strings.Contains(string(log), "undefined") {
+		t.Fatalf("Biber did not resolve the APA reference: %s", log)
 	}
 }
 
