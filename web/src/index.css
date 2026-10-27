@@ -686,6 +686,11 @@
   color: var(--popover-foreground);
   border-color: var(--border) !important;
 }
+/* "N unchanged lines" in diffs: the merge view's own colours are light-only. */
+.cm-collapsedLines {
+  color: var(--muted-foreground) !important;
+  background: linear-gradient(to bottom, transparent 0, var(--muted) 30%, var(--muted) 70%, transparent 100%) !important;
+}
 .cm-tooltip {
   background: var(--popover);
   color: var(--popover-foreground);

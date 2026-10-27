@@ -69,15 +69,16 @@ export default function Review({ turn, onAccept, onReject, onClose }: Props) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-11 shrink-0 items-center gap-2 border-b px-3">
-        <FileDiff className="size-4 text-muted-foreground" />
-        <span className="text-sm font-medium">{t('Review changes')}</span>
-        <span className="text-xs text-muted-foreground">{tn(turn.files.length, '{n} file', '{n} files')}</span>
+      {/* In a narrow editor the title gives way; the actions always fit. */}
+      <div className="@container flex h-11 shrink-0 items-center gap-2 border-b px-3">
+        <FileDiff className="size-4 shrink-0 text-muted-foreground" />
+        <span className="hidden truncate text-sm font-medium whitespace-nowrap @md:inline">{t('Review changes')}</span>
+        <span className="truncate text-xs whitespace-nowrap text-muted-foreground">{tn(turn.files.length, '{n} file', '{n} files')}</span>
         <span className="flex-1" />
-        <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => act('reject', onReject)}>
+        <Button size="sm" variant="ghost" className="shrink-0" disabled={!!busy} onClick={() => act('reject', onReject)}>
           <X /> {t('Reject all')}
         </Button>
-        <Button size="sm" disabled={!!busy} onClick={() => act('all', () => onAccept(null))}>
+        <Button size="sm" className="shrink-0" disabled={!!busy} onClick={() => act('all', () => onAccept(null))}>
           {busy === 'all' ? <Loader2 className="animate-spin" /> : <Check />} {t('Accept all')}
         </Button>
         <Button size="icon-sm" variant="ghost" onClick={onClose} aria-label={t('Close review')}>
