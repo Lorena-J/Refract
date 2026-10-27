@@ -45,12 +45,16 @@ var migrations = []string{
 
 // Open opens (creating if needed) the database at path and applies pending migrations.
 func Open(path string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
+	// WAL: readers never block the writer or each other. busy_timeout makes a
+	// second writer wait instead of failing, and _txlock=immediate takes the
+	// write lock when a transaction starts, so two transactions can't deadlock
+	// upgrading from read to write. Pragmas apply to every pooled connection.
+	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=busy_timeout(10000)&_pragma=synchronous(NORMAL)&_txlock=immediate")
 	if err != nil {
 		return nil, err
 	}
-	// ponytail: one connection serializes all access; fine for a single user, raise if it ever bottlenecks.
-	db.SetMaxOpenConns(1)
+	db.SetMaxOpenConns(8)
+	db.SetMaxIdleConns(8)
 	if err := migrate(db); err != nil {
 		db.Close()
 		return nil, err

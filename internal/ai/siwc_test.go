@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/ponytojas/Refract/internal/siwc"
+	"strings"
 )
 
 type fakeTokens struct {
@@ -207,5 +208,44 @@ func TestPick(t *testing.T) {
 		if ok != c.ok || m.Slug != c.wantSlug || e != c.wantEffort {
 			t.Errorf("Pick(%q, %q) = %q, %q, %v", c.slug, c.effort, m.Slug, e, ok)
 		}
+	}
+}
+
+// A level the models list offers but the API refuses: the request is retried
+// with the model's default, and the level is not offered again.
+func TestRejectedEffortIsLearned(t *testing.T) {
+	var bodies []string
+	p := provider(t, signedIn(), func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/models" {
+			fmt.Fprint(w, `{"models":[{"slug":"m","visibility":"list","default_reasoning_level":"low","supported_reasoning_levels":[{"effort":"low"},{"effort":"turbo"}]}]}`)
+			return
+		}
+		b, _ := io.ReadAll(r.Body)
+		bodies = append(bodies, string(b))
+		if strings.Contains(string(b), `"effort":"turbo"`) {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":{"message":"Invalid value: 'turbo'.","type":"invalid_request_error","param":"reasoning.effort","code":"invalid_value"}}`)
+			return
+		}
+		fmt.Fprint(w, sse(`{"type":"response.completed","response":{"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}`))
+	})
+	ms, _ := p.Models(context.Background())
+	if len(ms[0].Efforts) != 2 {
+		t.Fatalf("efforts before = %+v", ms[0].Efforts)
+	}
+	ch, err := p.Stream(context.Background(), Request{Model: "m", Input: []json.RawMessage{UserMessage("hi")}, Reasoning: &Reasoning{Effort: "turbo"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var done bool
+	for ev := range ch {
+		done = done || ev.Type == EventCompleted
+	}
+	if !done || len(bodies) != 2 || strings.Contains(bodies[1], `"reasoning":{`) {
+		t.Fatalf("completed=%v, requests=%q", done, bodies)
+	}
+	ms, _ = p.Models(context.Background())
+	if len(ms[0].Efforts) != 1 || ms[0].Efforts[0].Effort != "low" {
+		t.Errorf("efforts after = %+v", ms[0].Efforts)
 	}
 }

@@ -31,7 +31,8 @@ type SIWC struct {
 	HTTP    *http.Client
 
 	mu           sync.Mutex
-	limitReached bool // set by a usage-limit error, cleared by the next success
+	limitReached bool            // set by a usage-limit error, cleared by the next success
+	badEfforts   map[string]bool // "model/effort" the API rejected: not offered again
 }
 
 func (p *SIWC) Status(ctx context.Context) Status {
@@ -64,11 +65,17 @@ type Effort struct {
 	Description string `json:"description"`
 }
 
-// apiEfforts are the reasoning.effort values the Responses API accepts. The
-// models list also offers Codex-only levels ("ultra": client-side delegation)
-// that the API rejects with invalid_value.
-// ponytail: fixed list; follow the API's error message if it grows.
-var apiEfforts = map[string]bool{"none": true, "minimal": true, "low": true, "medium": true, "high": true, "xhigh": true, "max": true}
+// clientOnlyEfforts are levels the models list offers for Codex's own client
+// ("ultra": client-side task delegation) that the Responses API rejects.
+// Anything else listed is offered; a level the API turns down anyway is
+// learned at run time (see Stream) and dropped.
+var clientOnlyEfforts = map[string]bool{"ultra": true}
+
+func (p *SIWC) offered(model, effort string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return !clientOnlyEfforts[effort] && !p.badEfforts[model+"/"+effort]
+}
 
 // Models lists models available on the user's plan.
 func (p *SIWC) Models(ctx context.Context) ([]Model, error) {
@@ -97,7 +104,7 @@ func (p *SIWC) Models(ctx context.Context) ([]Model, error) {
 		}
 		mm := Model{Slug: m.Slug, DisplayName: m.DisplayName, Description: m.Description, Efforts: []Effort{}}
 		for _, l := range m.Levels {
-			if apiEfforts[l.Effort] {
+			if p.offered(m.Slug, l.Effort) {
 				mm.Efforts = append(mm.Efforts, l)
 			}
 		}
@@ -151,6 +158,19 @@ func (p *SIWC) Stream(ctx context.Context, req Request) (<-chan Event, error) {
 		return nil, err
 	}
 	resp, err := p.do(ctx, "POST", "/responses", body)
+	var ae *Error
+	if errors.As(err, &ae) && ae.Param == "reasoning.effort" && req.Reasoning != nil {
+		// A level the models list offers but the API refuses: remember it and
+		// answer with the model's default level instead of failing the request.
+		p.mu.Lock()
+		if p.badEfforts == nil {
+			p.badEfforts = map[string]bool{}
+		}
+		p.badEfforts[req.Model+"/"+req.Reasoning.Effort] = true
+		p.mu.Unlock()
+		req.Reasoning = nil
+		return p.Stream(ctx, req)
+	}
 	if err != nil {
 		return nil, err
 	}
