@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -40,6 +42,10 @@ Usage:
   refract            run the server (configured with REFRACT_* environment variables)
   refract login      sign in with ChatGPT on this computer and write a credential file
                      to upload in Settings → Assistant (run "refract login -h" for options)
+  refract users add <email>
+                     create an account, or reset its password (REFRACT_AUTH=password);
+                     prints a generated password
+  refract users list list accounts
   refract version    print the version
 `
 
@@ -53,6 +59,13 @@ func main() {
 			fmt.Print(usage)
 			return
 		}
+	}
+	if len(os.Args) > 1 && os.Args[1] == "users" {
+		if err := runUsers(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
 	}
 	if len(os.Args) > 1 && os.Args[1] == "login" {
 		if err := runLogin(os.Args[2:]); err != nil {
@@ -79,10 +92,6 @@ func run() error {
 	}
 	addr := cmp.Or(os.Getenv("REFRACT_ADDR"), ":8080")
 
-	guard, err := authMiddleware(ctx)
-	if err != nil {
-		return err
-	}
 	key, err := store.ParseKey(os.Getenv("REFRACT_SECRET_KEY"))
 	if err != nil {
 		return err
@@ -97,6 +106,12 @@ func run() error {
 	}
 	defer db.Close()
 
+	people := &users.Service{DB: db, Key: key}
+	guard, login, err := authMiddleware(people)
+	if err != nil {
+		return err
+	}
+
 	session := &siwc.Session{DB: db, Key: key, OAuth: siwc.NewOAuth(ctx), AllowedSubject: os.Getenv("REFRACT_ALLOWED_SUBJECT")}
 	if _, err := session.HostID(ctx); err != nil {
 		return err
@@ -105,6 +120,8 @@ func run() error {
 		base:  session,
 		model: os.Getenv("REFRACT_MODEL_AGENT"),
 		quick: os.Getenv("REFRACT_MODEL_QUICK"),
+
+		canSignOut: login != nil,
 
 		providers: &providers.Store{DB: db, Key: key},
 		outbound:  providers.HTTPClient(),
@@ -180,7 +197,10 @@ func run() error {
 		}
 		w.Write([]byte("ok"))
 	})
-	people := &users.Service{DB: db, Key: key}
+	if login != nil {
+		login.accountRoutes(app)
+		mux.Handle("/api/auth/", login.handler())
+	}
 	mux.Handle("/", guard(people.Middleware(auth.RequireCSRFHeader(app))))
 
 	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
@@ -199,19 +219,43 @@ func run() error {
 }
 
 // authMiddleware picks the web UI guard from REFRACT_AUTH. It fails closed:
-// running without auth must be requested explicitly.
-func authMiddleware(ctx context.Context) (func(http.Handler) http.Handler, error) {
+// running without auth must be requested explicitly. login is set for
+// REFRACT_AUTH=password, which signs users in itself.
+func authMiddleware(people *users.Service) (guard func(http.Handler) http.Handler, login *loginAPI, err error) {
 	switch mode := cmp.Or(os.Getenv("REFRACT_AUTH"), "cloudflare"); mode {
 	case "cloudflare":
 		team, aud := os.Getenv("REFRACT_CF_TEAM_DOMAIN"), os.Getenv("REFRACT_CF_AUD")
 		if team == "" || aud == "" {
-			return nil, errors.New("REFRACT_AUTH=cloudflare needs REFRACT_CF_TEAM_DOMAIN and REFRACT_CF_AUD (or set REFRACT_AUTH=none to run unprotected)")
+			return nil, nil, errors.New("REFRACT_AUTH=cloudflare needs REFRACT_CF_TEAM_DOMAIN and REFRACT_CF_AUD (or set REFRACT_AUTH=password to sign in to Refract itself)")
 		}
-		return auth.CloudflareAccess(ctx, team, aud), nil
+		return auth.CloudflareAccess(context.Background(), team, aud), nil, nil
+	case "password":
+		login = &loginAPI{users: people}
+		if issuer := os.Getenv("REFRACT_OIDC_ISSUER"); issuer != "" {
+			public, err := url.Parse(os.Getenv("REFRACT_PUBLIC_URL"))
+			if err != nil || (public.Scheme != "https" && public.Scheme != "http") || public.Host == "" {
+				return nil, nil, errors.New("REFRACT_OIDC_ISSUER needs REFRACT_PUBLIC_URL, the address users open Refract at (e.g. https://refract.example.com)")
+			}
+			id, secret := os.Getenv("REFRACT_OIDC_CLIENT_ID"), os.Getenv("REFRACT_OIDC_CLIENT_SECRET")
+			if id == "" {
+				return nil, nil, errors.New("REFRACT_OIDC_ISSUER needs REFRACT_OIDC_CLIENT_ID (and usually REFRACT_OIDC_CLIENT_SECRET)")
+			}
+			login.oidc = &auth.OIDC{
+				Name:         cmp.Or(os.Getenv("REFRACT_OIDC_NAME"), "SSO"),
+				Issuer:       issuer,
+				ClientID:     id,
+				ClientSecret: secret,
+				RedirectURL:  strings.TrimRight(public.String(), "/") + "/api/auth/oidc/callback",
+			}
+			if v := os.Getenv("REFRACT_OIDC_ALLOWED"); v != "" {
+				login.allowed = strings.Split(v, ",")
+			}
+		}
+		return people.SessionGuard(web.Handler()), login, nil
 	case "none":
 		slog.Warn("REFRACT_AUTH=none: the web UI is unprotected; only use this locally or behind your own auth")
-		return auth.Unauthenticated, nil // one local user
+		return auth.Unauthenticated, nil, nil // one local user
 	default:
-		return nil, fmt.Errorf("REFRACT_AUTH=%q: want cloudflare or none", mode)
+		return nil, nil, fmt.Errorf("REFRACT_AUTH=%q: want cloudflare, password or none", mode)
 	}
 }

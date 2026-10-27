@@ -86,6 +86,14 @@ export function describe(e: ApiError): string {
       return t('ChatGPT plan usage is not available for this account: {message}', { message: e.message })
     case 'model_unavailable':
       return t('This model is not available. Pick another one.')
+    case 'bad_login':
+      return t('Wrong email or password.')
+    case 'wrong_password':
+      return t('The current password is wrong.')
+    case 'too_many_attempts':
+      return t('Too many failed attempts. Try again in a few minutes.')
+    case 'login_required':
+      return t('Your session ended. Reload the page to sign in again.')
     case 'invalid_key':
       return t('The provider rejected the API key: {message}', { message: e.message })
     case 'quota':

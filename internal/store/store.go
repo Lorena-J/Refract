@@ -51,6 +51,13 @@ var migrations = []string{
 	);
 	ALTER TABLE projects ADD COLUMN owner TEXT NOT NULL DEFAULT '';
 	CREATE INDEX projects_owner ON projects(owner, updated_at)`,
+	`ALTER TABLE users ADD COLUMN password TEXT NOT NULL DEFAULT '';
+	CREATE TABLE sessions (
+		id         TEXT PRIMARY KEY, -- sha256 of the cookie's token
+		user_id    TEXT NOT NULL,
+		expires_at INTEGER NOT NULL
+	);
+	CREATE INDEX sessions_user ON sessions(user_id)`,
 }
 
 // Open opens (creating if needed) the database at path and applies pending migrations.

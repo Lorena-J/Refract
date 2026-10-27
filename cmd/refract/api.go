@@ -25,6 +25,8 @@ type api struct {
 	model string        // default model (REFRACT_MODEL_AGENT)
 	quick string        // default model for quick actions (REFRACT_MODEL_QUICK)
 
+	canSignOut bool // REFRACT_AUTH=password: Refract keeps the session
+
 	providers *providers.Store // users' API-key providers
 	outbound  *http.Client     // for those providers (see providers.HTTPClient)
 
@@ -61,7 +63,7 @@ func (a *api) providerFor(ctx context.Context) ai.Provider { return a.forUser(ct
 func (a *api) routes(mux *http.ServeMux, dev bool) {
 	mux.HandleFunc("GET /api/me", func(w http.ResponseWriter, r *http.Request) {
 		u, _ := auth.UserFrom(r.Context())
-		writeJSON(w, u)
+		writeJSON(w, map[string]any{"id": u.ID, "email": u.Email, "can_sign_out": a.canSignOut})
 	})
 	mux.HandleFunc("GET /api/chatgpt/status", a.status)
 	mux.HandleFunc("POST /api/chatgpt/credentials", a.importCredentials)

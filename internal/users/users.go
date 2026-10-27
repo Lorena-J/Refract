@@ -1,6 +1,7 @@
 // Package users maps the identity the auth layer established (an email) to a
 // Refract user, creating it on first sight: who may sign in at all is decided
-// in front of Refract (Cloudflare Access policy, or a single local user).
+// by the auth layer (Cloudflare Access policy, a single local user, or the
+// accounts and sessions kept here for REFRACT_AUTH=password).
 package users
 
 import (
@@ -22,6 +23,9 @@ type Service struct {
 	Key []byte // to re-seal adopted credentials
 
 	cache sync.Map // email → auth.User
+
+	mu       sync.Mutex
+	failures map[string]failures // email → recent failed sign-ins
 }
 
 // legacy settings of the single-user version, now per user: key → sealed?

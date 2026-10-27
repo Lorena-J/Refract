@@ -21,6 +21,7 @@ import { t, tn } from '@/lib/i18n'
 import { shortcutGroups } from '@/lib/shortcuts'
 import { setTheme, useTheme, type Theme } from '@/lib/theme'
 import PlanBadge from './PlanBadge'
+import { useMe } from '@/components/AccountMenu'
 
 type Props = { status: ChatGPTStatus | null; onChange: (s: ChatGPTStatus) => void }
 
@@ -102,6 +103,7 @@ function General() {
           />
         </SettingsRow>
       </SettingsGroup>
+      <Account />
     </SettingsPane>
   )
 }
@@ -227,6 +229,56 @@ function AssistantPane({ status, onChange }: Props) {
         }}
       />
     </SettingsPane>
+  )
+}
+
+// Password change, for accounts Refract signs in itself (REFRACT_AUTH=password).
+function Account() {
+  const me = useMe()
+  const [has, setHas] = useState(false)
+  const [current, setCurrent] = useState('')
+  const [next, setNext] = useState('')
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    if (me?.can_sign_out) api<{ has_password: boolean }>('/api/account').then((a) => setHas(a.has_password), () => {})
+  }, [me?.can_sign_out])
+  if (!me?.can_sign_out || !has) return null
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault()
+    setBusy(true)
+    try {
+      await api('/api/account/password', { method: 'POST', body: { current, new: next } })
+      setCurrent('')
+      setNext('')
+      toast.success(t('Password changed. Other devices were signed out.'))
+    } catch (err) {
+      toast.error(errorText(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <SettingsGroup title={t('Account')}>
+      <SettingsRow stacked label={t('Password')} description={t('Signed in as {email}.', { email: me.email })}>
+        <form onSubmit={save} className="grid w-full gap-2 sm:grid-cols-[1fr_1fr_auto]">
+          <Input type="password" autoComplete="current-password" required value={current} onChange={(e) => setCurrent(e.target.value)} placeholder={t('Current password')} aria-label={t('Current password')} />
+          <Input
+            type="password"
+            autoComplete="new-password"
+            required
+            minLength={8}
+            value={next}
+            onChange={(e) => setNext(e.target.value)}
+            placeholder={t('New password (8+ characters)')}
+            aria-label={t('New password')}
+          />
+          <Button type="submit" size="sm" className="h-9" disabled={busy}>
+            {busy && <Loader2 className="animate-spin" />} {t('Change')}
+          </Button>
+        </form>
+      </SettingsRow>
+    </SettingsGroup>
   )
 }
 

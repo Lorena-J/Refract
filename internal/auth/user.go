@@ -26,9 +26,9 @@ func UserFrom(ctx context.Context) (User, bool) {
 	return u, ok
 }
 
-// withIdentity records who the auth layer says the request is from (an
+// WithIdentity records who the auth layer says the request is from (an
 // email); users.Middleware turns it into a User.
-func withIdentity(r *http.Request, email string) *http.Request {
+func WithIdentity(r *http.Request, email string) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), identityKey{}, strings.ToLower(strings.TrimSpace(email))))
 }
 
@@ -44,6 +44,6 @@ const LocalIdentity = "local"
 // Unauthenticated marks every request as the local user.
 func Unauthenticated(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		next.ServeHTTP(w, withIdentity(r, LocalIdentity))
+		next.ServeHTTP(w, WithIdentity(r, LocalIdentity))
 	})
 }

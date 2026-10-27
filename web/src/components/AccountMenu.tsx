@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Check, ChevronsUpDown, ExternalLink, Monitor, Moon, Settings, Sun } from 'lucide-react'
+import { Check, ChevronsUpDown, ExternalLink, LogOut, Monitor, Moon, Settings, Sun } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,11 +22,12 @@ const themes: { value: Theme; label: string; icon: typeof Sun }[] = [
 ]
 
 // Bottom-left account chip: ChatGPT identity, settings, theme.
-let mePromise: Promise<{ id: string; email: string } | null> | null = null
-function useMe() {
-  const [me, setMe] = useState<{ id: string; email: string } | null>(null)
+type Me = { id: string; email: string; can_sign_out: boolean }
+let mePromise: Promise<Me | null> | null = null
+export function useMe() {
+  const [me, setMe] = useState<Me | null>(null)
   useEffect(() => {
-    mePromise ??= api<{ id: string; email: string }>('/api/me').catch(() => null)
+    mePromise ??= api<Me>('/api/me').catch(() => null)
     mePromise.then(setMe)
   }, [])
   return me
@@ -71,6 +72,11 @@ export default function AccountMenu({ status, compact }: { status: ChatGPTStatus
         {status && (
           <DropdownMenuItem render={<a href={status.manage_usage} target="_blank" rel="noreferrer" />}>
             <ExternalLink /> {t('Manage ChatGPT usage')}
+          </DropdownMenuItem>
+        )}
+        {me?.can_sign_out && (
+          <DropdownMenuItem onClick={() => api('/api/auth/logout', { method: 'POST' }).finally(() => location.assign('/'))}>
+            <LogOut /> {t('Sign out')}
           </DropdownMenuItem>
         )}
       </DropdownMenuContent>

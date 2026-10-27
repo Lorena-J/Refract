@@ -50,7 +50,7 @@ func accessMiddleware(v *oidc.IDTokenVerifier) func(http.Handler) http.Handler {
 				http.Error(w, "forbidden: no user in the Access token", http.StatusForbidden)
 				return
 			}
-			next.ServeHTTP(w, withIdentity(r, claims.Email))
+			next.ServeHTTP(w, WithIdentity(r, claims.Email))
 		})
 	}
 }

@@ -18,17 +18,34 @@ Refract runs as one container (Go server, built web UI, Tectonic and SyncTeX). B
 
 ```sh
 docker build -t refract .
-docker run -d -p 8080:8080 -v refract-data:/data \
+docker run -d --name refract -p 8080:8080 -v refract-data:/data \
   -e REFRACT_SECRET_KEY="$(openssl rand -base64 32)" \
   -e REFRACT_CF_TEAM_DOMAIN=yourteam.cloudflareaccess.com -e REFRACT_CF_AUD=<aud tag> \
   refract
 ```
 
-Keep `REFRACT_SECRET_KEY` stable: it encrypts the stored tokens. Refract has no login of its own and expects to sit behind [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/), whose JWT it verifies. It refuses to start without that configuration unless you set `REFRACT_AUTH=none` (only on a private network).
+Keep `REFRACT_SECRET_KEY` stable: it encrypts the stored tokens. Pick how people sign in with `REFRACT_AUTH`:
+
+- `cloudflare` (default): behind [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/), whose JWT Refract verifies (`REFRACT_CF_TEAM_DOMAIN`, `REFRACT_CF_AUD`).
+- `password`: Refract's own sign-in page, with passwords and, optionally, an OpenID Connect provider (below). Serve it over https.
+- `none`: no sign-in, one local user. Only on a private network.
+
+Refract refuses to start until one of them is configured.
 
 ### Users
 
-Everyone your Access policy lets in gets their own Refract account, identified by the email in the Access token: their own projects, chats, ChatGPT sign-in, API providers and GitHub account. Nothing is shared between users. The first person to sign in adopts the data of an installation from before multi-user support. With `REFRACT_AUTH=none` there is a single local user.
+Each user has their own projects, chats, ChatGPT sign-in, API providers and GitHub account. Nothing is shared between users. The first user adopts the data of an installation from before multi-user support.
+
+With `cloudflare`, everyone your Access policy lets in gets an account, identified by the email in the Access token. With `password`, create accounts on the server (the command prints a generated password, which the user can change in **Settings → General**; running it again resets it):
+
+```sh
+docker exec refract refract users add ana@example.com
+docker exec refract refract users list
+```
+
+### Sign in with OpenID Connect (optional, `REFRACT_AUTH=password`)
+
+Google, Microsoft Entra, Keycloak, Authentik, Authelia and other OpenID Connect providers can add a *Continue with …* button. Register Refract with the provider as a web application with the redirect URI `<REFRACT_PUBLIC_URL>/api/auth/oidc/callback`, then set `REFRACT_PUBLIC_URL`, `REFRACT_OIDC_ISSUER`, `REFRACT_OIDC_CLIENT_ID`, `REFRACT_OIDC_CLIENT_SECRET` and optionally `REFRACT_OIDC_NAME`. The provider's verified email must belong to an existing account, unless it is listed in `REFRACT_OIDC_ALLOWED`, which then creates the account on first sign-in.
 
 ### Connect ChatGPT
 
@@ -57,8 +74,12 @@ Projects can push to and pull from any https git remote with a personal access t
 | `REFRACT_SECRET_KEY` | **Required.** 32 bytes, base64 (`openssl rand -base64 32`). Encrypts stored credentials and tokens. |
 | `REFRACT_DATA_DIR` | Projects, database and caches. Default `/data`. |
 | `REFRACT_ADDR` | Listen address. Default `:8080`. |
-| `REFRACT_AUTH` | `cloudflare` (default) or `none`. |
+| `REFRACT_AUTH` | `cloudflare` (default), `password` or `none`. |
 | `REFRACT_CF_TEAM_DOMAIN`, `REFRACT_CF_AUD` | Your Cloudflare Access team domain and application AUD tag. |
+| `REFRACT_PUBLIC_URL` | The address users open Refract at, e.g. `https://refract.example.com`. Needed for OpenID Connect. |
+| `REFRACT_OIDC_ISSUER`, `REFRACT_OIDC_CLIENT_ID`, `REFRACT_OIDC_CLIENT_SECRET` | Your OpenID Connect provider's issuer URL and Refract's client credentials there. |
+| `REFRACT_OIDC_NAME` | Button label: *Continue with …*. Default `SSO`. |
+| `REFRACT_OIDC_ALLOWED` | Comma-separated emails and `@domains` that may create an account by signing in with OpenID Connect. Empty: existing accounts only. |
 | `REFRACT_ALLOWED_SUBJECT` | Optional: the only ChatGPT account accepted (printed by `refract login`). |
 | `REFRACT_MODEL_AGENT` | Default model for the assistant when none is picked in the UI. |
 | `REFRACT_MODEL_QUICK` | Default model for quick actions and citations. |
