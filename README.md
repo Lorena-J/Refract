@@ -29,7 +29,13 @@ Keep `REFRACT_SECRET_KEY` stable: it encrypts the stored tokens. Refract has no 
 
 ### Connect ChatGPT
 
-Sign-in happens on your own computer: run `make login` from a clone of this repository (release binaries will follow), choose *Continue with ChatGPT*, then upload the credential file it writes in **Settings → Assistant**. Set `REFRACT_ALLOWED_SUBJECT` to the subject it prints, so the server only accepts your account.
+Sign-in happens on your own computer. Download `refract` for your system from [Releases](https://github.com/ponytojas/Refract/releases) (or run `make login` from a clone), then:
+
+```sh
+refract login
+```
+
+Choose *Continue with ChatGPT* in the browser, then upload the credential file it writes in **Settings → Assistant**. Set `REFRACT_ALLOWED_SUBJECT` on the server to the subject it prints, so the server only accepts your account. On macOS, a binary downloaded with a browser is quarantined because it isn't signed: run `xattr -d com.apple.quarantine refract` once.
 
 ### Connect GitHub (optional)
 
@@ -60,5 +66,7 @@ make test    # Go tests, vet and web unit tests
 make e2e     # build and run the Playwright smoke test
 make docker  # multi-arch image (amd64, arm64) and a smoke test
 ```
+
+Releases: pushing a tag like `v0.1.0` builds `refract` for macOS, Linux and Windows (amd64 and arm64) and publishes them with checksums (`.github/workflows/release.yml`).
 
 Requires Go, Node and Tectonic (plus `synctex` for PDF sync) on your machine; the image bundles them.

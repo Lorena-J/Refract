@@ -30,7 +30,29 @@ import (
 	"github.com/ponytojas/Refract/web"
 )
 
+// version is set at build time: -ldflags "-X main.version=v1.2.3".
+var version = "dev"
+
+const usage = `Refract, a private AI-assisted LaTeX workspace.
+
+Usage:
+  refract            run the server (configured with REFRACT_* environment variables)
+  refract login      sign in with ChatGPT on this computer and write a credential file
+                     to upload in Settings → Assistant (run "refract login -h" for options)
+  refract version    print the version
+`
+
 func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "version", "--version", "-v":
+			fmt.Println("refract", version)
+			return
+		case "help", "--help", "-h":
+			fmt.Print(usage)
+			return
+		}
+	}
 	if len(os.Args) > 1 && os.Args[1] == "login" {
 		if err := runLogin(os.Args[2:]); err != nil {
 			fmt.Fprintln(os.Stderr, "login failed:", err)

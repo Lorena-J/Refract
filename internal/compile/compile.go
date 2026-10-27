@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -76,9 +75,7 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 	if t.CacheDir != "" {
 		cmd.Env = append(cmd.Env, "TECTONIC_CACHE_DIR="+t.CacheDir)
 	}
-	// Own process group, so a timeout kills everything tectonic started.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
+	ownProcessGroup(cmd) // a timeout kills everything tectonic started
 	cmd.WaitDelay = 2 * time.Second
 	var stderr limitedBuffer
 	cmd.Stderr = &stderr
