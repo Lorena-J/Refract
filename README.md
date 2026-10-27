@@ -21,11 +21,14 @@ docker build -t refract .
 docker run -d -p 8080:8080 -v refract-data:/data \
   -e REFRACT_SECRET_KEY="$(openssl rand -base64 32)" \
   -e REFRACT_CF_TEAM_DOMAIN=yourteam.cloudflareaccess.com -e REFRACT_CF_AUD=<aud tag> \
-  -e REFRACT_ALLOWED_SUBJECT=<printed by refract login> \
   refract
 ```
 
 Keep `REFRACT_SECRET_KEY` stable: it encrypts the stored tokens. Refract has no login of its own and expects to sit behind [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/), whose JWT it verifies. It refuses to start without that configuration unless you set `REFRACT_AUTH=none` (only on a private network).
+
+### Users
+
+Everyone your Access policy lets in gets their own Refract account, identified by the email in the Access token: their own projects, chats, ChatGPT sign-in and GitHub account. Nothing is shared between users. The first person to sign in adopts the data of an installation from before multi-user support. With `REFRACT_AUTH=none` there is a single local user.
 
 ### Connect ChatGPT
 
@@ -35,7 +38,7 @@ Sign-in happens on your own computer. Download `refract` for your system from [R
 refract login
 ```
 
-Choose *Continue with ChatGPT* in the browser, then upload the credential file it writes in **Settings → Assistant**. Set `REFRACT_ALLOWED_SUBJECT` on the server to the subject it prints, so the server only accepts your account. On macOS, a binary downloaded with a browser is quarantined because it isn't signed: run `xattr -d com.apple.quarantine refract` once.
+Choose *Continue with ChatGPT* in the browser, then upload the credential file it writes in **Settings → Assistant**. Each user uploads their own. To restrict the server to one ChatGPT account, set `REFRACT_ALLOWED_SUBJECT` to the subject `refract login` prints. On macOS, a binary downloaded with a browser is quarantined because it isn't signed: run `xattr -d com.apple.quarantine refract` once.
 
 ### Connect GitHub (optional)
 
@@ -50,7 +53,7 @@ Projects can push to and pull from any https git remote with a personal access t
 | `REFRACT_ADDR` | Listen address. Default `:8080`. |
 | `REFRACT_AUTH` | `cloudflare` (default) or `none`. |
 | `REFRACT_CF_TEAM_DOMAIN`, `REFRACT_CF_AUD` | Your Cloudflare Access team domain and application AUD tag. |
-| `REFRACT_ALLOWED_SUBJECT` | The ChatGPT account allowed to sign in (printed by `refract login`). |
+| `REFRACT_ALLOWED_SUBJECT` | Optional: the only ChatGPT account accepted (printed by `refract login`). |
 | `REFRACT_MODEL_AGENT` | Default model for the assistant when none is picked in the UI. |
 | `REFRACT_MODEL_QUICK` | Default model for quick actions and citations. |
 | `REFRACT_COMPILE_TIMEOUT` | Seconds per compile. Default 90. |

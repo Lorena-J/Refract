@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/ponytojas/Refract/internal/agent"
-	"github.com/ponytojas/Refract/internal/ai"
 	"github.com/ponytojas/Refract/internal/arxiv"
 	"github.com/ponytojas/Refract/internal/assistant"
 	"github.com/ponytojas/Refract/internal/auth"
@@ -27,6 +26,7 @@ import (
 	"github.com/ponytojas/Refract/internal/projects"
 	"github.com/ponytojas/Refract/internal/siwc"
 	"github.com/ponytojas/Refract/internal/store"
+	"github.com/ponytojas/Refract/internal/users"
 	"github.com/ponytojas/Refract/web"
 )
 
@@ -101,10 +101,9 @@ func run() error {
 		return err
 	}
 	a := &api{
-		session:  session,
-		provider: &ai.SIWC{Tokens: session, BaseURL: siwc.Resource, HTTP: &http.Client{}},
-		model:    os.Getenv("REFRACT_MODEL_AGENT"),
-		quick:    os.Getenv("REFRACT_MODEL_QUICK"),
+		base:  session,
+		model: os.Getenv("REFRACT_MODEL_AGENT"),
+		quick: os.Getenv("REFRACT_MODEL_QUICK"),
 	}
 
 	pa := &projectsAPI{
@@ -128,7 +127,7 @@ func run() error {
 
 	outbound := &http.Client{Timeout: 30 * time.Second}
 	papers := &cite.Service{
-		Provider: a.provider,
+		Provider: nil, // set per request: each user's own (see papersAPI)
 		Arxiv:    &arxiv.Client{HTTP: outbound, BaseURL: "https://export.arxiv.org/api/query"},
 		OpenAlex: &openalex.Client{HTTP: outbound, BaseURL: "https://api.openalex.org", DOIURL: "https://doi.org", APIKey: os.Getenv("REFRACT_OPENALEX_API_KEY")},
 	}
@@ -136,12 +135,12 @@ func run() error {
 		DB:       db,
 		Projects: pa.svc,
 		Agent: agent.Agent{
-			Provider:      a.provider,
 			Compiler:      ca.runner.Compiler,
 			MaxIterations: 25,
 			Papers:        papers,
 			Timeout:       15 * time.Minute,
 		},
+		Provider: a.providerFor,
 		ModelFor: func(ctx context.Context, want assistant.Choice) (assistant.Choice, error) {
 			return a.choose(ctx, want, a.model)
 		},
@@ -162,7 +161,7 @@ func run() error {
 	pa.svc.OnCommit = ra.AutoPush
 	pa.svc.GitHubToken = ra.Token
 	ra.routes(app)
-	(&papersAPI{papers: papers, projects: pa.svc, choose: func(ctx context.Context, want assistant.Choice) (assistant.Choice, error) {
+	(&papersAPI{papers: papers, projects: pa.svc, provider: a.providerFor, choose: func(ctx context.Context, want assistant.Choice) (assistant.Choice, error) {
 		return a.choose(ctx, want, a.quick)
 	}}).routes(app)
 	app.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
@@ -177,7 +176,8 @@ func run() error {
 		}
 		w.Write([]byte("ok"))
 	})
-	mux.Handle("/", guard(auth.RequireCSRFHeader(app)))
+	people := &users.Service{DB: db, Key: key}
+	mux.Handle("/", guard(people.Middleware(auth.RequireCSRFHeader(app))))
 
 	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
@@ -206,7 +206,7 @@ func authMiddleware(ctx context.Context) (func(http.Handler) http.Handler, error
 		return auth.CloudflareAccess(ctx, team, aud), nil
 	case "none":
 		slog.Warn("REFRACT_AUTH=none: the web UI is unprotected; only use this locally or behind your own auth")
-		return func(h http.Handler) http.Handler { return h }, nil
+		return auth.Unauthenticated, nil // one local user
 	default:
 		return nil, fmt.Errorf("REFRACT_AUTH=%q: want cloudflare or none", mode)
 	}

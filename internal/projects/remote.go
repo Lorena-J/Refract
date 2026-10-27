@@ -53,7 +53,8 @@ func remoteKey(id string) string { return "remote:" + id }
 
 // Remote returns the project's remote, or ErrNoRemote.
 func (s *Service) Remote(ctx context.Context, id string) (*Remote, error) {
-	if _, err := s.Get(ctx, id); err != nil {
+	p, err := s.Get(ctx, id)
+	if err != nil {
 		return nil, err
 	}
 	sealed, err := store.GetSetting(ctx, s.DB, remoteKey(id))
@@ -72,7 +73,7 @@ func (s *Service) Remote(ctx context.Context, id string) (*Remote, error) {
 		return nil, err
 	}
 	if r.GitHub && s.GitHubToken != nil {
-		if r.Token, err = s.GitHubToken(ctx); err != nil {
+		if r.Token, err = s.GitHubToken(ctx, p.Owner); err != nil {
 			return nil, err
 		}
 	}

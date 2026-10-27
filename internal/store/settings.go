@@ -77,3 +77,7 @@ func newGCM(key []byte) (cipher.AEAD, error) {
 	}
 	return cipher.NewGCM(block)
 }
+
+// UserKey scopes a setting to one user. Sealing with the scoped key as AAD
+// also binds the ciphertext to that user.
+func UserKey(userID, key string) string { return "user/" + userID + "/" + key }

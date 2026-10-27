@@ -9,22 +9,50 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/ponytojas/Refract/internal/ai"
 	"github.com/ponytojas/Refract/internal/assistant"
+	"github.com/ponytojas/Refract/internal/auth"
 	"github.com/ponytojas/Refract/internal/quick"
 	"github.com/ponytojas/Refract/internal/siwc"
 )
 
 type api struct {
-	session  *siwc.Session
-	provider *ai.SIWC
-	model    string // default model (REFRACT_MODEL_AGENT)
-	quick    string // default model for quick actions (REFRACT_MODEL_QUICK)
+	base  *siwc.Session // DB, key, OAuth and allowlist shared by every user's session
+	model string        // default model (REFRACT_MODEL_AGENT)
+	quick string        // default model for quick actions (REFRACT_MODEL_QUICK)
+
+	users sync.Map // user id → *userAI
 }
 
+// userAI is one user's ChatGPT session and provider, kept for the life of the
+// server: the session serializes that user's token refreshes, the provider
+// remembers their usage-limit state.
+type userAI struct {
+	session  *siwc.Session
+	provider *ai.SIWC
+}
+
+func (a *api) forUser(ctx context.Context) *userAI {
+	u, _ := auth.UserFrom(ctx)
+	if v, ok := a.users.Load(u.ID); ok {
+		return v.(*userAI)
+	}
+	s := &siwc.Session{DB: a.base.DB, Key: a.base.Key, OAuth: a.base.OAuth, AllowedSubject: a.base.AllowedSubject, Owner: u.ID}
+	v, _ := a.users.LoadOrStore(u.ID, &userAI{session: s, provider: &ai.SIWC{Tokens: s, BaseURL: siwc.Resource, HTTP: &http.Client{}}})
+	return v.(*userAI)
+}
+
+// providerFor is the request user's AI provider.
+func (a *api) providerFor(ctx context.Context) ai.Provider { return a.forUser(ctx).provider }
+
 func (a *api) routes(mux *http.ServeMux, dev bool) {
+	mux.HandleFunc("GET /api/me", func(w http.ResponseWriter, r *http.Request) {
+		u, _ := auth.UserFrom(r.Context())
+		writeJSON(w, u)
+	})
 	mux.HandleFunc("GET /api/chatgpt/status", a.status)
 	mux.HandleFunc("POST /api/chatgpt/credentials", a.importCredentials)
 	mux.HandleFunc("POST /api/chatgpt/signout", a.signOut)
@@ -38,13 +66,13 @@ func (a *api) routes(mux *http.ServeMux, dev bool) {
 }
 
 func (a *api) status(w http.ResponseWriter, r *http.Request) {
-	seen, err := a.session.WelcomeSeen(r.Context())
+	seen, err := a.forUser(r.Context()).session.WelcomeSeen(r.Context())
 	if err != nil {
 		httpError(w, err, http.StatusInternalServerError)
 		return
 	}
 	writeJSON(w, map[string]any{
-		"status":        a.provider.Status(r.Context()),
+		"status":        a.forUser(r.Context()).provider.Status(r.Context()),
 		"welcome_seen":  seen,
 		"manage_usage":  siwc.ManageUsage,
 		"default_model": a.model,
@@ -57,7 +85,7 @@ func (a *api) importCredentials(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err, http.StatusBadRequest)
 		return
 	}
-	if _, err := a.session.Import(r.Context(), raw); err != nil {
+	if _, err := a.forUser(r.Context()).session.Import(r.Context(), raw); err != nil {
 		httpError(w, err, http.StatusBadRequest)
 		return
 	}
@@ -66,7 +94,7 @@ func (a *api) importCredentials(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) signOut(w http.ResponseWriter, r *http.Request) {
-	if err := a.session.SignOut(r.Context()); err != nil {
+	if err := a.forUser(r.Context()).session.SignOut(r.Context()); err != nil {
 		httpError(w, err, http.StatusBadGateway)
 		return
 	}
@@ -74,7 +102,7 @@ func (a *api) signOut(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) welcomeSeen(w http.ResponseWriter, r *http.Request) {
-	if err := a.session.MarkWelcomeSeen(r.Context()); err != nil {
+	if err := a.forUser(r.Context()).session.MarkWelcomeSeen(r.Context()); err != nil {
 		httpError(w, err, http.StatusInternalServerError)
 		return
 	}
@@ -82,7 +110,7 @@ func (a *api) welcomeSeen(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) models(w http.ResponseWriter, r *http.Request) {
-	ms, err := a.provider.Models(r.Context())
+	ms, err := a.forUser(r.Context()).provider.Models(r.Context())
 	if err != nil {
 		var e *ai.Error
 		if errors.As(err, &e) {
@@ -101,7 +129,7 @@ func (a *api) models(w http.ResponseWriter, r *http.Request) {
 // the configured model, else the plan's first. Unknown efforts fall back to
 // the model's default.
 func (a *api) choose(ctx context.Context, want assistant.Choice, configured string) (assistant.Choice, error) {
-	ms, err := a.provider.Models(ctx)
+	ms, err := a.forUser(ctx).provider.Models(ctx)
 	if err != nil {
 		return assistant.Choice{}, err
 	}
@@ -138,7 +166,7 @@ func (a *api) quickAction(w http.ResponseWriter, r *http.Request) {
 	c, err := a.choose(r.Context(), assistant.Choice{Model: in.Model, Effort: "low"}, a.quick)
 	if err == nil {
 		var text string
-		if text, err = quick.Run(r.Context(), a.provider, c.Model, c.Effort, in.Request); err == nil {
+		if text, err = quick.Run(r.Context(), a.providerFor(r.Context()), c.Model, c.Effort, in.Request); err == nil {
 			writeJSON(w, map[string]string{"text": text})
 			return
 		}
@@ -156,7 +184,7 @@ func (a *api) quickAction(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) devExpire(w http.ResponseWriter, r *http.Request) {
-	if err := a.session.ExpireNow(r.Context()); err != nil {
+	if err := a.forUser(r.Context()).session.ExpireNow(r.Context()); err != nil {
 		httpError(w, err, http.StatusBadRequest)
 		return
 	}
@@ -205,7 +233,7 @@ func (a *api) devChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for range 5 {
-		ch, err := a.provider.Stream(r.Context(), req)
+		ch, err := a.providerFor(r.Context()).Stream(r.Context(), req)
 		if err != nil {
 			send(map[string]any{"type": "error", "error": err})
 			return

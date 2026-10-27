@@ -24,13 +24,14 @@ const (
 	refreshMargin = 5 * time.Minute
 )
 
-// Session is the server's single ChatGPT registration: encrypted storage,
-// serialized rotating refresh and sign-out.
+// Session is one user's ChatGPT registration: encrypted storage, serialized
+// rotating refresh and sign-out. The host id is the server's, shared by all.
 type Session struct {
 	DB             *sql.DB
 	Key            []byte // AES-256 key for credentials at rest
 	OAuth          *OAuth
-	AllowedSubject string // REFRACT_ALLOWED_SUBJECT
+	AllowedSubject string // REFRACT_ALLOWED_SUBJECT: if set, the only ChatGPT account accepted
+	Owner          string // user id; its settings are scoped to it
 
 	// mu serializes every read-modify-write of the credentials, so concurrent
 	// requests never race a rotating refresh token: one refreshes, the rest wait.
@@ -50,13 +51,18 @@ func (s *Session) HostID(ctx context.Context) (string, error) {
 	return id, store.SetSetting(ctx, s.DB, hostKey, id)
 }
 
-// Import validates a credential file written by `refract login` and stores it.
-// The ID token signature proves which account it belongs to; that account
-// must be the allowlisted one.
-func (s *Session) Import(ctx context.Context, raw []byte) (*Credentials, error) {
-	if s.AllowedSubject == "" {
-		return nil, errors.New("REFRACT_ALLOWED_SUBJECT is not set; set it to the subject `refract login` printed")
+// key scopes a setting to the session's user.
+func (s *Session) key(k string) string {
+	if s.Owner == "" {
+		return k
 	}
+	return store.UserKey(s.Owner, k)
+}
+
+// Import validates a credential file written by `refract login` and stores it
+// for this user. The ID token signature proves which account it belongs to;
+// with REFRACT_ALLOWED_SUBJECT set, only that account is accepted.
+func (s *Session) Import(ctx context.Context, raw []byte) (*Credentials, error) {
 	var c Credentials
 	if err := json.Unmarshal(raw, &c); err != nil {
 		return nil, fmt.Errorf("not a credential file: %w", err)
@@ -68,7 +74,7 @@ func (s *Session) Import(ctx context.Context, raw []byte) (*Credentials, error) 
 	if err != nil {
 		return nil, fmt.Errorf("id token: %w", err)
 	}
-	if idt.Subject != s.AllowedSubject {
+	if s.AllowedSubject != "" && idt.Subject != s.AllowedSubject {
 		return nil, errors.New("this ChatGPT account is not allowed on this server (REFRACT_ALLOWED_SUBJECT)")
 	}
 	c.Subject = idt.Subject // trust the signed token, not the file's field
@@ -174,20 +180,20 @@ func (s *Session) SignOut(ctx context.Context) error {
 
 // WelcomeSeen reports whether the first-sign-in notice was dismissed; MarkWelcomeSeen records it.
 func (s *Session) WelcomeSeen(ctx context.Context) (bool, error) {
-	v, err := store.GetSetting(ctx, s.DB, welcomeKey)
+	v, err := store.GetSetting(ctx, s.DB, s.key(welcomeKey))
 	return v != "", err
 }
 
 func (s *Session) MarkWelcomeSeen(ctx context.Context) error {
-	return store.SetSetting(ctx, s.DB, welcomeKey, "1")
+	return store.SetSetting(ctx, s.DB, s.key(welcomeKey), "1")
 }
 
 func (s *Session) load(ctx context.Context) (*Credentials, error) {
-	sealed, err := store.GetSetting(ctx, s.DB, credKey)
+	sealed, err := store.GetSetting(ctx, s.DB, s.key(credKey))
 	if err != nil || sealed == "" {
 		return nil, err
 	}
-	pt, err := store.Unseal(s.Key, sealed, credKey)
+	pt, err := store.Unseal(s.Key, sealed, s.key(credKey))
 	if err != nil {
 		return nil, err
 	}
@@ -200,9 +206,9 @@ func (s *Session) save(ctx context.Context, c *Credentials) error {
 	if err != nil {
 		return err
 	}
-	sealed, err := store.Seal(s.Key, pt, credKey)
+	sealed, err := store.Seal(s.Key, pt, s.key(credKey))
 	if err != nil {
 		return err
 	}
-	return store.SetSetting(ctx, s.DB, credKey, sealed)
+	return store.SetSetting(ctx, s.DB, s.key(credKey), sealed)
 }

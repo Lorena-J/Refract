@@ -72,6 +72,7 @@ type Service struct {
 	Projects *projects.Service
 	Agent    agent.Agent                                   // template; Model and Effort are filled by ModelFor
 	ModelFor func(context.Context, Choice) (Choice, error) // resolves the user's choice for the agent loop
+	Provider func(context.Context) ai.Provider             // the request user's provider; nil keeps Agent.Provider
 
 	mu      sync.Mutex
 	running map[string]bool // project id → a turn is running
@@ -117,6 +118,9 @@ func (s *Service) CreateChat(ctx context.Context, projectID string) (*Chat, erro
 }
 
 func (s *Service) Chats(ctx context.Context, projectID string) ([]Chat, error) {
+	if _, err := s.Projects.Get(ctx, projectID); err != nil {
+		return nil, err
+	}
 	rows, err := s.DB.QueryContext(ctx, `SELECT id, project_id, title, created_at, updated_at FROM chats WHERE project_id = ? ORDER BY updated_at DESC`, projectID)
 	if err != nil {
 		return nil, err
@@ -143,8 +147,17 @@ func (s *Service) chat(ctx context.Context, id string) (*Chat, error) {
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
+	if err != nil {
+		return nil, err
+	}
+	// A chat is the user's only if its project is (turns, diffs and accepts all come through here).
+	if _, err := s.Projects.Get(ctx, c.ProjectID); errors.Is(err, projects.ErrNotFound) {
+		return nil, ErrNotFound
+	} else if err != nil {
+		return nil, err
+	}
 	c.CreatedAt, c.UpdatedAt = time.Unix(created, 0), time.Unix(updated, 0)
-	return &c, err
+	return &c, nil
 }
 
 const turnCols = `id, chat_id, message, reply, activity, status, error, base, files, commits, created_at`
@@ -169,6 +182,9 @@ func scanTurn(row interface{ Scan(...any) error }) (*Turn, error) {
 
 // Turns lists a chat's turns, oldest first.
 func (s *Service) Turns(ctx context.Context, chatID string) ([]Turn, error) {
+	if _, err := s.chat(ctx, chatID); err != nil {
+		return nil, err
+	}
 	rows, err := s.DB.QueryContext(ctx, `SELECT `+turnCols+` FROM turns WHERE chat_id = ? ORDER BY created_at, rowid`, chatID)
 	if err != nil {
 		return nil, err
@@ -291,6 +307,9 @@ func (s *Service) Ask(ctx context.Context, chatID, text string, ec Context, want
 
 	a := s.Agent
 	a.Model, a.Effort = choice.Model, choice.Effort
+	if s.Provider != nil {
+		a.Provider = s.Provider(ctx)
+	}
 	t.Reply, err = a.Run(ctx, agent.Input{Dir: dir, MainFile: p.MainFile, History: history, Message: t.Message}, func(e agent.Event) {
 		if e.Type == "activity" {
 			t.Activity = append(t.Activity, e.Activity)

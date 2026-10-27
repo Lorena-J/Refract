@@ -146,11 +146,25 @@ func TestImport(t *testing.T) {
 			t.Fatal("imported a non-allowlisted account")
 		}
 	})
-	t.Run("no allowlist configured", func(t *testing.T) {
+	t.Run("no allowlist: each user imports their own account", func(t *testing.T) {
 		s := newSession(t, f)
 		s.AllowedSubject = ""
-		if _, err := s.Import(ctx, f.credFile("user-1", time.Now())); err == nil {
-			t.Fatal("imported without REFRACT_ALLOWED_SUBJECT")
+		if _, err := s.Import(ctx, f.credFile("someone-else", time.Now())); err != nil {
+			t.Fatalf("rejected without an allowlist: %v", err)
+		}
+	})
+	t.Run("credentials are per user", func(t *testing.T) {
+		a := newSession(t, f)
+		a.Owner = "ua"
+		if _, err := a.Import(ctx, f.credFile("user-1", time.Now())); err != nil {
+			t.Fatal(err)
+		}
+		b := &Session{DB: a.DB, Key: a.Key, OAuth: a.OAuth, AllowedSubject: a.AllowedSubject, Owner: "ub"}
+		if c, err := b.Credentials(ctx); err != nil || c != nil {
+			t.Fatalf("user b sees user a's credentials: %+v, %v", c, err)
+		}
+		if c, err := a.Credentials(ctx); err != nil || c == nil || c.Subject != "user-1" {
+			t.Fatalf("user a lost them: %+v, %v", c, err)
 		}
 	})
 	t.Run("forged id token rejected", func(t *testing.T) {

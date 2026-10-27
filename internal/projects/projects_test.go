@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ponytojas/Refract/internal/auth"
 	"github.com/ponytojas/Refract/internal/store"
 )
 
@@ -355,5 +356,54 @@ func TestFixtures(t *testing.T) {
 				t.Logf("%s:%d %s", w.File, w.Line, w.Kind)
 			}
 		})
+	}
+}
+
+// Users only ever see their own projects; code without a user (startup,
+// background jobs) sees all of them.
+func TestProjectsArePerUser(t *testing.T) {
+	s := newService(t)
+	s.Key = make([]byte, 32)
+	ana := auth.WithUser(context.Background(), auth.User{ID: "ana"})
+	ben := auth.WithUser(context.Background(), auth.User{ID: "ben"})
+	p, err := s.Create(ana, "thesis")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.Get(ana, p.ID); err != nil || got.Owner != "ana" {
+		t.Fatalf("owner get = %+v, %v", got, err)
+	}
+	notFound := func(name string, err error) {
+		t.Helper()
+		if !errors.Is(err, ErrNotFound) {
+			t.Errorf("%s by another user: %v, want ErrNotFound", name, err)
+		}
+	}
+	_, err = s.Get(ben, p.ID)
+	notFound("get", err)
+	notFound("rename", s.Rename(ben, p.ID, "x"))
+	notFound("set main", s.SetMainFile(ben, p.ID, "main.tex"))
+	_, err = s.ListFiles(ben, p.ID)
+	notFound("list files", err)
+	_, _, err = s.ReadFile(ben, p.ID, "main.tex")
+	notFound("read file", err)
+	notFound("write file", s.WriteFile(ben, p.ID, "x.tex", strings.NewReader("x")))
+	_, err = s.History(ben, p.ID, 10)
+	notFound("history", err)
+	_, err = s.Remote(ben, p.ID)
+	notFound("remote", err)
+	notFound("delete", s.Delete(ben, p.ID))
+
+	if ps, _ := s.List(ben); len(ps) != 0 {
+		t.Errorf("ben lists %d projects", len(ps))
+	}
+	if ps, _ := s.List(ana); len(ps) != 1 {
+		t.Errorf("ana lists %d projects", len(ps))
+	}
+	if ps, _ := s.List(context.Background()); len(ps) != 1 {
+		t.Errorf("background lists %d projects", len(ps))
+	}
+	if _, err := s.Get(ana, p.ID); err != nil {
+		t.Errorf("ben's attempts changed ana's project: %v", err)
 	}
 }

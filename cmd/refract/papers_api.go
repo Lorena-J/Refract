@@ -18,6 +18,7 @@ import (
 type papersAPI struct {
 	papers   *cite.Service
 	projects *projects.Service
+	provider func(context.Context) ai.Provider                                 // the request user's
 	choose   func(context.Context, assistant.Choice) (assistant.Choice, error) // the model for suggestions and placement
 }
 
@@ -28,6 +29,13 @@ func (a *papersAPI) routes(mux *http.ServeMux) {
 }
 
 const maxPassage = 8000
+
+// forUser is the citation service with the request user's AI provider.
+func (a *papersAPI) forUser(ctx context.Context) *cite.Service {
+	s := *a.papers
+	s.Provider = a.provider(ctx)
+	return &s
+}
 
 // search takes free text, or a DOI / arXiv id / URL for one paper.
 func (a *papersAPI) search(w http.ResponseWriter, r *http.Request) {
@@ -67,7 +75,7 @@ func (a *papersAPI) suggest(w http.ResponseWriter, r *http.Request) {
 		aiError(w, r, err)
 		return
 	}
-	cs, err := a.papers.Suggest(r.Context(), c.Model, c.Effort, in.Text)
+	cs, err := a.forUser(r.Context()).Suggest(r.Context(), c.Model, c.Effort, in.Text)
 	if err != nil {
 		aiError(w, r, err)
 		return
@@ -133,7 +141,7 @@ func (a *papersAPI) cite(w http.ResponseWriter, r *http.Request) {
 			aiError(w, r, err)
 			return
 		}
-		out.Text, out.Placed = a.papers.Place(r.Context(), c.Model, c.Effort, cand, got.Key, in.Place.Selection, in.Place.Before, in.Place.After)
+		out.Text, out.Placed = a.forUser(r.Context()).Place(r.Context(), c.Model, c.Effort, cand, got.Key, in.Place.Selection, in.Place.Before, in.Place.After)
 	}
 	writeJSON(w, out)
 }

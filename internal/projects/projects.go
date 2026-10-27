@@ -3,6 +3,7 @@
 package projects
 
 import (
+	"github.com/ponytojas/Refract/internal/auth"
 	"github.com/ponytojas/Refract/internal/store"
 
 	"archive/zip"
@@ -30,6 +31,7 @@ type Project struct {
 	MainFile  string    `json:"main_file"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+	Owner     string    `json:"-"` // user id
 }
 
 // ImportResult is what the UI shows after an import.
@@ -47,15 +49,22 @@ type Service struct {
 	Limits   Limits
 	Key      []byte          // seals remote tokens
 	OnCommit func(id string) // called (in its own goroutine) after commits on the main branch
-	// GitHubToken returns the connected GitHub account's token, for remotes that use it.
-	GitHubToken func(ctx context.Context) (string, error)
+	// GitHubToken returns the GitHub token of a user (a project's owner), for remotes that use their account.
+	GitHubToken func(ctx context.Context, owner string) (string, error)
 }
 
 // Path returns a project's directory.
 func (s *Service) Path(id string) string { return filepath.Join(s.Dir, id) }
 
+const projectCols = `id, name, main_file, created_at, updated_at, owner`
+
+// List returns the request user's projects (all of them without a user: background work).
 func (s *Service) List(ctx context.Context) ([]Project, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT id, name, main_file, created_at, updated_at FROM projects ORDER BY updated_at DESC`)
+	q, args := `SELECT `+projectCols+` FROM projects ORDER BY updated_at DESC`, []any{}
+	if u, ok := auth.UserFrom(ctx); ok {
+		q, args = `SELECT `+projectCols+` FROM projects WHERE owner = ? ORDER BY updated_at DESC`, []any{u.ID}
+	}
+	rows, err := s.DB.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -71,12 +80,20 @@ func (s *Service) List(ctx context.Context) ([]Project, error) {
 	return out, rows.Err()
 }
 
+// Get returns a project. Another user's project is ErrNotFound: every access
+// to a project goes through here, so this is where users are kept apart.
 func (s *Service) Get(ctx context.Context, id string) (*Project, error) {
-	p, err := scan(s.DB.QueryRowContext(ctx, `SELECT id, name, main_file, created_at, updated_at FROM projects WHERE id = ?`, id))
+	p, err := scan(s.DB.QueryRowContext(ctx, `SELECT `+projectCols+` FROM projects WHERE id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
-	return p, err
+	if err != nil {
+		return nil, err
+	}
+	if u, ok := auth.UserFrom(ctx); ok && p.Owner != u.ID {
+		return nil, ErrNotFound
+	}
+	return p, nil
 }
 
 // Create makes an empty project.
@@ -141,8 +158,11 @@ func (s *Service) create(ctx context.Context, name string, fill func(dir string)
 	}
 	now := time.Now()
 	p := &Project{ID: id, Name: name, MainFile: main, CreatedAt: now, UpdatedAt: now}
-	if _, err := s.DB.ExecContext(ctx, `INSERT INTO projects (id, name, main_file, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-		p.ID, p.Name, p.MainFile, now.Unix(), now.Unix()); err != nil {
+	if u, ok := auth.UserFrom(ctx); ok {
+		p.Owner = u.ID
+	}
+	if _, err := s.DB.ExecContext(ctx, `INSERT INTO projects (id, name, main_file, created_at, updated_at, owner) VALUES (?, ?, ?, ?, ?, ?)`,
+		p.ID, p.Name, p.MainFile, now.Unix(), now.Unix(), p.Owner); err != nil {
 		os.RemoveAll(s.Path(id))
 		return nil, err
 	}
@@ -184,6 +204,9 @@ func (s *Service) SetMainFile(ctx context.Context, id, rel string) error {
 }
 
 func (s *Service) update(ctx context.Context, id, query, value string) error {
+	if _, err := s.Get(ctx, id); err != nil {
+		return err
+	}
 	res, err := s.DB.ExecContext(ctx, query, value, time.Now().Unix(), id)
 	if err != nil {
 		return err
@@ -269,7 +292,7 @@ type scanner interface{ Scan(...any) error }
 func scan(row scanner) (*Project, error) {
 	var p Project
 	var created, updated int64
-	if err := row.Scan(&p.ID, &p.Name, &p.MainFile, &created, &updated); err != nil {
+	if err := row.Scan(&p.ID, &p.Name, &p.MainFile, &created, &updated, &p.Owner); err != nil {
 		return nil, err
 	}
 	p.CreatedAt, p.UpdatedAt = time.Unix(created, 0), time.Unix(updated, 0)

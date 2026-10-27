@@ -38,10 +38,11 @@ func TestAccessMiddleware(t *testing.T) {
 	key, _ := rsa.GenerateKey(rand.Reader, 2048)
 	other, _ := rsa.GenerateKey(rand.Reader, 2048)
 	keys := &oidc.StaticKeySet{PublicKeys: []crypto.PublicKey{key.Public()}}
+	var seen string
 	h := accessMiddleware(oidc.NewVerifier(testIssuer, keys, &oidc.Config{ClientID: "app-aud"}))(
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { seen = Identity(r.Context()) }))
 
-	valid := map[string]any{"iss": testIssuer, "aud": []string{"app-aud"}, "exp": time.Now().Add(time.Hour).Unix(), "sub": "u"}
+	valid := map[string]any{"iss": testIssuer, "aud": []string{"app-aud"}, "exp": time.Now().Add(time.Hour).Unix(), "sub": "u", "email": "Ana@Example.com"}
 	with := func(k string, v any) map[string]any {
 		c := map[string]any{}
 		for kk, vv := range valid {
@@ -64,6 +65,7 @@ func TestAccessMiddleware(t *testing.T) {
 		{"wrong issuer", signJWT(t, key, with("iss", "https://evil.example")), "", 403},
 		{"expired", signJWT(t, key, with("exp", time.Now().Add(-time.Hour).Unix())), "", 403},
 		{"wrong key", signJWT(t, other, valid), "", 403},
+		{"service token (no email)", signJWT(t, key, with("email", "")), "", 403},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -78,6 +80,9 @@ func TestAccessMiddleware(t *testing.T) {
 			h.ServeHTTP(w, r)
 			if w.Code != c.want {
 				t.Fatalf("status = %d, want %d", w.Code, c.want)
+			}
+			if c.want == 200 && seen != "ana@example.com" {
+				t.Errorf("identity = %q, want the token's email, lowercased", seen)
 			}
 		})
 	}

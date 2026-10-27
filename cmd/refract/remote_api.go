@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ponytojas/Refract/internal/auth"
 	"github.com/ponytojas/Refract/internal/github"
 	"github.com/ponytojas/Refract/internal/projects"
 	"github.com/ponytojas/Refract/internal/store"
@@ -23,9 +24,9 @@ type remoteAPI struct {
 	key    []byte
 	github *github.Client // nil when REFRACT_GITHUB_CLIENT_ID is not set
 
-	mu     sync.Mutex
-	last   map[string]syncStatus // project → last push/pull
-	device *github.DeviceCode    // the sign-in in progress
+	mu      sync.Mutex
+	last    map[string]syncStatus         // project → last push/pull
+	devices map[string]*github.DeviceCode // user → their sign-in in progress
 }
 
 type syncStatus struct {
@@ -142,14 +143,20 @@ type githubAccount struct {
 	Login string `json:"login"`
 }
 
-const githubSetting = "github"
+// githubKey is a user's GitHub account setting (sealed, bound to that user).
+func githubKey(user string) string { return store.UserKey(user, "github") }
 
-func (a *remoteAPI) account(ctx context.Context) (*githubAccount, error) {
-	sealed, err := store.GetSetting(ctx, a.db, githubSetting)
+func requestUser(ctx context.Context) string {
+	u, _ := auth.UserFrom(ctx)
+	return u.ID
+}
+
+func (a *remoteAPI) account(ctx context.Context, user string) (*githubAccount, error) {
+	sealed, err := store.GetSetting(ctx, a.db, githubKey(user))
 	if err != nil || sealed == "" {
 		return nil, err
 	}
-	plain, err := store.Unseal(a.key, sealed, githubSetting)
+	plain, err := store.Unseal(a.key, sealed, githubKey(user))
 	if err != nil {
 		return nil, err
 	}
@@ -157,9 +164,9 @@ func (a *remoteAPI) account(ctx context.Context) (*githubAccount, error) {
 	return &acc, json.Unmarshal(plain, &acc)
 }
 
-// Token is projects.Service.GitHubToken.
-func (a *remoteAPI) Token(ctx context.Context) (string, error) {
-	acc, err := a.account(ctx)
+// Token is projects.Service.GitHubToken: the token of a project's owner.
+func (a *remoteAPI) Token(ctx context.Context, owner string) (string, error) {
+	acc, err := a.account(ctx, owner)
 	if err != nil {
 		return "", err
 	}
@@ -170,7 +177,7 @@ func (a *remoteAPI) Token(ctx context.Context) (string, error) {
 }
 
 func (a *remoteAPI) githubStatus(w http.ResponseWriter, r *http.Request) {
-	acc, err := a.account(r.Context())
+	acc, err := a.account(r.Context(), requestUser(r.Context()))
 	if err != nil {
 		httpError(w, err, http.StatusInternalServerError)
 		return
@@ -193,15 +200,19 @@ func (a *remoteAPI) githubStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.mu.Lock()
-	a.device = d
+	if a.devices == nil {
+		a.devices = map[string]*github.DeviceCode{}
+	}
+	a.devices[requestUser(r.Context())] = d
 	a.mu.Unlock()
 	// The device code stays on the server; the browser only shows the user code.
 	writeJSON(w, map[string]any{"user_code": d.UserCode, "verification_uri": d.VerificationURI, "interval": d.Interval, "expires_in": d.ExpiresIn})
 }
 
 func (a *remoteAPI) githubPoll(w http.ResponseWriter, r *http.Request) {
+	user := requestUser(r.Context())
 	a.mu.Lock()
-	d := a.device
+	d := a.devices[user]
 	a.mu.Unlock()
 	if d == nil || a.github == nil {
 		writeJSON(w, map[string]string{"status": "expired"})
@@ -225,16 +236,16 @@ func (a *remoteAPI) githubPoll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	plain, _ := json.Marshal(githubAccount{Token: token, Login: u.Login})
-	sealed, err := store.Seal(a.key, plain, githubSetting)
+	sealed, err := store.Seal(a.key, plain, githubKey(user))
 	if err == nil {
-		err = store.SetSetting(r.Context(), a.db, githubSetting, sealed)
+		err = store.SetSetting(r.Context(), a.db, githubKey(user), sealed)
 	}
 	if err != nil {
 		httpError(w, err, http.StatusInternalServerError)
 		return
 	}
 	a.mu.Lock()
-	a.device = nil
+	delete(a.devices, user)
 	a.mu.Unlock()
 	slog.Info("github account connected", "login", u.Login)
 	writeJSON(w, map[string]string{"status": "connected", "login": u.Login})
@@ -243,7 +254,7 @@ func (a *remoteAPI) githubPoll(w http.ResponseWriter, r *http.Request) {
 // githubDisconnect forgets the token. Revoking it is done on GitHub
 // (Settings → Applications), which needs no client secret.
 func (a *remoteAPI) githubDisconnect(w http.ResponseWriter, r *http.Request) {
-	if err := store.SetSetting(r.Context(), a.db, githubSetting, ""); err != nil {
+	if err := store.SetSetting(r.Context(), a.db, githubKey(requestUser(r.Context())), ""); err != nil {
 		httpError(w, err, http.StatusInternalServerError)
 		return
 	}
@@ -251,7 +262,7 @@ func (a *remoteAPI) githubDisconnect(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *remoteAPI) githubRepos(w http.ResponseWriter, r *http.Request) {
-	token, err := a.Token(r.Context())
+	token, err := a.Token(r.Context(), requestUser(r.Context()))
 	if err != nil || a.github == nil {
 		httpError(w, errors.New("connect a GitHub account in Settings first"), http.StatusBadRequest)
 		return
@@ -275,7 +286,7 @@ func (a *remoteAPI) githubCreate(w http.ResponseWriter, r *http.Request) {
 		httpError(w, errors.New("repository names use letters, digits, '.', '-' and '_'"), http.StatusBadRequest)
 		return
 	}
-	token, err := a.Token(r.Context())
+	token, err := a.Token(r.Context(), requestUser(r.Context()))
 	if err != nil || a.github == nil {
 		httpError(w, errors.New("connect a GitHub account in Settings first"), http.StatusBadRequest)
 		return

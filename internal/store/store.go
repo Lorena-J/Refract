@@ -41,6 +41,16 @@ var migrations = []string{
 		updated_at  INTEGER NOT NULL
 	);
 	CREATE INDEX turns_chat ON turns(chat_id, created_at)`,
+	// Users: whoever the auth layer lets in (Cloudflare Access email, or the
+	// local user). Projects belong to one; '' marks data from before users,
+	// adopted by the first one.
+	`CREATE TABLE users (
+		id         TEXT PRIMARY KEY,
+		email      TEXT NOT NULL UNIQUE,
+		created_at INTEGER NOT NULL
+	);
+	ALTER TABLE projects ADD COLUMN owner TEXT NOT NULL DEFAULT '';
+	CREATE INDEX projects_owner ON projects(owner, updated_at)`,
 }
 
 // Open opens (creating if needed) the database at path and applies pending migrations.

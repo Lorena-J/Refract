@@ -36,11 +36,21 @@ func accessMiddleware(v *oidc.IDTokenVerifier) func(http.Handler) http.Handler {
 				http.Error(w, "forbidden", http.StatusForbidden)
 				return
 			}
-			if _, err := v.Verify(r.Context(), token); err != nil {
+			idt, err := v.Verify(r.Context(), token)
+			if err != nil {
 				http.Error(w, "forbidden", http.StatusForbidden)
 				return
 			}
-			next.ServeHTTP(w, r)
+			// Who the user is: Access puts the signed-in email in the token.
+			// Service tokens have none and are not users.
+			var claims struct {
+				Email string `json:"email"`
+			}
+			if err := idt.Claims(&claims); err != nil || claims.Email == "" {
+				http.Error(w, "forbidden: no user in the Access token", http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, withIdentity(r, claims.Email))
 		})
 	}
 }

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Check, ChevronsUpDown, ExternalLink, Monitor, Moon, Settings, Sun } from 'lucide-react'
 import {
   DropdownMenu,
@@ -8,7 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import type { ChatGPTStatus } from '@/api'
+import { api, type ChatGPTStatus } from '@/api'
 import { openSettings } from '@/lib/prefs'
 import { setTheme, useTheme, type Theme } from '@/lib/theme'
 import { cn } from '@/lib/utils'
@@ -21,9 +22,21 @@ const themes: { value: Theme; label: string; icon: typeof Sun }[] = [
 ]
 
 // Bottom-left account chip: ChatGPT identity, settings, theme.
+let mePromise: Promise<{ id: string; email: string } | null> | null = null
+function useMe() {
+  const [me, setMe] = useState<{ id: string; email: string } | null>(null)
+  useEffect(() => {
+    mePromise ??= api<{ id: string; email: string }>('/api/me').catch(() => null)
+    mePromise.then(setMe)
+  }, [])
+  return me
+}
+
 export default function AccountMenu({ status, compact }: { status: ChatGPTStatus | null; compact?: boolean }) {
   const { theme } = useTheme()
-  const email = status?.status.signed_in ? status.status.email : undefined
+  const me = useMe()
+  // With several users, the chip shows who is signed in to Refract; alone, the ChatGPT account.
+  const email = me && me.email !== 'local' ? me.email : status?.status.signed_in ? status.status.email : undefined
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="flex min-w-0 items-center gap-2.5 rounded-lg px-2 py-1.5 text-left outline-none transition-colors duration-150 hover:bg-foreground/[0.05] focus-visible:ring-2 focus-visible:ring-ring/50">

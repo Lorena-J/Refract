@@ -17,6 +17,7 @@ import (
 
 	"github.com/ponytojas/Refract/internal/agent"
 	"github.com/ponytojas/Refract/internal/ai"
+	"github.com/ponytojas/Refract/internal/auth"
 	"github.com/ponytojas/Refract/internal/compile"
 	"github.com/ponytojas/Refract/internal/projects"
 	"github.com/ponytojas/Refract/internal/store"
@@ -320,4 +321,41 @@ func TestContextAndHistory(t *testing.T) {
 	if got := title("A very long first line that goes on and on and on and on and on and on\nsecond"); len([]rune(got)) != 61 {
 		t.Fatalf("title = %q", got)
 	}
+}
+
+// Chats and turns follow their project's owner: another user can't list,
+// read, continue, review or accept them.
+func TestChatsArePerUser(t *testing.T) {
+	s, ps, projectID, chatID := setup(t, &fakeProvider{script: [][]ai.Event{done("All good.")}})
+	ps.DB.Exec(`UPDATE projects SET owner = 'ana' WHERE id = ?`, projectID)
+	ana := auth.WithUser(context.Background(), auth.User{ID: "ana"})
+	ben := auth.WithUser(context.Background(), auth.User{ID: "ben"})
+
+	turn, err := s.Ask(ana, chatID, "check it", Context{}, Choice{}, func(agent.Event) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cs, err := s.Chats(ana, projectID); err != nil || len(cs) != 1 {
+		t.Fatalf("owner chats = %v, %v", cs, err)
+	}
+	isNotFound := func(name string, err error) {
+		t.Helper()
+		if !errors.Is(err, ErrNotFound) && !errors.Is(err, projects.ErrNotFound) {
+			t.Errorf("%s by another user: %v", name, err)
+		}
+	}
+	_, err = s.Chats(ben, projectID)
+	isNotFound("chats", err)
+	_, err = s.Turns(ben, chatID)
+	isNotFound("turns", err)
+	_, err = s.Ask(ben, chatID, "hi", Context{}, Choice{}, func(agent.Event) {})
+	isNotFound("ask", err)
+	_, err = s.CreateChat(ben, projectID)
+	isNotFound("new chat", err)
+	_, err = s.Diff(ben, turn.ID)
+	isNotFound("diff", err)
+	_, _, err = s.Accept(ben, turn.ID, nil)
+	isNotFound("accept", err)
+	_, err = s.Reject(ben, turn.ID)
+	isNotFound("reject", err)
 }
