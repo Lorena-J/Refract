@@ -8,7 +8,10 @@ const root = createRoot(document.getElementById('root')!)
 // (REFRACT_AUTH=password), the API answers 401 and only the small sign-in page shows.
 const app = import('./App')
 fetch('/api/me', { headers: { 'X-Refract': '1' } })
-  .then((r) => r.status === 401, () => false)
+  .then(
+    (r) => r.status === 401,
+    () => false,
+  )
   .then(async (signedOut) => {
     const App = signedOut ? null : (await app).default
     root.render(<StrictMode>{App ? <App /> : <Login />}</StrictMode>)

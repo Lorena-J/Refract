@@ -11,7 +11,14 @@ import { ago } from '@/lib/time'
 import { cn } from '@/lib/utils'
 
 type SyncStatus = { op: 'push' | 'pull'; at: string; auto: boolean; error?: string }
-type RemoteInfo = { url: string; branch: string; auto_push: boolean; github: boolean; has_token: boolean; last?: SyncStatus }
+type RemoteInfo = {
+  url: string
+  branch: string
+  auto_push: boolean
+  github: boolean
+  has_token: boolean
+  last?: SyncStatus
+}
 type GitHub = { configured: boolean; connected: boolean; login?: string }
 type Repo = { full_name: string; clone_url: string; private: boolean; empty: boolean }
 export type PullResult = { changed: string[]; conflicts: string[]; empty: boolean }
@@ -79,7 +86,13 @@ export default function GitDialog({ projectId, projectName, open, onClose, befor
     run('save', async () => {
       const r = await api<RemoteInfo>(`/api/projects/${projectId}/remote`, {
         method: 'PUT',
-        body: { url: remote.url, github: remote.github, token: remote.github ? '' : token, branch, auto_push: autoPush },
+        body: {
+          url: remote.url,
+          github: remote.github,
+          token: remote.github ? '' : token,
+          branch,
+          auto_push: autoPush,
+        },
       })
       setInfo(r)
       setUrl(r.url)
@@ -113,7 +126,12 @@ export default function GitDialog({ projectId, projectName, open, onClose, befor
 
   const saved = !!info?.url
   const dirty =
-    !!info && (url !== info.url || branch !== (info.branch || 'main') || autoPush !== info.auto_push || !!token || (mode === 'github') !== info.github)
+    !!info &&
+    (url !== info.url ||
+      branch !== (info.branch || 'main') ||
+      autoPush !== info.auto_push ||
+      !!token ||
+      (mode === 'github') !== info.github)
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="flex max-h-[min(720px,calc(100dvh-2rem))] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:max-w-xl">
@@ -121,7 +139,9 @@ export default function GitDialog({ projectId, projectName, open, onClose, befor
           <GitBranch className="size-4 text-muted-foreground" /> {t('Git remote')}
         </DialogTitle>
         <DialogDescription className="px-5 pt-1 text-sm">
-          {t('Every saved version of the project is a git commit. Keep a copy on GitHub or any git server, and bring in changes made elsewhere.')}
+          {t(
+            'Every saved version of the project is a git commit. Keep a copy on GitHub or any git server, and bring in changes made elsewhere.',
+          )}
         </DialogDescription>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
@@ -151,7 +171,9 @@ export default function GitDialog({ projectId, projectName, open, onClose, befor
 
               {mode === 'github' && !gh?.connected && (
                 <div className="rounded-lg border p-3 text-sm text-muted-foreground">
-                  {gh?.configured ? t('Connect your GitHub account first.') : t('GitHub sign-in is not set up on this server (REFRACT_GITHUB_CLIENT_ID).')}{' '}
+                  {gh?.configured
+                    ? t('Connect your GitHub account first.')
+                    : t('GitHub sign-in is not set up on this server (REFRACT_GITHUB_CLIENT_ID).')}{' '}
                   {gh?.configured && (
                     <Button size="xs" variant="secondary" onClick={() => openSettings('integrations')}>
                       {t('Open settings')}
@@ -162,7 +184,9 @@ export default function GitDialog({ projectId, projectName, open, onClose, befor
 
               {mode === 'github' && gh?.connected && (
                 <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground">{t('Signed in as @{login}. Choose a repository or create one.', { login: gh.login ?? '' })}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t('Signed in as @{login}. Choose a repository or create one.', { login: gh.login ?? '' })}
+                  </p>
                   <div className="max-h-48 overflow-y-auto rounded-lg border">
                     {!repos && (
                       <p className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
@@ -174,7 +198,7 @@ export default function GitDialog({ projectId, projectName, open, onClose, befor
                         key={r.full_name}
                         onClick={() => setUrl(r.clone_url)}
                         className={cn(
-                          'flex w-full items-center gap-2 border-b px-3 py-2 text-left text-sm last:border-b-0 transition-colors duration-100',
+                          'flex w-full items-center gap-2 border-b px-3 py-2 text-left text-sm transition-colors duration-100 last:border-b-0',
                           url === r.clone_url ? 'bg-foreground/[0.07]' : 'hover:bg-foreground/[0.04]',
                         )}
                       >
@@ -192,7 +216,8 @@ export default function GitDialog({ projectId, projectName, open, onClose, befor
                       className="h-8 min-w-0 flex-1 rounded-lg border bg-transparent px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                     />
                     <Button size="sm" variant="secondary" disabled={!!busy || !newRepo} onClick={create}>
-                      {busy === 'create' ? <Loader2 className="animate-spin" /> : <Plus />} {t('Create private repository')}
+                      {busy === 'create' ? <Loader2 className="animate-spin" /> : <Plus />}{' '}
+                      {t('Create private repository')}
                     </Button>
                   </div>
                 </div>
@@ -223,7 +248,9 @@ export default function GitDialog({ projectId, projectName, open, onClose, befor
                       }
                       className="h-8 w-full rounded-lg border bg-transparent px-3 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                     />
-                    <span className="block text-xs text-muted-foreground">{t('Stored encrypted on the server and never shown again.')}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {t('Stored encrypted on the server and never shown again.')}
+                    </span>
                   </label>
                 </div>
               )}
@@ -240,13 +267,18 @@ export default function GitDialog({ projectId, projectName, open, onClose, befor
                 <span className="flex-1" />
                 <label className="flex items-center gap-2 text-xs">
                   {t('Push after every saved version')}
-                  <SettingsSwitch checked={autoPush} onCheckedChange={setAutoPush} aria-label={t('Push after every saved version')} />
+                  <SettingsSwitch
+                    checked={autoPush}
+                    onCheckedChange={setAutoPush}
+                    aria-label={t('Push after every saved version')}
+                  />
                 </label>
               </div>
 
               {info.last && (
                 <p className={cn('text-xs', info.last.error ? 'text-destructive' : 'text-muted-foreground')}>
-                  {info.last.op === 'push' ? t('Last push') : t('Last pull')} {info.last.auto && `(${t('automatic')})`} · {ago(info.last.at)}
+                  {info.last.op === 'push' ? t('Last push') : t('Last pull')} {info.last.auto && `(${t('automatic')})`}{' '}
+                  · {ago(info.last.at)}
                   {info.last.error && `: ${info.last.error}`}
                 </p>
               )}
@@ -256,7 +288,13 @@ export default function GitDialog({ projectId, projectName, open, onClose, befor
 
         <div className="flex items-center gap-2 border-t px-5 py-3">
           {saved && (
-            <Button size="sm" variant="ghost" className="text-destructive" disabled={!!busy} onClick={() => save({ url: '', github: false })}>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-destructive"
+              disabled={!!busy}
+              onClick={() => save({ url: '', github: false })}
+            >
               {t('Remove remote')}
             </Button>
           )}
@@ -267,7 +305,11 @@ export default function GitDialog({ projectId, projectName, open, onClose, befor
           <Button size="sm" variant="secondary" disabled={!!busy || !saved || dirty} onClick={push}>
             {busy === 'push' ? <Loader2 className="animate-spin" /> : <ArrowUpFromLine />} {t('Push')}
           </Button>
-          <Button size="sm" disabled={!!busy || !url || !dirty} onClick={() => save({ url, github: mode === 'github' })}>
+          <Button
+            size="sm"
+            disabled={!!busy || !url || !dirty}
+            onClick={() => save({ url, github: mode === 'github' })}
+          >
             {busy === 'save' && <Loader2 className="animate-spin" />} {t('Save')}
           </Button>
         </div>

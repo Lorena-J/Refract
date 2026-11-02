@@ -1,8 +1,8 @@
-import { Switch } from "@base-ui/react/switch"
-import { Tabs } from "@base-ui/react/tabs"
-import * as React from "react"
+import { Switch } from '@base-ui/react/switch'
+import { Tabs } from '@base-ui/react/tabs'
+import * as React from 'react'
 import { t } from '@/lib/i18n'
-import { cn } from "@/lib/utils"
+import { cn } from '@/lib/utils'
 
 /* -------------------------------------------------------------------------------------------------
  * SettingsPanel
@@ -15,8 +15,10 @@ import { cn } from "@/lib/utils"
 /** Below this width the nav sits above the pane and arrow keys move left and right. */
 const STACK_BELOW = 672
 
-interface SettingsPanelProps
-  extends Omit<React.ComponentProps<typeof Tabs.Root>, "value" | "defaultValue" | "onValueChange"> {
+interface SettingsPanelProps extends Omit<
+  React.ComponentProps<typeof Tabs.Root>,
+  'value' | 'defaultValue' | 'onValueChange'
+> {
   /** The open section. Controlled. */
   value?: string
   /** The section open at first. Uncontrolled. */
@@ -29,21 +31,14 @@ interface SettingsPanelProps
  * `SettingsPane` per section. Give it a height (`className="h-[640px]"`) and each pane scrolls on
  * its own; without one it grows with its content.
  */
-function SettingsPanel({
-  value,
-  defaultValue,
-  onValueChange,
-  className,
-  children,
-  ...props
-}: SettingsPanelProps) {
+function SettingsPanel({ value, defaultValue, onValueChange, className, children, ...props }: SettingsPanelProps) {
   const ref = React.useRef<HTMLDivElement>(null)
   const [stacked, setStacked] = React.useState(false)
 
   // CSS decides the layout through a container query. This only keeps arrow keys in step with it.
   React.useLayoutEffect(() => {
     const el = ref.current
-    if (!el || typeof ResizeObserver === "undefined") return
+    if (!el || typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver(([entry]) => {
       if (entry) setStacked(entry.contentRect.width < STACK_BELOW)
     })
@@ -57,9 +52,9 @@ function SettingsPanel({
       value={value}
       defaultValue={defaultValue}
       onValueChange={(next) => onValueChange?.(String(next))}
-      orientation={stacked ? "horizontal" : "vertical"}
+      orientation={stacked ? 'horizontal' : 'vertical'}
       data-slot="settings-panel"
-      className={cn("chatcn-text-14 text-chatcn-fg @container/settings flex min-h-0", className)}
+      className={cn('@container/settings flex min-h-0 chatcn-text-14 text-chatcn-fg', className)}
       {...props}
     >
       <div className="flex min-h-0 w-full min-w-0 flex-col @2xl/settings:flex-row">{children}</div>
@@ -71,7 +66,7 @@ function SettingsPanel({
  * Nav
  * -----------------------------------------------------------------------------------------------*/
 
-interface SettingsNavProps extends Omit<React.ComponentProps<"nav">, "title"> {
+interface SettingsNavProps extends Omit<React.ComponentProps<'nav'>, 'title'> {
   /** Heading above the sections, usually "Settings". */
   title?: React.ReactNode
   /** Content pinned under the sections in the column layout: a plan summary or a sign out. */
@@ -93,14 +88,14 @@ function SettingsNav({
       aria-label={label}
       data-slot="settings-nav"
       className={cn(
-        "border-chatcn-border flex shrink-0 flex-col border-b",
-        "@2xl/settings:w-56 @2xl/settings:border-e @2xl/settings:border-b-0",
+        'flex shrink-0 flex-col border-b border-chatcn-border',
+        '@2xl/settings:w-56 @2xl/settings:border-e @2xl/settings:border-b-0',
         className,
       )}
       {...props}
     >
       {title ? (
-        <h2 className="chatcn-text-15 text-chatcn-fg px-4 pt-4 pb-1 font-medium tracking-[-0.005em] @2xl/settings:px-5 @2xl/settings:pt-5 @2xl/settings:pb-3">
+        <h2 className="px-4 pt-4 pb-1 chatcn-text-15 font-medium tracking-[-0.005em] text-chatcn-fg @2xl/settings:px-5 @2xl/settings:pt-5 @2xl/settings:pb-3">
           {title}
         </h2>
       ) : null}
@@ -108,17 +103,14 @@ function SettingsNav({
         data-slot="settings-nav-list"
         className={cn(
           // Row: scrolls sideways with the edge padding kept inside the scroller.
-          "flex [scrollbar-width:none] gap-1 overflow-x-auto px-3 py-2 [&::-webkit-scrollbar]:hidden",
-          "@2xl/settings:flex-col @2xl/settings:gap-px @2xl/settings:overflow-x-visible @2xl/settings:px-3 @2xl/settings:py-0",
+          'flex [scrollbar-width:none] gap-1 overflow-x-auto px-3 py-2 [&::-webkit-scrollbar]:hidden',
+          '@2xl/settings:flex-col @2xl/settings:gap-px @2xl/settings:overflow-x-visible @2xl/settings:px-3 @2xl/settings:py-0',
         )}
       >
         {children}
       </Tabs.List>
       {footer ? (
-        <div
-          data-slot="settings-nav-footer"
-          className="mt-auto hidden px-3 pt-3 pb-3 @2xl/settings:block"
-        >
+        <div data-slot="settings-nav-footer" className="mt-auto hidden px-3 pt-3 pb-3 @2xl/settings:block">
           {footer}
         </div>
       ) : null}
@@ -126,32 +118,25 @@ function SettingsNav({
   )
 }
 
-interface SettingsNavItemProps extends Omit<React.ComponentProps<typeof Tabs.Tab>, "value"> {
+interface SettingsNavItemProps extends Omit<React.ComponentProps<typeof Tabs.Tab>, 'value'> {
   value: string
   icon?: React.ReactNode
   /** A short fact after the label: a count, or "Off". Tabular. */
   meta?: React.ReactNode
 }
 
-function SettingsNavItem({
-  value,
-  icon,
-  meta,
-  className,
-  children,
-  ...props
-}: SettingsNavItemProps) {
+function SettingsNavItem({ value, icon, meta, className, children, ...props }: SettingsNavItemProps) {
   return (
     <Tabs.Tab
       value={value}
       data-slot="settings-nav-item"
       className={cn(
-        "group/nav-item chatcn-focus rounded-chatcn-md flex h-8 shrink-0 items-center gap-2.5 px-2.5 text-start whitespace-nowrap select-none",
-        "chatcn-text-13 text-chatcn-fg-muted @2xl/settings:chatcn-text-14 @2xl/settings:px-2",
+        'group/nav-item flex h-8 shrink-0 items-center gap-2.5 rounded-chatcn-md px-2.5 text-start whitespace-nowrap chatcn-focus select-none',
+        'chatcn-text-13 text-chatcn-fg-muted @2xl/settings:px-2 @2xl/settings:chatcn-text-14',
         // Frequent and keyboard driven: color only, no movement, no transition on the active fill.
-        "hover:bg-chatcn-fill-hover hover:text-chatcn-fg transition-colors duration-150",
-        "data-[active]:bg-chatcn-fill data-[active]:text-chatcn-fg data-[active]:transition-none",
-        "disabled:pointer-events-none disabled:opacity-50 pointer-coarse:h-11",
+        'transition-colors duration-150 hover:bg-chatcn-fill-hover hover:text-chatcn-fg',
+        'data-[active]:bg-chatcn-fill data-[active]:text-chatcn-fg data-[active]:transition-none',
+        'disabled:pointer-events-none disabled:opacity-50 pointer-coarse:h-11',
         className,
       )}
       {...props}
@@ -160,8 +145,8 @@ function SettingsNavItem({
         <span
           aria-hidden="true"
           className={cn(
-            "text-chatcn-fg-subtle grid size-4 shrink-0 place-items-center [&_svg]:size-4",
-            "group-hover/nav-item:text-chatcn-fg-muted group-data-[active]/nav-item:text-chatcn-fg",
+            'grid size-4 shrink-0 place-items-center text-chatcn-fg-subtle [&_svg]:size-4',
+            'group-hover/nav-item:text-chatcn-fg-muted group-data-[active]/nav-item:text-chatcn-fg',
           )}
         >
           {icon}
@@ -169,7 +154,7 @@ function SettingsNavItem({
       ) : null}
       <span className="min-w-0 flex-1 truncate">{children}</span>
       {meta !== undefined && meta !== null ? (
-        <span className="chatcn-text-12 text-chatcn-fg-subtle hidden shrink-0 tabular-nums @2xl/settings:inline">
+        <span className="hidden shrink-0 chatcn-text-12 text-chatcn-fg-subtle tabular-nums @2xl/settings:inline">
           {meta}
         </span>
       ) : null}
@@ -178,12 +163,12 @@ function SettingsNavItem({
 }
 
 /** A hairline between groups of sections in the column layout. Hidden in the row layout. */
-function SettingsNavSeparator({ className, ...props }: React.ComponentProps<"div">) {
+function SettingsNavSeparator({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       role="presentation"
       data-slot="settings-nav-separator"
-      className={cn("bg-chatcn-border mx-2 my-2 hidden h-px @2xl/settings:block", className)}
+      className={cn('mx-2 my-2 hidden h-px bg-chatcn-border @2xl/settings:block', className)}
       {...props}
     />
   )
@@ -193,8 +178,7 @@ function SettingsNavSeparator({ className, ...props }: React.ComponentProps<"div
  * Pane
  * -----------------------------------------------------------------------------------------------*/
 
-interface SettingsPaneProps
-  extends Omit<React.ComponentProps<typeof Tabs.Panel>, "value" | "title"> {
+interface SettingsPaneProps extends Omit<React.ComponentProps<typeof Tabs.Panel>, 'value' | 'title'> {
   value: string
   title?: React.ReactNode
   description?: React.ReactNode
@@ -219,15 +203,15 @@ function SettingsPane({
       value={value}
       data-slot="settings-pane"
       className={cn(
-        "chatcn-scroll min-h-0 min-w-0 flex-1 overflow-y-auto outline-none",
-        "focus-visible:outline-chatcn-accent focus-visible:outline-2 focus-visible:-outline-offset-2",
+        'chatcn-scroll min-h-0 min-w-0 flex-1 overflow-y-auto outline-none',
+        'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-chatcn-accent',
         className,
       )}
       {...props}
     >
       <div
         className={cn(
-          "mx-auto flex w-full max-w-2xl flex-col gap-8 px-4 pt-5 pb-8 @2xl/settings:px-8 @2xl/settings:pt-7 @2xl/settings:pb-10",
+          'mx-auto flex w-full max-w-2xl flex-col gap-8 px-4 pt-5 pb-8 @2xl/settings:px-8 @2xl/settings:pt-7 @2xl/settings:pb-10',
           contentClassName,
         )}
       >
@@ -235,14 +219,10 @@ function SettingsPane({
           <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
             <div className="flex min-w-0 flex-1 flex-col gap-1">
               {title ? (
-                <h2 className="chatcn-text-20 text-chatcn-fg font-medium tracking-[-0.01em] text-balance">
-                  {title}
-                </h2>
+                <h2 className="chatcn-text-20 font-medium tracking-[-0.01em] text-balance text-chatcn-fg">{title}</h2>
               ) : null}
               {description ? (
-                <p className="chatcn-text-13 text-chatcn-fg-muted max-w-prose text-pretty">
-                  {description}
-                </p>
+                <p className="max-w-prose chatcn-text-13 text-pretty text-chatcn-fg-muted">{description}</p>
               ) : null}
             </div>
             {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
@@ -258,7 +238,7 @@ function SettingsPane({
  * Group and row
  * -----------------------------------------------------------------------------------------------*/
 
-interface SettingsGroupProps extends Omit<React.ComponentProps<"section">, "title"> {
+interface SettingsGroupProps extends Omit<React.ComponentProps<'section'>, 'title'> {
   title?: React.ReactNode
   description?: React.ReactNode
   /** Something on the end side of the group heading, such as a Reset button. */
@@ -269,40 +249,31 @@ interface SettingsGroupProps extends Omit<React.ComponentProps<"section">, "titl
  * A titled set of rows separated by hairlines. No card: the panel is already a surface, and
  * hairlines plus space carry the hierarchy.
  */
-function SettingsGroup({
-  title,
-  description,
-  action,
-  className,
-  children,
-  ...props
-}: SettingsGroupProps) {
+function SettingsGroup({ title, description, action, className, children, ...props }: SettingsGroupProps) {
   const id = React.useId()
   return (
     <section
       data-slot="settings-group"
       aria-labelledby={title ? id : undefined}
-      className={cn("flex flex-col gap-2", className)}
+      className={cn('flex flex-col gap-2', className)}
       {...props}
     >
       {title || action ? (
         <div className="flex min-h-7 items-end justify-between gap-3">
           <div className="flex min-w-0 flex-col gap-0.5">
             {title ? (
-              <h3 id={id} className="chatcn-text-13 text-chatcn-fg font-medium">
+              <h3 id={id} className="chatcn-text-13 font-medium text-chatcn-fg">
                 {title}
               </h3>
             ) : null}
-            {description ? (
-              <p className="chatcn-text-12 text-chatcn-fg-subtle text-pretty">{description}</p>
-            ) : null}
+            {description ? <p className="chatcn-text-12 text-pretty text-chatcn-fg-subtle">{description}</p> : null}
           </div>
           {action}
         </div>
       ) : null}
       <div
         data-slot="settings-group-rows"
-        className="divide-chatcn-border border-chatcn-border flex flex-col divide-y border-t"
+        className="flex flex-col divide-y divide-chatcn-border border-t border-chatcn-border"
       >
         {children}
       </div>
@@ -323,7 +294,7 @@ function useSettingsRow() {
   return React.useContext(SettingsRowContext)
 }
 
-interface SettingsRowProps extends Omit<React.ComponentProps<"div">, "title"> {
+interface SettingsRowProps extends Omit<React.ComponentProps<'div'>, 'title'> {
   label: React.ReactNode
   description?: React.ReactNode
   /** Put the control under the text, full width: for text areas, lists and wide pickers. */
@@ -358,35 +329,27 @@ function SettingsRow({
     <SettingsRowContext.Provider value={value}>
       <div
         data-slot="settings-row"
-        data-disabled={disabled ? "" : undefined}
+        data-disabled={disabled ? '' : undefined}
         className={cn(
-          "flex min-h-14 flex-wrap items-center gap-x-6 gap-y-3 py-3.5",
-          stacked && "flex-col items-stretch",
+          'flex min-h-14 flex-wrap items-center gap-x-6 gap-y-3 py-3.5',
+          stacked && 'flex-col items-stretch',
           className,
         )}
         {...props}
       >
-        <div
-          className={cn(
-            "flex min-w-[min(100%,16rem)] flex-1 flex-col gap-0.5",
-            disabled && "opacity-50",
-          )}
-        >
-          <span id={labelId} className="chatcn-text-14 text-chatcn-fg font-medium">
+        <div className={cn('flex min-w-[min(100%,16rem)] flex-1 flex-col gap-0.5', disabled && 'opacity-50')}>
+          <span id={labelId} className="chatcn-text-14 font-medium text-chatcn-fg">
             {label}
           </span>
           {description ? (
-            <span id={descriptionId} className="chatcn-text-13 text-chatcn-fg-muted text-pretty">
+            <span id={descriptionId} className="chatcn-text-13 text-pretty text-chatcn-fg-muted">
               {description}
             </span>
           ) : null}
-          {note ? <span className="chatcn-text-12 text-chatcn-fg-subtle pt-1">{note}</span> : null}
+          {note ? <span className="pt-1 chatcn-text-12 text-chatcn-fg-subtle">{note}</span> : null}
         </div>
         {children !== undefined && children !== null ? (
-          <div
-            data-slot="settings-row-control"
-            className={cn("flex shrink-0 items-center gap-2", stacked && "w-full")}
-          >
+          <div data-slot="settings-row-control" className={cn('flex shrink-0 items-center gap-2', stacked && 'w-full')}>
             {children}
           </div>
         ) : null}
@@ -409,27 +372,27 @@ function SettingsSwitch({ className, disabled, ...props }: SettingsSwitchProps) 
   const row = useSettingsRow()
   return (
     <Switch.Root
-      aria-labelledby={props["aria-label"] ? undefined : row?.labelId}
+      aria-labelledby={props['aria-label'] ? undefined : row?.labelId}
       aria-describedby={row?.descriptionId}
       disabled={disabled ?? row?.disabled}
       data-slot="settings-switch"
       className={cn(
-        "chatcn-focus relative inline-flex h-[1.125rem] w-8 shrink-0 cursor-pointer items-center rounded-full p-0.5",
-        "bg-chatcn-fill-active data-[checked]:bg-chatcn-accent",
-        "ease-chatcn-standard transition-[background-color] duration-150",
-        "data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50",
+        'relative inline-flex h-[1.125rem] w-8 shrink-0 cursor-pointer items-center rounded-full p-0.5 chatcn-focus',
+        'bg-chatcn-fill-active data-[checked]:bg-chatcn-accent',
+        'transition-[background-color] duration-150 ease-chatcn-standard',
+        'data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50',
         // 44 px of hit area on touch without changing the drawing.
         "pointer-coarse:after:absolute pointer-coarse:after:-inset-3 pointer-coarse:after:content-['']",
-        "forced-colors:outline-1 forced-colors:outline-solid",
+        'forced-colors:outline-1 forced-colors:outline-solid',
         className,
       )}
       {...props}
     >
       <Switch.Thumb
         className={cn(
-          "bg-chatcn-card shadow-chatcn-xs block size-3.5 rounded-full",
-          "ease-chatcn-out transition-[translate,background-color] duration-150 motion-reduce:transition-none",
-          "data-[checked]:bg-chatcn-accent-fg data-[checked]:translate-x-3.5 rtl:data-[checked]:-translate-x-3.5",
+          'block size-3.5 rounded-full bg-chatcn-card shadow-chatcn-xs',
+          'transition-[translate,background-color] duration-150 ease-chatcn-out motion-reduce:transition-none',
+          'data-[checked]:translate-x-3.5 data-[checked]:bg-chatcn-accent-fg rtl:data-[checked]:-translate-x-3.5',
         )}
       />
     </Switch.Root>
@@ -449,14 +412,13 @@ interface SettingsSegmentedOption {
   disabled?: boolean
 }
 
-interface SettingsSegmentedProps
-  extends Omit<React.ComponentProps<"div">, "onChange" | "defaultValue"> {
+interface SettingsSegmentedProps extends Omit<React.ComponentProps<'div'>, 'onChange' | 'defaultValue'> {
   options: SettingsSegmentedOption[]
   value?: string
   defaultValue?: string
   onValueChange?: (value: string) => void
   disabled?: boolean
-  size?: "xs" | "sm"
+  size?: 'xs' | 'sm'
 }
 
 /**
@@ -470,27 +432,27 @@ function SettingsSegmented({
   defaultValue,
   onValueChange,
   disabled: disabledProp,
-  size = "sm",
+  size = 'sm',
   className,
   ...props
 }: SettingsSegmentedProps) {
   const row = useSettingsRow()
   const disabled = disabledProp ?? row?.disabled
-  const [valueState, setValueState] = React.useState(defaultValue ?? options[0]?.value ?? "")
+  const [valueState, setValueState] = React.useState(defaultValue ?? options[0]?.value ?? '')
   const value = valueProp ?? valueState
   const name = React.useId()
   return (
     <div
       role="radiogroup"
-      aria-labelledby={props["aria-label"] ? undefined : row?.labelId}
+      aria-labelledby={props['aria-label'] ? undefined : row?.labelId}
       aria-describedby={row?.descriptionId}
       aria-disabled={disabled || undefined}
       data-slot="settings-segmented"
       data-size={size}
       className={cn(
-        "bg-chatcn-fill inline-flex shrink-0 items-center gap-0.5 p-0.5",
-        size === "xs" ? "rounded-chatcn-sm" : "rounded-chatcn-md",
-        disabled && "opacity-50",
+        'inline-flex shrink-0 items-center gap-0.5 bg-chatcn-fill p-0.5',
+        size === 'xs' ? 'rounded-chatcn-sm' : 'rounded-chatcn-md',
+        disabled && 'opacity-50',
         className,
       )}
       {...props}
@@ -500,19 +462,19 @@ function SettingsSegmented({
         return (
           <label
             key={option.value}
-            data-checked={checked ? "" : undefined}
+            data-checked={checked ? '' : undefined}
             className={cn(
-              "relative inline-flex cursor-pointer items-center justify-center gap-1.5 font-medium whitespace-nowrap select-none",
-              size === "xs"
-                ? "chatcn-text-12 rounded-chatcn-xs h-6 px-2 [&_svg]:size-3.5"
-                : "chatcn-text-13 rounded-chatcn-sm h-7 px-2.5 [&_svg]:size-4",
-              option.iconOnly && (size === "xs" ? "w-6 px-0" : "w-8 px-0"),
-              "text-chatcn-fg-muted hover:text-chatcn-fg transition-colors duration-150",
-              "data-[checked]:bg-chatcn-card data-[checked]:text-chatcn-fg data-[checked]:shadow-chatcn-xs data-[checked]:transition-none",
-              "has-[:focus-visible]:outline-chatcn-accent has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-1",
-              "has-[:disabled]:pointer-events-none has-[:disabled]:opacity-50",
-              "pointer-coarse:min-h-11",
-              "forced-colors:data-[checked]:outline-1 forced-colors:data-[checked]:outline-solid",
+              'relative inline-flex cursor-pointer items-center justify-center gap-1.5 font-medium whitespace-nowrap select-none',
+              size === 'xs'
+                ? 'h-6 rounded-chatcn-xs px-2 chatcn-text-12 [&_svg]:size-3.5'
+                : 'h-7 rounded-chatcn-sm px-2.5 chatcn-text-13 [&_svg]:size-4',
+              option.iconOnly && (size === 'xs' ? 'w-6 px-0' : 'w-8 px-0'),
+              'text-chatcn-fg-muted transition-colors duration-150 hover:text-chatcn-fg',
+              'data-[checked]:bg-chatcn-card data-[checked]:text-chatcn-fg data-[checked]:shadow-chatcn-xs data-[checked]:transition-none',
+              'has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-1 has-[:focus-visible]:outline-chatcn-accent',
+              'has-[:disabled]:pointer-events-none has-[:disabled]:opacity-50',
+              'pointer-coarse:min-h-11',
+              'forced-colors:data-[checked]:outline-1 forced-colors:data-[checked]:outline-solid',
             )}
           >
             <input
@@ -521,9 +483,7 @@ function SettingsSegmented({
               value={option.value}
               checked={checked}
               disabled={disabled || option.disabled}
-              aria-label={
-                option.iconOnly && typeof option.label === "string" ? option.label : undefined
-              }
+              aria-label={option.iconOnly && typeof option.label === 'string' ? option.label : undefined}
               onChange={() => {
                 if (valueProp === undefined) setValueState(option.value)
                 onValueChange?.(option.value)

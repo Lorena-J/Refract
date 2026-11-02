@@ -18,7 +18,8 @@ test('move between projects without reloading or losing edits', async ({ page, r
   const beta = `Nav Beta ${run}`
   const a = await make(alpha)
   const b = await make(beta)
-  const read = async (id: string) => (await request.get(`/api/projects/${id}/file?path=main.tex`, { headers: api })).text()
+  const read = async (id: string) =>
+    (await request.get(`/api/projects/${id}/file?path=main.tex`, { headers: api })).text()
 
   await page.goto('/')
   await page.evaluate(() => ((window as any).__samePage = true))

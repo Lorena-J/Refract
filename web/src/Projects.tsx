@@ -1,11 +1,37 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
-import { ArrowDownUp, ChevronDown, Download, FileArchive, FolderOpen, FolderUp, MoreHorizontal, Pencil, Plus, Search, Trash2, Upload } from 'lucide-react'
+import {
+  ArrowDownUp,
+  ChevronDown,
+  Download,
+  FileArchive,
+  FolderOpen,
+  FolderUp,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  Upload,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { api, download, errorText, type ChatGPTStatus, type ImportResult, type Project } from './api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -71,8 +97,22 @@ export default function Projects({ status }: { status: ChatGPTStatus | null }) {
         setNaming({ mode: 'new' })
       },
     },
-    { id: 'p:zip', group: 'Actions', label: t('Import a Prism export (.zip)'), icon: FileArchive, keywords: 'upload', run: () => zipInput.current?.click() },
-    { id: 'p:folder', group: 'Actions', label: t('Import a folder'), icon: FolderUp, keywords: 'upload', run: () => folderInput.current?.click() },
+    {
+      id: 'p:zip',
+      group: 'Actions',
+      label: t('Import a Prism export (.zip)'),
+      icon: FileArchive,
+      keywords: 'upload',
+      run: () => zipInput.current?.click(),
+    },
+    {
+      id: 'p:folder',
+      group: 'Actions',
+      label: t('Import a folder'),
+      icon: FolderUp,
+      keywords: 'upload',
+      run: () => folderInput.current?.click(),
+    },
     ...(projects ?? []).map((p) => ({
       id: `project:${p.id}`,
       group: 'Projects',
@@ -114,7 +154,9 @@ export default function Projects({ status }: { status: ChatGPTStatus | null }) {
     const list = (projects ?? []).filter((p) => !q || p.name.toLowerCase().includes(q))
     const dir = sort.desc ? -1 : 1
     return list.sort((a, b) =>
-      sort.key === 'name' ? dir * a.name.localeCompare(b.name) : dir * (new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime()),
+      sort.key === 'name'
+        ? dir * a.name.localeCompare(b.name)
+        : dir * (new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime()),
     )
   }, [projects, query, sort])
 
@@ -129,7 +171,12 @@ export default function Projects({ status }: { status: ChatGPTStatus | null }) {
     for (const f of zips) {
       const projectName = f.name.replace(/\.zip$/i, '')
       try {
-        done.push(await api<ImportResult>(`/api/projects/import?name=${encodeURIComponent(projectName)}`, { method: 'POST', body: f }))
+        done.push(
+          await api<ImportResult>(`/api/projects/import?name=${encodeURIComponent(projectName)}`, {
+            method: 'POST',
+            body: f,
+          }),
+        )
       } catch (e) {
         toast.error(`${projectName}: ${errorText(e)}`)
       }
@@ -144,7 +191,12 @@ export default function Projects({ status }: { status: ChatGPTStatus | null }) {
     for (const f of files) form.append('file', f, f.webkitRelativePath)
     setBusy(true)
     try {
-      finishImport([await api<ImportResult>(`/api/projects/import-folder?name=${encodeURIComponent(folder)}`, { method: 'POST', body: form })])
+      finishImport([
+        await api<ImportResult>(`/api/projects/import-folder?name=${encodeURIComponent(folder)}`, {
+          method: 'POST',
+          body: form,
+        }),
+      ])
     } catch (e) {
       toast.error(`${folder}: ${errorText(e)}`)
       setBusy(false)
@@ -155,7 +207,11 @@ export default function Projects({ status }: { status: ChatGPTStatus | null }) {
     setBusy(false)
     load()
     if (done.length === 0) return
-    toast.success(done.length === 1 ? t('Imported {name}', { name: done[0].project.name }) : t('Imported {n} projects', { n: done.length }))
+    toast.success(
+      done.length === 1
+        ? t('Imported {name}', { name: done[0].project.name })
+        : t('Imported {n} projects', { n: done.length }),
+    )
     const needLook = done.filter(attention)
     if (needLook.length) setReports(needLook)
   }
@@ -256,41 +312,82 @@ export default function Projects({ status }: { status: ChatGPTStatus | null }) {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <input ref={zipInput} type="file" accept=".zip" multiple hidden onChange={(e) => importZips([...(e.target.files ?? [])])} />
-          {/* @ts-expect-error webkitdirectory is non-standard but supported by all desktop browsers */}
-          <input ref={folderInput} type="file" webkitdirectory="" hidden onChange={(e) => importFolder([...(e.target.files ?? [])])} />
+          <input
+            ref={zipInput}
+            type="file"
+            accept=".zip"
+            multiple
+            hidden
+            onChange={(e) => importZips([...(e.target.files ?? [])])}
+          />
+          <input
+            ref={folderInput}
+            type="file"
+            // @ts-expect-error webkitdirectory is non-standard but supported by all desktop browsers
+            webkitdirectory=""
+            hidden
+            onChange={(e) => importFolder([...(e.target.files ?? [])])}
+          />
         </header>
 
         <div className="flex items-center border-y px-5 py-2 text-xs text-muted-foreground">
-          <button className="flex items-center gap-1 transition-colors duration-150 hover:text-foreground" onClick={() => sortBy('name')}>
+          <button
+            className="flex items-center gap-1 transition-colors duration-150 hover:text-foreground"
+            onClick={() => sortBy('name')}
+          >
             {t('Name')} <ArrowDownUp className={cn('size-3', sort.key !== 'name' && 'opacity-40')} />
           </button>
-          <button className="ml-auto flex items-center gap-1 pr-11 transition-colors duration-150 hover:text-foreground" onClick={() => sortBy('updated')}>
+          <button
+            className="ml-auto flex items-center gap-1 pr-11 transition-colors duration-150 hover:text-foreground"
+            onClick={() => sortBy('updated')}
+          >
             {t('Updated')} <ArrowDownUp className={cn('size-3', sort.key !== 'updated' && 'opacity-40')} />
           </button>
         </div>
 
         <ul className="min-h-0 flex-1 overflow-auto">
           {shown.map((p, i) => (
-            <li key={p.id} className="enter group border-b last:border-b-0" style={{ transitionDelay: `${Math.min(i, 8) * 30}ms` }}>
+            <li
+              key={p.id}
+              className="group enter border-b last:border-b-0"
+              style={{ transitionDelay: `${Math.min(i, 8) * 30}ms` }}
+            >
               <WithContextMenu items={() => rowMenu(p)}>
                 <div className="flex items-center gap-4 px-5 py-2.5 transition-colors duration-150 hover:bg-accent/50">
-                  <Link to={`/p/${p.id}`} onClick={morphInto} className="flex min-w-0 flex-1 items-center gap-4 outline-none focus-visible:underline">
+                  <Link
+                    to={`/p/${p.id}`}
+                    onClick={morphInto}
+                    className="flex min-w-0 flex-1 items-center gap-4 outline-none focus-visible:underline"
+                  >
                     <PaperIcon />
                     <span className="min-w-0">
-                      <span data-vt-title className="block w-fit max-w-full truncate text-sm font-medium" style={p.id === cameFrom ? { viewTransitionName: 'project-title' } : undefined}>
+                      <span
+                        data-vt-title
+                        className="block w-fit max-w-full truncate text-sm font-medium"
+                        style={p.id === cameFrom ? { viewTransitionName: 'project-title' } : undefined}
+                      >
                         {p.name}
                       </span>
-                      <span className="block truncate text-xs text-muted-foreground">{p.main_file || t('Main file not set')}</span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {p.main_file || t('Main file not set')}
+                      </span>
                     </span>
                   </Link>
-                  <span className="w-12 text-right text-xs text-muted-foreground tabular-nums" title={new Date(p.updated_at).toLocaleString()}>
+                  <span
+                    className="w-12 text-right text-xs text-muted-foreground tabular-nums"
+                    title={new Date(p.updated_at).toLocaleString()}
+                  >
                     {ago(p.updated_at)}
                   </span>
                   <DropdownMenu>
                     <DropdownMenuTrigger
                       render={
-                        <Button variant="ghost" size="icon-sm" aria-label={t('Actions for {name}', { name: p.name })} className="text-muted-foreground" />
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={t('Actions for {name}', { name: p.name })}
+                          className="text-muted-foreground"
+                        />
                       }
                     >
                       <MoreHorizontal />
@@ -306,11 +403,13 @@ export default function Projects({ status }: { status: ChatGPTStatus | null }) {
         </ul>
 
         {projects && shown.length === 0 && (
-          <div className="enter absolute inset-0 top-28 flex flex-col items-center justify-center gap-3 text-center">
+          <div className="absolute inset-0 top-28 flex enter flex-col items-center justify-center gap-3 text-center">
             <PaperIcon className="h-12 w-9 opacity-70" />
             <p className="text-sm font-medium">{query ? t('No projects match.') : t('No projects yet')}</p>
             {!query && (
-              <p className="max-w-xs text-sm text-muted-foreground">{t('Create a blank project, or drop Prism .zip exports anywhere on this page.')}</p>
+              <p className="max-w-xs text-sm text-muted-foreground">
+                {t('Create a blank project, or drop Prism .zip exports anywhere on this page.')}
+              </p>
             )}
           </div>
         )}
@@ -336,7 +435,13 @@ export default function Projects({ status }: { status: ChatGPTStatus | null }) {
               submitName()
             }}
           >
-            <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={t('Project name')} aria-label={t('Project name')} />
+            <Input
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={t('Project name')}
+              aria-label={t('Project name')}
+            />
             <DialogFooter className="mt-4">
               <Button type="button" variant="ghost" onClick={() => setNaming(null)}>
                 {t('Cancel')}
@@ -370,7 +475,9 @@ export default function Projects({ status }: { status: ChatGPTStatus | null }) {
         <DialogContent className="max-h-[80vh] overflow-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{t('Imported, with notes')}</DialogTitle>
-            <DialogDescription>{t("These won't stop you from working, but they may affect compiling on another machine.")}</DialogDescription>
+            <DialogDescription>
+              {t("These won't stop you from working, but they may affect compiling on another machine.")}
+            </DialogDescription>
           </DialogHeader>
           {reports.map((r) => (
             <ImportNotes key={r.project.id} result={r} onMainFile={load} />
@@ -414,7 +521,9 @@ function ImportNotes({ result: r, onMainFile }: { result: ImportResult; onMainFi
           </Select>
         </div>
       )}
-      {r.skipped && r.skipped.length > 0 && <p className="text-xs text-muted-foreground">{t('Skipped: {files}', { files: r.skipped.join(', ') })}</p>}
+      {r.skipped && r.skipped.length > 0 && (
+        <p className="text-xs text-muted-foreground">{t('Skipped: {files}', { files: r.skipped.join(', ') })}</p>
+      )}
       <ul className="space-y-2">
         {r.warnings.map((w, i) => (
           <li key={i} className="rounded-md bg-muted/60 px-3 py-2 text-sm">

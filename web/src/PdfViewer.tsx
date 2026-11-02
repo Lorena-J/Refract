@@ -1,12 +1,30 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, ChevronDown, ChevronLeft, ChevronRight, Download, FileCode, Maximize2, Minus, Plus, ZoomIn, ZoomOut } from 'lucide-react'
+import {
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  FileCode,
+  Maximize2,
+  Minus,
+  Plus,
+  ZoomIn,
+  ZoomOut,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { download, errorText } from './api'
 import { WithContextMenu, type MenuEntry } from '@/components/Menu'
 import { mod } from '@/lib/shortcuts'
 import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import { t } from '@/lib/i18n'
 import * as pdfjs from 'pdfjs-dist'
@@ -31,7 +49,15 @@ type Size = { w: number; h: number } // page size in PDF points
 
 // Continuous-scroll viewer. Pages are laid out at their final size up front
 // (so scroll position survives a reload) and rendered when they come into view.
-export default function PdfViewer({ projectId, version, highlight, onInverse, toolbar, actions, toolbarTarget }: Props) {
+export default function PdfViewer({
+  projectId,
+  version,
+  highlight,
+  onInverse,
+  toolbar,
+  actions,
+  toolbarTarget,
+}: Props) {
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null)
   const [sizes, setSizes] = useState<Size[]>([])
   const [scale, setScale] = useState<number | 'fit'>('fit')
@@ -55,7 +81,11 @@ export default function PdfViewer({ projectId, version, highlight, onInverse, to
     ;(async () => {
       const res = await fetch(`/api/projects/${projectId}/pdf`, { headers: { 'X-Refract': '1' } })
       if (!res.ok) {
-        setMessage(res.status === 404 ? t('No PDF yet. Compile to see it here.') : t('Could not load the PDF (HTTP {status}).', { status: res.status }))
+        setMessage(
+          res.status === 404
+            ? t('No PDF yet. Compile to see it here.')
+            : t('Could not load the PDF (HTTP {status}).', { status: res.status }),
+        )
         return
       }
       const data = new Uint8Array(await res.arrayBuffer())
@@ -155,7 +185,13 @@ export default function PdfViewer({ projectId, version, highlight, onInverse, to
   const menu = (): MenuEntry[] => {
     const p = point.current
     return [
-      { label: t('Go to source here'), icon: FileCode, shortcut: `${mod}+click`, disabled: !p, onSelect: () => p && onInverse(p.page, p.x, p.y) },
+      {
+        label: t('Go to source here'),
+        icon: FileCode,
+        shortcut: `${mod}+click`,
+        disabled: !p,
+        onSelect: () => p && onInverse(p.page, p.x, p.y),
+      },
       '-',
       { label: t('Zoom in'), icon: ZoomIn, disabled: !doc, onSelect: () => zoom(Math.min(4, s * 1.25)) },
       { label: t('Zoom out'), icon: ZoomOut, disabled: !doc, onSelect: () => zoom(Math.max(0.25, s / 1.25)) },
@@ -165,7 +201,8 @@ export default function PdfViewer({ projectId, version, highlight, onInverse, to
         label: t('Download PDF'),
         icon: Download,
         disabled: !doc,
-        onSelect: () => download(`/api/projects/${projectId}/pdf`, 'document.pdf').catch((err) => toast.error(errorText(err))),
+        onSelect: () =>
+          download(`/api/projects/${projectId}/pdf`, 'document.pdf').catch((err) => toast.error(errorText(err))),
       },
     ]
   }
@@ -176,7 +213,9 @@ export default function PdfViewer({ projectId, version, highlight, onInverse, to
       {toolbar}
       <span className="flex-1" />
       <DropdownMenu>
-        <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="gap-1 font-normal tabular-nums" disabled={!doc} />}>
+        <DropdownMenuTrigger
+          render={<Button variant="ghost" size="sm" className="gap-1 font-normal tabular-nums" disabled={!doc} />}
+        >
           <Maximize2 /> {zoomLabel} <ChevronDown className="opacity-60" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-40">
@@ -196,20 +235,37 @@ export default function PdfViewer({ projectId, version, highlight, onInverse, to
   )
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {toolbarTarget ? createPortal(<>{bar}</>, toolbarTarget) : <div className="flex h-11 shrink-0 items-center gap-1 border-b px-2">{bar}</div>}
+      {toolbarTarget ? (
+        createPortal(<>{bar}</>, toolbarTarget)
+      ) : (
+        <div className="flex h-11 shrink-0 items-center gap-1 border-b px-2">{bar}</div>
+      )}
       <div className="relative min-h-0 flex-1">
         <WithContextMenu items={menu} className="absolute inset-0">
-          <div className="absolute inset-0 overflow-auto bg-pdf p-4" ref={scroller} onScroll={onScroll} onContextMenu={rememberPoint}>
-            {message && <p className="enter mt-24 text-center text-sm text-muted-foreground">{message}</p>}
+          <div
+            className="absolute inset-0 overflow-auto bg-pdf p-4"
+            ref={scroller}
+            onScroll={onScroll}
+            onContextMenu={rememberPoint}
+          >
+            {message && <p className="mt-24 enter text-center text-sm text-muted-foreground">{message}</p>}
             {doc &&
               sizes.map((size, i) => (
-                <Page key={i} doc={doc} n={i + 1} size={size} scale={s} highlight={highlight?.page === i + 1 ? highlight : undefined} onInverse={onInverse} />
+                <Page
+                  key={i}
+                  doc={doc}
+                  n={i + 1}
+                  size={size}
+                  scale={s}
+                  highlight={highlight?.page === i + 1 ? highlight : undefined}
+                  onInverse={onInverse}
+                />
               ))}
           </div>
         </WithContextMenu>
         {doc && sizes.length > 0 && (
           // Floating pager: page navigation without leaving the document.
-          <div className="enter absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center whitespace-nowrap gap-0.5 rounded-full border bg-popover/90 p-1 text-sm shadow-lg backdrop-blur">
+          <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 enter items-center gap-0.5 rounded-full border bg-popover/90 p-1 text-sm whitespace-nowrap shadow-lg backdrop-blur">
             <Button
               variant="ghost"
               size="icon-sm"
@@ -241,10 +297,22 @@ export default function PdfViewer({ projectId, version, highlight, onInverse, to
               <ChevronRight />
             </Button>
             <span className="mx-0.5 h-4 w-px bg-border" />
-            <Button variant="ghost" size="icon-sm" className="rounded-full" onClick={() => zoom(Math.max(0.25, s / 1.2))} aria-label={t('Zoom out')}>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="rounded-full"
+              onClick={() => zoom(Math.max(0.25, s / 1.2))}
+              aria-label={t('Zoom out')}
+            >
               <Minus />
             </Button>
-            <Button variant="ghost" size="icon-sm" className="rounded-full" onClick={() => zoom(Math.min(5, s * 1.2))} aria-label={t('Zoom in')}>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="rounded-full"
+              onClick={() => zoom(Math.min(5, s * 1.2))}
+              aria-label={t('Zoom in')}
+            >
               <Plus />
             </Button>
           </div>
@@ -333,7 +401,12 @@ function Page({
       {flash && (
         <div
           className="sync-highlight"
-          style={{ left: flash.x * scale - 2, top: flash.y * scale - 2, width: flash.w * scale + 4, height: flash.h * scale + 4 }}
+          style={{
+            left: flash.x * scale - 2,
+            top: flash.y * scale - 2,
+            width: flash.w * scale + 4,
+            height: flash.h * scale + 4,
+          }}
         />
       )}
     </div>

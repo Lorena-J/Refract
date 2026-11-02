@@ -10,7 +10,13 @@ import { cn } from '@/lib/utils'
 import { t } from '@/lib/i18n'
 
 type Commit = { hash: string; short: string; message: string; time: string }
-type FileDiff = { path: string; status: 'added' | 'modified' | 'deleted'; before: string; after: string; binary: boolean }
+type FileDiff = {
+  path: string
+  status: 'added' | 'modified' | 'deleted'
+  before: string
+  after: string
+  binary: boolean
+}
 
 type Props = {
   projectId: string
@@ -20,8 +26,16 @@ type Props = {
   onRestored: () => Promise<void> // reload what is open
 }
 
-const tone: Record<FileDiff['status'], string> = { added: 'text-success', modified: 'text-muted-foreground', deleted: 'text-destructive' }
-const statusLabel: Record<FileDiff['status'], string> = { added: t('added'), modified: t('modified'), deleted: t('deleted') }
+const tone: Record<FileDiff['status'], string> = {
+  added: 'text-success',
+  modified: 'text-muted-foreground',
+  deleted: 'text-destructive',
+}
+const statusLabel: Record<FileDiff['status'], string> = {
+  added: t('added'),
+  modified: t('modified'),
+  deleted: t('deleted'),
+}
 
 // The project's commits, what each changed, and restoring a file or the whole
 // project as a new commit (history is never rewritten).
@@ -64,7 +78,10 @@ export default function History({ projectId, open, onClose, beforeRestore, onRes
     setBusy(what)
     try {
       await beforeRestore()
-      const res = await api<{ commit: string }>(`/api/projects/${projectId}/history/${selected}/restore`, { method: 'POST', body })
+      const res = await api<{ commit: string }>(`/api/projects/${projectId}/history/${selected}/restore`, {
+        method: 'POST',
+        body,
+      })
       if (!res.commit) toast(t('Already identical: nothing to restore.'))
       else {
         toast.success(body.path ? t('Restored {path}', { path: body.path }) : t('Restored the project'))
@@ -85,7 +102,9 @@ export default function History({ projectId, open, onClose, beforeRestore, onRes
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="h-[min(720px,calc(100dvh-2rem))] gap-0 overflow-hidden rounded-2xl p-0 sm:max-w-[1100px]">
         <DialogTitle className="sr-only">{t('Project history')}</DialogTitle>
-        <DialogDescription className="sr-only">{t('Every saved version of the project, what changed, and restoring older versions.')}</DialogDescription>
+        <DialogDescription className="sr-only">
+          {t('Every saved version of the project, what changed, and restoring older versions.')}
+        </DialogDescription>
         <div className="flex h-full min-h-0">
           <aside className="flex w-72 shrink-0 flex-col border-r bg-foreground/[0.025]">
             <h2 className="flex items-center gap-2 px-4 pt-4 pb-2 text-sm font-medium">
@@ -125,8 +144,10 @@ export default function History({ projectId, open, onClose, beforeRestore, onRes
               </div>
               {current &&
                 (confirming ? (
-                  <div className="enter flex items-center gap-2 text-xs">
-                    <span className="text-muted-foreground">{t('Replace every file with this version? The current one stays in history.')}</span>
+                  <div className="flex enter items-center gap-2 text-xs">
+                    <span className="text-muted-foreground">
+                      {t('Replace every file with this version? The current one stays in history.')}
+                    </span>
                     <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
                       {t('Cancel')}
                     </Button>
@@ -146,7 +167,9 @@ export default function History({ projectId, open, onClose, beforeRestore, onRes
                   <Loader2 className="size-4 animate-spin" /> {t('Loading changes…')}
                 </p>
               )}
-              {diffs?.length === 0 && <p className="p-4 text-sm text-muted-foreground">{t('No file changes in this version.')}</p>}
+              {diffs?.length === 0 && (
+                <p className="p-4 text-sm text-muted-foreground">{t('No file changes in this version.')}</p>
+              )}
               {diffs?.map((d) => {
                 const isOpen = !collapsed.includes(d.path)
                 const restoreBefore = d.status === 'deleted'
@@ -155,15 +178,25 @@ export default function History({ projectId, open, onClose, beforeRestore, onRes
                     <div className="sticky top-0 z-10 flex items-center gap-2 border-b bg-popover/95 px-3 py-1.5 backdrop-blur">
                       <button
                         className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-                        onClick={() => setCollapsed(isOpen ? [...collapsed, d.path] : collapsed.filter((p) => p !== d.path))}
+                        onClick={() =>
+                          setCollapsed(isOpen ? [...collapsed, d.path] : collapsed.filter((p) => p !== d.path))
+                        }
                       >
                         <ChevronRight
-                          className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform duration-150 ease-out', isOpen && 'rotate-90')}
+                          className={cn(
+                            'size-3.5 shrink-0 text-muted-foreground transition-transform duration-150 ease-out',
+                            isOpen && 'rotate-90',
+                          )}
                         />
                         <code className="truncate text-sm">{d.path}</code>
                         <span className={cn('text-xs', tone[d.status])}>{statusLabel[d.status]}</span>
                       </button>
-                      <Button size="xs" variant="ghost" disabled={!!busy} onClick={() => restore(d.path, { path: d.path, before: restoreBefore })}>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        disabled={!!busy}
+                        onClick={() => restore(d.path, { path: d.path, before: restoreBefore })}
+                      >
                         {busy === d.path ? <Loader2 className="animate-spin" /> : <RotateCcw />}
                         {restoreBefore ? t('Restore deleted file') : t('Restore this version')}
                       </Button>

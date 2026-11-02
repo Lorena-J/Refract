@@ -66,7 +66,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -96,7 +103,13 @@ const saveState: Record<SaveStatus, { text: string; dot: string }> = {
   error: { text: t('Save failed, retrying…'), dot: 'bg-destructive' },
 }
 
-type Ask = { title: string; description?: string; value: string; action: string; onSubmit: (v: string) => Promise<void> }
+type Ask = {
+  title: string
+  description?: string
+  value: string
+  action: string
+  onSubmit: (v: string) => Promise<void>
+}
 type Confirm = { title: string; description: string; action: string; onConfirm: () => Promise<void> }
 
 export default function Workspace({ id, status }: { id: string; status: ChatGPTStatus | null }) {
@@ -118,7 +131,9 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
   const [gitOpen, setGitOpen] = useState(false)
   const prefs = usePrefs()
   const [citing, setCiting] = useState<{ target: CiteTarget | null; suggest: boolean } | null>(null)
-  const [proposal, setProposal] = useState<{ path: string; from: number; to: number; original: string; text: string } | undefined>()
+  const [proposal, setProposal] = useState<
+    { path: string; from: number; to: number; original: string; text: string } | undefined
+  >()
   const [insert, setInsert] = useState<{ path: string; text: string } | undefined>()
   const [aiRequest, setAiRequest] = useState<{ text: string; n: number } | undefined>()
   const [selLines, setSelLines] = useState('')
@@ -247,7 +262,9 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
   // Inverse sync: PDF point → editor.
   async function syncToSource(page: number, x: number, y: number) {
     try {
-      const r = await api<{ file: string; line: number }>(`/api/projects/${id}/synctex/inverse?page=${page}&x=${x}&y=${y}`)
+      const r = await api<{ file: string; line: number }>(
+        `/api/projects/${id}/synctex/inverse?page=${page}&x=${x}&y=${y}`,
+      )
       await jumpTo(r.file, r.line)
     } catch (e) {
       toast(errorText(e))
@@ -285,13 +302,20 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
   async function acceptTurn(files: string[] | null): Promise<string[] | null> {
     if (!review) return null
     await autosave.flushAll()
-    const res = await api<{ turn: Turn; conflicts: string[] | null }>(`/api/turns/${review.id}/accept`, { method: 'POST', body: { files } })
+    const res = await api<{ turn: Turn; conflicts: string[] | null }>(`/api/turns/${review.id}/accept`, {
+      method: 'POST',
+      body: { files },
+    })
     if (res.conflicts?.length) return res.conflicts
     const applied = files ?? review.files.map((f) => f.path)
     await reloadFromDisk(applied)
     setTurnUpdate(res.turn)
     setReview(res.turn.status === 'review' ? res.turn : null)
-    toast.success(applied.length === 1 ? t('Applied changes to {path}', { path: applied[0] }) : t('Applied changes to {n} files', { n: applied.length }))
+    toast.success(
+      applied.length === 1
+        ? t('Applied changes to {path}', { path: applied[0] })
+        : t('Applied changes to {n} files', { n: applied.length }),
+    )
     return null
   }
 
@@ -336,22 +360,32 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
     if (sel && c.text) {
       // Placed by the assistant in the selection: shown as a diff to accept (Tab) or reject (Esc).
       setProposal({ path: sel.path, from: sel.from, to: sel.to, original: sel.text, text: c.text })
-      toast.success(c.placed ? t('Citation placed: review it in the editor.') : t('Citation added at the end of the selection: review it in the editor.'), {
-        description: setup,
-      })
+      toast.success(
+        c.placed
+          ? t('Citation placed: review it in the editor.')
+          : t('Citation added at the end of the selection: review it in the editor.'),
+        {
+          description: setup,
+        },
+      )
       return
     }
     const target = active && active.endsWith('.tex') && loaded.current.get(active)?.text ? active : undefined
     if (target) setInsert({ path: target, text: `\\cite{${c.key}}` })
     const where = c.added ? t('Added to {path}', { path: c.path }) : t('Already in {path}', { path: c.path })
-    toast.success(target ? t('{where} · \\cite{{key}} inserted', { where, key: c.key }) : t('{where} as {key}', { where, key: c.key }), {
-      description: c.needs_setup
-        ? t('No .tex file loads a bibliography yet: add \\bibliography{{base}} (or \\addbibresource{{path}}).', {
-            base: c.path.replace(/\.bib$/, ''),
-            path: c.path,
-          })
-        : undefined,
-    })
+    toast.success(
+      target
+        ? t('{where} · \\cite{{key}} inserted', { where, key: c.key })
+        : t('{where} as {key}', { where, key: c.key }),
+      {
+        description: c.needs_setup
+          ? t('No .tex file loads a bibliography yet: add \\bibliography{{base}} (or \\addbibresource{{path}}).', {
+              base: c.path.replace(/\.bib$/, ''),
+              path: c.path,
+            })
+          : undefined,
+      },
+    )
   }
 
   function closeOthers(keep: string | null) {
@@ -364,17 +398,25 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
     { label: t('Close others'), onSelect: () => closeOthers(p), disabled: tabs.length < 2 },
     { label: t('Close all'), onSelect: () => closeOthers(null) },
     '-',
-    ...(p.endsWith('.tex') && p !== project?.main_file ? [{ label: t('Set as main file'), icon: Star, onSelect: () => setMainFile(p) }] : []),
+    ...(p.endsWith('.tex') && p !== project?.main_file
+      ? [{ label: t('Set as main file'), icon: Star, onSelect: () => setMainFile(p) }]
+      : []),
     { label: t('Copy path'), icon: Copy, onSelect: () => navigator.clipboard.writeText(p) },
   ]
 
   // "Fix with AI" on compile problems: a new chat asking for the fix (and a check compile).
   function fixWithAI(ps: Problem[]) {
-    const lines = ps.map((p) => `- ${p.file ? `${p.file}${p.line ? `:${p.line}` : ''}: ` : ''}${p.severity}: ${p.message}`)
+    const lines = ps.map(
+      (p) => `- ${p.file ? `${p.file}${p.line ? `:${p.line}` : ''}: ` : ''}${p.severity}: ${p.message}`,
+    )
     const text =
       ps.length === 1
-        ? t('Fix this problem from the last compile, then compile to check it is gone:\n{problems}', { problems: lines[0] })
-        : t('Fix these problems from the last compile, then compile to check they are gone:\n{problems}', { problems: lines.join('\n') })
+        ? t('Fix this problem from the last compile, then compile to check it is gone:\n{problems}', {
+            problems: lines[0],
+          })
+        : t('Fix these problems from the last compile, then compile to check they are gone:\n{problems}', {
+            problems: lines.join('\n'),
+          })
     setChatId('')
     setChatOpen(true)
     setAiRequest((r) => ({ text, n: (r?.n ?? 0) + 1 }))
@@ -483,7 +525,9 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
   function remove(path: string, dir: boolean) {
     setConfirm({
       title: t('Delete {path}?', { path }),
-      description: dir ? t('The folder and everything in it will be deleted. It stays in the project history.') : t('It stays in the project history.'),
+      description: dir
+        ? t('The folder and everything in it will be deleted. It stays in the project history.')
+        : t('It stays in the project history.'),
       action: t('Delete'),
       onConfirm: async () => {
         const affected = tabs.filter((p) => under(p, path))
@@ -504,12 +548,19 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
         await writeFile(id, target(f), f)
       }
       await loadFiles()
-      toast.success(list.length === 1 ? t('Uploaded {path}', { path: target(list[0]) }) : t('Uploaded {n} files', { n: list.length }))
+      toast.success(
+        list.length === 1
+          ? t('Uploaded {path}', { path: target(list[0]) })
+          : t('Uploaded {n} files', { n: list.length }),
+      )
     }
     const existing = list.filter((f) => files.some((e) => e.path === target(f)))
     if (existing.length === 0) return run(write)
     setConfirm({
-      title: existing.length === 1 ? t('Replace {path}?', { path: target(existing[0]) }) : t('Replace {n} files?', { n: existing.length }),
+      title:
+        existing.length === 1
+          ? t('Replace {path}?', { path: target(existing[0]) })
+          : t('Replace {n} files?', { n: existing.length }),
       description: t('The current versions stay in the project history.'),
       action: t('Replace'),
       onConfirm: write,
@@ -547,10 +598,37 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
     },
     { id: 'ws:newfile', group: 'Actions', label: t('New file'), icon: FileText, run: () => create('', 'file') },
     { id: 'ws:newfolder', group: 'Actions', label: t('New folder'), icon: FolderPlus, run: () => create('', 'folder') },
-    { id: 'ws:upload', group: 'Actions', label: t('Upload files'), icon: Upload, run: () => uploadInput.current?.click() },
-    { id: 'ws:git', group: 'Actions', label: t('Git remote…'), icon: GitBranch, keywords: 'github remote sync push pull', run: () => setGitOpen(true) },
-    { id: 'ws:push', group: 'Actions', label: t('Push to the remote'), icon: ArrowUpFromLine, keywords: 'git github sync upload', run: () => sync('push') },
-    { id: 'ws:pull', group: 'Actions', label: t('Pull from the remote'), icon: ArrowDownToLine, keywords: 'git github sync download', run: () => sync('pull') },
+    {
+      id: 'ws:upload',
+      group: 'Actions',
+      label: t('Upload files'),
+      icon: Upload,
+      run: () => uploadInput.current?.click(),
+    },
+    {
+      id: 'ws:git',
+      group: 'Actions',
+      label: t('Git remote…'),
+      icon: GitBranch,
+      keywords: 'github remote sync push pull',
+      run: () => setGitOpen(true),
+    },
+    {
+      id: 'ws:push',
+      group: 'Actions',
+      label: t('Push to the remote'),
+      icon: ArrowUpFromLine,
+      keywords: 'git github sync upload',
+      run: () => sync('push'),
+    },
+    {
+      id: 'ws:pull',
+      group: 'Actions',
+      label: t('Pull from the remote'),
+      icon: ArrowDownToLine,
+      keywords: 'git github sync download',
+      run: () => sync('pull'),
+    },
     {
       id: 'ws:history',
       group: 'Actions',
@@ -567,7 +645,13 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
       keywords: 'bibliography bibtex reference paper',
       run: () => setCiting({ target: null, suggest: false }),
     },
-    { id: 'ws:sidebar', group: 'Actions', label: sidebarCollapsed ? t('Show the sidebar') : t('Hide the sidebar'), icon: PanelLeft, run: toggleSidebar },
+    {
+      id: 'ws:sidebar',
+      group: 'Actions',
+      label: sidebarCollapsed ? t('Show the sidebar') : t('Hide the sidebar'),
+      icon: PanelLeft,
+      run: toggleSidebar,
+    },
     ...files
       .filter((f) => !f.dir)
       .map((f) => {
@@ -595,7 +679,13 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
     })),
     ...projects
       .filter((p) => p.id !== id)
-      .map((p) => ({ id: `project:${p.id}`, group: 'Projects', label: p.name, icon: FolderOpen, run: () => navigate(`/p/${p.id}`) })),
+      .map((p) => ({
+        id: `project:${p.id}`,
+        group: 'Projects',
+        label: p.name,
+        icon: FolderOpen,
+        run: () => navigate(`/p/${p.id}`),
+      })),
   ])
 
   const aiReady = !!status?.ai_ready
@@ -609,7 +699,9 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
       onChatId={setChatId}
       onChatsChanged={loadChats}
       getContext={editorContext}
-      contextLabel={active && current?.text ? `${active.split('/').pop()}${selLines ? ` · L${selLines}` : ''}` : undefined}
+      contextLabel={
+        active && current?.text ? `${active.split('/').pop()}${selLines ? ` · L${selLines}` : ''}` : undefined
+      }
       beforeSend={() => autosave.flushAll()}
       onReview={(t) => {
         setReview(t)
@@ -659,7 +751,9 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                 <TooltipContent>{t('All projects')}</TooltipContent>
               </Tooltip>
               <DropdownMenu>
-                <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="min-w-0 flex-1 justify-start gap-1.5 px-2" />}>
+                <DropdownMenuTrigger
+                  render={<Button variant="ghost" size="sm" className="min-w-0 flex-1 justify-start gap-1.5 px-2" />}
+                >
                   <span className="truncate font-semibold" style={{ viewTransitionName: 'project-title' }}>
                     {project?.name ?? '…'}
                   </span>
@@ -680,7 +774,9 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuGroup>
-                    <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">{t('Recent')}</DropdownMenuLabel>
+                    <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                      {t('Recent')}
+                    </DropdownMenuLabel>
                     {projects.slice(0, 8).map((p) => (
                       <DropdownMenuItem key={p.id} render={<Link to={`/p/${p.id}`} />}>
                         <span className="truncate">{p.name}</span>
@@ -692,7 +788,15 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
               </DropdownMenu>
               <Tooltip>
                 <TooltipTrigger
-                  render={<Button variant="ghost" size="icon-sm" onClick={toggleSidebar} aria-label={t('Hide sidebar')} className="text-muted-foreground" />}
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={toggleSidebar}
+                      aria-label={t('Hide sidebar')}
+                      className="text-muted-foreground"
+                    />
+                  }
                 >
                   <PanelLeft />
                 </TooltipTrigger>
@@ -712,7 +816,11 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
               <span className="flex-1" />
               {sideTab === 'files' && (
                 <DropdownMenu>
-                  <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={t('Add')} className="text-muted-foreground" />}>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button variant="ghost" size="icon-sm" aria-label={t('Add')} className="text-muted-foreground" />
+                    }
+                  >
                     <Plus />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-44">
@@ -803,14 +911,25 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
               {sidebarCollapsed && (
                 <Tooltip>
                   <TooltipTrigger
-                    render={<Button variant="ghost" size="icon-sm" onClick={toggleSidebar} aria-label={t('Show sidebar')} className="text-muted-foreground" />}
+                    render={
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={toggleSidebar}
+                        aria-label={t('Show sidebar')}
+                        className="text-muted-foreground"
+                      />
+                    }
                   >
                     <PanelLeft />
                   </TooltipTrigger>
                   <TooltipContent>{t('Show sidebar')}</TooltipContent>
                 </Tooltip>
               )}
-              <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none]" role="tablist">
+              <div
+                className="flex min-w-0 flex-1 [scrollbar-width:none] items-center gap-1 overflow-x-auto"
+                role="tablist"
+              >
                 {tabs.map((p) => {
                   const on = p === active && !review
                   const dirty = statuses[p] && statuses[p] !== 'saved'
@@ -845,7 +964,9 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                           aria-label={t('Close {path}', { path: p })}
                         >
                           {/* unsaved: a dot that turns into × on hover */}
-                          {dirty && <span className="absolute size-1.5 rounded-full bg-warning group-hover/tab:hidden" />}
+                          {dirty && (
+                            <span className="absolute size-1.5 rounded-full bg-warning group-hover/tab:hidden" />
+                          )}
                           <X
                             className={cn(
                               'size-3',
@@ -866,7 +987,16 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
               </div>
               <div className="flex shrink-0 items-center">
                 <Tooltip>
-                  <TooltipTrigger render={<Button size="sm" className="rounded-r-none" onClick={compile} disabled={compiling || !project?.main_file} />}>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        size="sm"
+                        className="rounded-r-none"
+                        onClick={compile}
+                        disabled={compiling || !project?.main_file}
+                      />
+                    }
+                  >
                     {compiling ? <Loader2 className="animate-spin" /> : <Play className="fill-current" />}
                     {t('Compile')}
                   </TooltipTrigger>
@@ -876,20 +1006,30 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                 </Tooltip>
                 <DropdownMenu>
                   <DropdownMenuTrigger
-                    render={<Button size="icon-sm" className="rounded-l-none border-l border-primary-foreground/20" aria-label={t('Compile options')} />}
+                    render={
+                      <Button
+                        size="icon-sm"
+                        className="rounded-l-none border-l border-primary-foreground/20"
+                        aria-label={t('Compile options')}
+                      />
+                    }
                   >
                     <ChevronDown />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="max-h-80 w-64">
                     <DropdownMenuGroup>
-                      <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">{t('Main file')}</DropdownMenuLabel>
+                      <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                        {t('Main file')}
+                      </DropdownMenuLabel>
                       {texFiles.map((f) => (
                         <DropdownMenuItem key={f} onClick={() => setMainFile(f)}>
                           <span className="truncate font-mono text-xs">{f}</span>
                           <Check className={cn('ml-auto', project?.main_file !== f && 'invisible')} />
                         </DropdownMenuItem>
                       ))}
-                      {texFiles.length === 0 && <p className="px-2 py-1.5 text-xs text-muted-foreground">{t('No .tex files yet.')}</p>}
+                      {texFiles.length === 0 && (
+                        <p className="px-2 py-1.5 text-xs text-muted-foreground">{t('No .tex files yet.')}</p>
+                      )}
                     </DropdownMenuGroup>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -897,7 +1037,9 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
             </div>
 
             <div className="relative min-h-0 flex-1">
-              {review && <Review turn={review} onAccept={acceptTurn} onReject={rejectTurn} onClose={() => setReview(null)} />}
+              {review && (
+                <Review turn={review} onAccept={acceptTurn} onReject={rejectTurn} onClose={() => setReview(null)} />
+              )}
               {!review && active && current?.text && (
                 <Editor
                   key={editorKey}
@@ -918,7 +1060,10 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                   proposal={proposal}
                   onProposed={(ok) => {
                     setProposal(undefined)
-                    if (!ok) toast.error(t('The text changed in the meantime: the citation was added to the bibliography only.'))
+                    if (!ok)
+                      toast.error(
+                        t('The text changed in the meantime: the citation was added to the bibliography only.'),
+                      )
                   }}
                   quick={aiReady}
                   jump={jump}
@@ -989,7 +1134,13 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
               }
             }}
           >
-            <Input autoFocus value={askValue} onChange={(e) => setAskValue(e.target.value)} className="font-mono text-sm" aria-label={ask?.title} />
+            <Input
+              autoFocus
+              value={askValue}
+              onChange={(e) => setAskValue(e.target.value)}
+              className="font-mono text-sm"
+              aria-label={ask?.title}
+            />
             <DialogFooter className="mt-4">
               <Button type="button" variant="ghost" onClick={() => setAsk(null)}>
                 {t('Cancel')}
@@ -1053,7 +1204,15 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
 }
 
 // Two-option switch with a sliding thumb (transform only: cheap and interruptible).
-function Segmented({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
+function Segmented({
+  value,
+  onChange,
+  options,
+}: {
+  value: string
+  onChange: (v: string) => void
+  options: { value: string; label: string }[]
+}) {
   const index = Math.max(
     0,
     options.findIndex((o) => o.value === value),
@@ -1086,7 +1245,7 @@ function Segmented({ value, onChange, options }: { value: string; onChange: (v: 
 function EmptyEditor() {
   const rows = editorShortcuts.slice(0, 4)
   return (
-    <div className="enter flex h-full flex-col items-center justify-center gap-5 pb-16 text-center">
+    <div className="flex h-full enter flex-col items-center justify-center gap-5 pb-16 text-center">
       <div>
         <p className="text-sm font-medium">{t('Open a file from the sidebar')}</p>
         <p className="mt-1 text-sm text-muted-foreground">{t('Edits save automatically.')}</p>
@@ -1095,7 +1254,9 @@ function EmptyEditor() {
         {rows.map(([k, v]) => (
           <div key={k} className="contents">
             <dt>
-              <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">{k}</kbd>
+              <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                {k}
+              </kbd>
             </dt>
             <dd className="text-muted-foreground">{v}</dd>
           </div>
@@ -1115,7 +1276,7 @@ function BinaryView({ file, path }: { file: Extract<OpenedFile, { text: false }>
   if (file.type.startsWith('image/')) {
     return (
       <div className="flex h-full items-center justify-center overflow-auto bg-[conic-gradient(var(--muted)_25%,transparent_0_50%,var(--muted)_0_75%,transparent_0)] bg-[length:16px_16px] p-6">
-        {url && <img src={url} alt={path} className="enter max-h-full max-w-full rounded shadow-md" />}
+        {url && <img src={url} alt={path} className="max-h-full max-w-full enter rounded shadow-md" />}
       </div>
     )
   }

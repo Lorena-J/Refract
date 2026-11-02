@@ -13,7 +13,16 @@ export type Prefs = {
 }
 
 const KEY = 'refract-prefs'
-const defaults: Prefs = { fontSize: 'normal', wrap: true, chatBubble: false, chatHeight: 0, chatDocked: false, model: '', effort: '', language: 'system' }
+const defaults: Prefs = {
+  fontSize: 'normal',
+  wrap: true,
+  chatBubble: false,
+  chatHeight: 0,
+  chatDocked: false,
+  model: '',
+  effort: '',
+  language: 'system',
+}
 const listeners = new Set<() => void>()
 
 function load(): Prefs {

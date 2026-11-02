@@ -1,5 +1,14 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, CheckCircle2, ChevronRight, CircleX, FileWarning, Loader2, ScrollText, Sparkles } from 'lucide-react'
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronRight,
+  CircleX,
+  FileWarning,
+  Loader2,
+  ScrollText,
+  Sparkles,
+} from 'lucide-react'
 import { api, type Warning } from './api'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -30,8 +39,14 @@ type Props = {
 
 // Noisy kinds, collapsed by default.
 const groups = [
-  { kinds: ['overfull', 'underfull'], label: (n: number) => tn(n, '{n} overfull/underfull box', '{n} overfull/underfull boxes') },
-  { kinds: ['absolute-path'], label: (n: number) => tn(n, '{n} file read from outside the project', '{n} files read from outside the project') },
+  {
+    kinds: ['overfull', 'underfull'],
+    label: (n: number) => tn(n, '{n} overfull/underfull box', '{n} overfull/underfull boxes'),
+  },
+  {
+    kinds: ['absolute-path'],
+    label: (n: number) => tn(n, '{n} file read from outside the project', '{n} files read from outside the project'),
+  },
 ]
 
 // The compile state as a chip; click for problems and the log.
@@ -52,8 +67,16 @@ export default function CompileStatus({ projectId, compiling, result, error, onJ
   const errors = problems.filter((x) => x.severity === 'error').length
   const warnings = problems.length - errors + checks.length
   // Errors first: they stop the build; warnings keep the log's order.
-  const main = problems.filter((x) => !groups.some((g) => g.kinds.includes(x.kind))).sort((a, b) => Number(b.severity === 'error') - Number(a.severity === 'error'))
-  const portability: Problem[] = checks.map((w) => ({ severity: 'warning', kind: 'portability', file: w.file, line: w.line, message: w.message }))
+  const main = problems
+    .filter((x) => !groups.some((g) => g.kinds.includes(x.kind)))
+    .sort((a, b) => Number(b.severity === 'error') - Number(a.severity === 'error'))
+  const portability: Problem[] = checks.map((w) => ({
+    severity: 'warning',
+    kind: 'portability',
+    file: w.file,
+    line: w.line,
+    message: w.message,
+  }))
   const fixable = [...main, ...portability] // the noisy groups (box warnings) are left out of "fix all"
   const fix = onFix
     ? (ps: Problem[]) => {
@@ -101,7 +124,7 @@ export default function CompileStatus({ projectId, compiling, result, error, onJ
           }
         >
           {/* key: a soft crossfade when the state changes */}
-          <span key={label} className="enter flex min-w-0 items-center gap-1.5 [&_svg]:size-4">
+          <span key={label} className="flex min-w-0 enter items-center gap-1.5 [&_svg]:size-4">
             {icon}
             <span className="truncate tabular-nums">{label}</span>
           </span>
@@ -136,7 +159,10 @@ export default function CompileStatus({ projectId, compiling, result, error, onJ
                     className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-xs text-muted-foreground transition-colors duration-100 hover:text-foreground"
                     onClick={() => setExpanded(isOpen ? expanded.filter((x) => x !== gi) : [...expanded, gi])}
                   >
-                    <ChevronRight className={cn('size-3.5 transition-transform duration-150 ease-out', isOpen && 'rotate-90')} /> {g.label(items.length)}
+                    <ChevronRight
+                      className={cn('size-3.5 transition-transform duration-150 ease-out', isOpen && 'rotate-90')}
+                    />{' '}
+                    {g.label(items.length)}
                   </button>
                   {isOpen && (
                     <ul className="divide-y border-t">
@@ -149,7 +175,9 @@ export default function CompileStatus({ projectId, compiling, result, error, onJ
             <ProblemRows problems={portability} onJump={(f, l) => (setOpen(false), onJump(f, l))} onFix={fix} />
           </ul>
           {!error && problems.length === 0 && checks.length === 0 && (
-            <p className="px-3 py-6 text-center text-sm text-muted-foreground">{result ? t('No problems.') : t('Compile to check the document.')}</p>
+            <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+              {result ? t('No problems.') : t('Compile to check the document.')}
+            </p>
           )}
         </PopoverContent>
       </Popover>
@@ -159,7 +187,9 @@ export default function CompileStatus({ projectId, compiling, result, error, onJ
           <DialogHeader>
             <DialogTitle>{t('Compile log')}</DialogTitle>
           </DialogHeader>
-          <pre className="min-h-0 flex-1 overflow-auto rounded-md bg-muted p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">{log}</pre>
+          <pre className="min-h-0 flex-1 overflow-auto rounded-md bg-muted p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">
+            {log}
+          </pre>
         </DialogContent>
       </Dialog>
     </>
@@ -195,7 +225,15 @@ function ProblemRows({ problems, onJump, onFix }: RowsProps) {
   )
 }
 
-function ProblemRow({ problem: x, onJump, onFix }: { problem: Problem; onJump: (file: string, line: number) => void; onFix?: (ps: Problem[]) => void }) {
+function ProblemRow({
+  problem: x,
+  onJump,
+  onFix,
+}: {
+  problem: Problem
+  onJump: (file: string, line: number) => void
+  onFix?: (ps: Problem[]) => void
+}) {
   const Icon = x.severity === 'error' ? CircleX : x.kind === 'portability' ? FileWarning : AlertTriangle
   const body = (
     <>
@@ -215,7 +253,10 @@ function ProblemRow({ problem: x, onJump, onFix }: { problem: Problem; onJump: (
   return (
     <li className="group/problem flex items-start transition-colors duration-100 hover:bg-accent/60">
       {x.file ? (
-        <button className="flex min-w-0 flex-1 gap-2.5 py-2.5 pl-3 text-left" onClick={() => onJump(x.file!, x.line ?? 1)}>
+        <button
+          className="flex min-w-0 flex-1 gap-2.5 py-2.5 pl-3 text-left"
+          onClick={() => onJump(x.file!, x.line ?? 1)}
+        >
           {body}
         </button>
       ) : (
@@ -224,7 +265,7 @@ function ProblemRow({ problem: x, onJump, onFix }: { problem: Problem; onJump: (
       {onFix && (
         // A plain button: rows are many, and this one only shows on hover.
         <button
-          className="m-2 flex h-6 shrink-0 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/problem:opacity-100 hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 [&_svg]:size-3"
+          className="m-2 flex h-6 shrink-0 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/problem:opacity-100 hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none [&_svg]:size-3"
           onClick={() => onFix([x])}
         >
           <Sparkles /> {t('Fix')}

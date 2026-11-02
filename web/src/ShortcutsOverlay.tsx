@@ -5,7 +5,8 @@ import { t } from '@/lib/i18n'
 
 const HOLD_MS = 700
 
-const typing = (el: EventTarget | null) => el instanceof HTMLElement && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))
+const typing = (el: EventTarget | null) =>
+  el instanceof HTMLElement && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))
 
 // Keyboard shortcuts over the page: shown while ⌘ (Ctrl) is held alone, or toggled with "?".
 // It never takes clicks, so holding ⌘ to ⌘-click the PDF still works; moving the
@@ -96,7 +97,9 @@ export default function ShortcutsOverlay() {
                   <div key={k + v} className="flex items-center justify-between gap-4 text-sm">
                     <dt className="text-foreground/90">{v}</dt>
                     <dd>
-                      <kbd className="rounded-md border bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">{k}</kbd>
+                      <kbd className="rounded-md border bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+                        {k}
+                      </kbd>
                     </dd>
                   </div>
                 ))}

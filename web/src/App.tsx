@@ -53,12 +53,57 @@ export default function App() {
 
   const path = usePath()
   useCommands(() => [
-    ...(path !== '/' ? [{ id: 'nav:projects', group: 'Navigate', label: t('All projects'), icon: FolderOpen, run: () => navigate('/') }] : []),
-    { id: 'app:settings', group: 'General', label: t('Settings'), icon: Settings, keywords: 'preferences account chatgpt', run: () => openSettings() },
-    { id: 'app:shortcuts', group: 'General', label: t('Keyboard shortcuts'), icon: Keyboard, shortcut: '?', run: () => setOverlay('shortcuts') },
-    { id: 'theme:light', group: 'General', label: t('Light theme'), icon: Sun, keywords: 'appearance', run: () => setTheme('light') },
-    { id: 'theme:dark', group: 'General', label: t('Dark theme'), icon: Moon, keywords: 'appearance', run: () => setTheme('dark') },
-    { id: 'theme:system', group: 'General', label: t('System theme'), icon: Monitor, keywords: 'appearance', run: () => setTheme('system') },
+    ...(path !== '/'
+      ? [
+          {
+            id: 'nav:projects',
+            group: 'Navigate',
+            label: t('All projects'),
+            icon: FolderOpen,
+            run: () => navigate('/'),
+          },
+        ]
+      : []),
+    {
+      id: 'app:settings',
+      group: 'General',
+      label: t('Settings'),
+      icon: Settings,
+      keywords: 'preferences account chatgpt',
+      run: () => openSettings(),
+    },
+    {
+      id: 'app:shortcuts',
+      group: 'General',
+      label: t('Keyboard shortcuts'),
+      icon: Keyboard,
+      shortcut: '?',
+      run: () => setOverlay('shortcuts'),
+    },
+    {
+      id: 'theme:light',
+      group: 'General',
+      label: t('Light theme'),
+      icon: Sun,
+      keywords: 'appearance',
+      run: () => setTheme('light'),
+    },
+    {
+      id: 'theme:dark',
+      group: 'General',
+      label: t('Dark theme'),
+      icon: Moon,
+      keywords: 'appearance',
+      run: () => setTheme('dark'),
+    },
+    {
+      id: 'theme:system',
+      group: 'General',
+      label: t('System theme'),
+      icon: Monitor,
+      keywords: 'appearance',
+      run: () => setTheme('system'),
+    },
   ])
   const welcome = !!status && status.status.signed_in && status.status.plan_granted && !status.welcome_seen
 
@@ -73,7 +118,13 @@ export default function App() {
       ) : (
         <Projects status={status} />
       )}
-      {status && <Welcome open={welcome} manageUsage={status.manage_usage} onClose={() => setStatus({ ...status, welcome_seen: true })} />}
+      {status && (
+        <Welcome
+          open={welcome}
+          manageUsage={status.manage_usage}
+          onClose={() => setStatus({ ...status, welcome_seen: true })}
+        />
+      )}
       <SettingsDialog status={status} onChange={setStatus} />
       <CommandPalette />
       <ShortcutsOverlay />

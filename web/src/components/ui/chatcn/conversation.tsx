@@ -1,11 +1,11 @@
-import * as React from "react"
+import * as React from 'react'
 import {
   type ChatcnScrollBehavior,
   type UseChatcnStickToBottomOptions,
   useChatcnStickToBottom,
-} from "@/hooks/use-chatcn-stick-to-bottom"
+} from '@/hooks/use-chatcn-stick-to-bottom'
 import { t } from '@/lib/i18n'
-import { cn } from "@/lib/utils"
+import { cn } from '@/lib/utils'
 
 /* -------------------------------------------------------------------------------------------------
  * Context
@@ -42,44 +42,33 @@ function useConversation() {
  * Conversation
  * -----------------------------------------------------------------------------------------------*/
 
-interface ConversationProps extends React.ComponentProps<"div">, UseChatcnStickToBottomOptions {}
+interface ConversationProps extends React.ComponentProps<'div'>, UseChatcnStickToBottomOptions {}
 
 /**
  * The thread. Owns stick-to-bottom scrolling, the reply anchor and the live region.
  * Give it a height (or put it in a flex column) and place `ConversationContent` and
  * `ScrollToBottom` inside.
  */
-function Conversation({
-  threshold,
-  anchor,
-  anchorOffset,
-  initial,
-  className,
-  children,
-  ...props
-}: ConversationProps) {
+function Conversation({ threshold, anchor, anchorOffset, initial, className, children, ...props }: ConversationProps) {
   const stick = useChatcnStickToBottom({ threshold, anchor, anchorOffset, initial })
-  const [message, setMessage] = React.useState("")
+  const [message, setMessage] = React.useState('')
   const [ready, setReady] = React.useState(false)
   React.useEffect(() => setReady(true), [])
 
   const announce = React.useCallback((text: string) => {
     // Clearing first makes repeated identical text announce again.
-    setMessage("")
+    setMessage('')
     requestAnimationFrame(() => setMessage(text))
   }, [])
 
-  const value = React.useMemo<ConversationContextValue>(
-    () => ({ ...stick, announce, ready }),
-    [stick, announce, ready],
-  )
+  const value = React.useMemo<ConversationContextValue>(() => ({ ...stick, announce, ready }), [stick, announce, ready])
 
   return (
     <ConversationContext.Provider value={value}>
       <div
         data-slot="conversation"
-        data-at-bottom={stick.isAtBottom ? "" : undefined}
-        className={cn("relative flex min-h-0 flex-col overflow-hidden", className)}
+        data-at-bottom={stick.isAtBottom ? '' : undefined}
+        className={cn('relative flex min-h-0 flex-col overflow-hidden', className)}
         {...props}
       >
         {children}
@@ -95,7 +84,7 @@ function Conversation({
  * ConversationContent
  * -----------------------------------------------------------------------------------------------*/
 
-interface ConversationContentProps extends React.ComponentProps<"div"> {
+interface ConversationContentProps extends React.ComponentProps<'div'> {
   /** Class names for the scrolling viewport. `className` styles the message column. */
   viewportClassName?: string
   /** Accessible name of the transcript. */
@@ -114,7 +103,7 @@ function ConversationContent({
   ...props
 }: ConversationContentProps) {
   const ctx = useConversation()
-  if (!ctx) throw new Error("ConversationContent must be used inside Conversation.")
+  if (!ctx) throw new Error('ConversationContent must be used inside Conversation.')
   return (
     <div
       ref={ctx.scrollRef}
@@ -127,18 +116,15 @@ function ConversationContent({
       tabIndex={0}
       data-slot="conversation-viewport"
       className={cn(
-        "chatcn-scroll min-h-0 flex-1 overflow-y-auto outline-none [overflow-anchor:auto]",
-        "focus-visible:outline-chatcn-accent focus-visible:outline-2 focus-visible:-outline-offset-2",
+        'chatcn-scroll min-h-0 flex-1 overflow-y-auto outline-none [overflow-anchor:auto]',
+        'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-chatcn-accent',
         viewportClassName,
       )}
     >
       <div
         ref={ctx.contentRef}
         data-slot="conversation-content"
-        className={cn(
-          "mx-auto flex w-full max-w-[720px] flex-col gap-6 px-4 pt-8 pb-6 sm:px-6",
-          className,
-        )}
+        className={cn('mx-auto flex w-full max-w-[720px] flex-col gap-6 px-4 pt-8 pb-6 sm:px-6', className)}
         {...props}
       >
         {children}

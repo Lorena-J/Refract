@@ -89,7 +89,17 @@ export function Link({ to, onClick, ...props }: ComponentProps<'a'> & { to: stri
       {...props}
       onClick={(e) => {
         onClick?.(e)
-        if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || props.target || props.download !== undefined) return
+        if (
+          e.defaultPrevented ||
+          e.button !== 0 ||
+          e.metaKey ||
+          e.ctrlKey ||
+          e.shiftKey ||
+          e.altKey ||
+          props.target ||
+          props.download !== undefined
+        )
+          return
         e.preventDefault()
         navigate(to)
       }}

@@ -82,7 +82,11 @@ const finished: Partial<Record<Turn['status'], { label: string; tone: string }>>
   stopped: { label: t('Stopped'), tone: 'text-muted-foreground' },
 }
 
-const suggestions = [t('Fix the compile errors'), t('Check the grammar of the open file'), t('Make the abstract more concise')]
+const suggestions = [
+  t('Fix the compile errors'),
+  t('Check the grammar of the open file'),
+  t('Make the abstract more concise'),
+]
 const MIN_HEIGHT = 260
 
 // The assistant floats over the editor (Prism-style): an input bar, a bubble, or a resizable sheet.
@@ -177,7 +181,15 @@ export default function Assistant(p: Props) {
         p.onChatId(c.id)
         id = c.id
       }
-      const pending: Turn = { id: 'pending', message, reply: '', activity: [], status: 'running', files: [], commits: [] }
+      const pending: Turn = {
+        id: 'pending',
+        message,
+        reply: '',
+        activity: [],
+        status: 'running',
+        files: [],
+        commits: [],
+      }
       setTurns((ts) => [...ts, pending])
       setDraft('')
       const update = (fn: (t: Turn) => Turn) => setTurns((ts) => ts.map((t) => (t.id === 'pending' ? fn(t) : t)))
@@ -188,7 +200,9 @@ export default function Assistant(p: Props) {
         {
           message,
           context: p.getContext(),
-          choice: choice.model ? { model: choice.model.slug, effort: choice.effort } : { model: prefs.model, effort: prefs.effort },
+          choice: choice.model
+            ? { model: choice.model.slug, effort: choice.effort }
+            : { model: prefs.model, effort: prefs.effort },
         },
         (ev) => {
           if (ev.type === 'text') update((t) => ({ ...t, reply: t.reply + ev.text }))
@@ -259,25 +273,37 @@ export default function Assistant(p: Props) {
               <button
                 onClick={() => p.onOpen(true)}
                 aria-label={t('Open assistant')}
-                className="pointer-events-auto relative flex size-11 origin-bottom-right items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-[scale,opacity] duration-200 ease-out starting:scale-90 starting:opacity-0 hover:scale-105 active:scale-95"
+                className="pointer-events-auto relative flex size-11 origin-bottom-right items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-[scale,opacity] duration-200 ease-out hover:scale-105 active:scale-95 starting:scale-90 starting:opacity-0"
               />
             }
           >
             <Sparkles className="size-5" />
             {(running || pendingReview) && (
               <span
-                className={cn('absolute top-0 right-0 size-3 rounded-full border-2 border-card', running ? 'animate-pulse bg-muted-foreground' : 'bg-warning')}
+                className={cn(
+                  'absolute top-0 right-0 size-3 rounded-full border-2 border-card',
+                  running ? 'animate-pulse bg-muted-foreground' : 'bg-warning',
+                )}
               />
             )}
           </TooltipTrigger>
-          <TooltipContent side="left">{running ? t('Assistant is working…') : pendingReview ? t('Changes ready to review') : t('Assistant')}</TooltipContent>
+          <TooltipContent side="left">
+            {running ? t('Assistant is working…') : pendingReview ? t('Changes ready to review') : t('Assistant')}
+          </TooltipContent>
         </Tooltip>
       </div>
     )
   }
 
   return (
-    <div ref={overlay} className={p.docked ? 'flex h-full min-h-0 flex-col' : 'pointer-events-none absolute inset-0 z-20 flex flex-col justify-end p-3'}>
+    <div
+      ref={overlay}
+      className={
+        p.docked
+          ? 'flex h-full min-h-0 flex-col'
+          : 'pointer-events-none absolute inset-0 z-20 flex flex-col justify-end p-3'
+      }
+    >
       <div
         onKeyDown={onCardKey}
         style={open && !p.docked ? { height: sheetHeight ? sheetHeight : '55%' } : undefined}
@@ -310,7 +336,13 @@ export default function Assistant(p: Props) {
                 <span className="h-1 w-10 rounded-full bg-border transition-[background-color,width] duration-150 group-hover/handle:w-14 group-hover/handle:bg-muted-foreground/50" />
               </div>
             )}
-            <div className={cn('enter flex h-11 shrink-0 items-center gap-1 px-2', !p.docked && 'pt-1', p.docked && 'border-b')}>
+            <div
+              className={cn(
+                'flex h-11 shrink-0 enter items-center gap-1 px-2',
+                !p.docked && 'pt-1',
+                p.docked && 'border-b',
+              )}
+            >
               {!p.docked && (
                 <Tooltip>
                   <TooltipTrigger
@@ -332,7 +364,10 @@ export default function Assistant(p: Props) {
                 </Tooltip>
               )}
               <DropdownMenu>
-                <DropdownMenuTrigger disabled={running} render={<Button variant="ghost" size="sm" className="min-w-0 gap-1 font-medium" />}>
+                <DropdownMenuTrigger
+                  disabled={running}
+                  render={<Button variant="ghost" size="sm" className="min-w-0 gap-1 font-medium" />}
+                >
                   <span className="truncate">{title}</span> <ChevronDown className="opacity-50" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="max-h-80 w-72">
@@ -341,7 +376,11 @@ export default function Assistant(p: Props) {
                   </DropdownMenuItem>
                   {p.chats.length > 0 && <DropdownMenuSeparator />}
                   <DropdownMenuGroup>
-                    {p.chats.length > 0 && <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">{t('Recent chats')}</DropdownMenuLabel>}
+                    {p.chats.length > 0 && (
+                      <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                        {t('Recent chats')}
+                      </DropdownMenuLabel>
+                    )}
                     {p.chats.map((c) => (
                       <DropdownMenuItem key={c.id} onClick={() => p.onChatId(c.id)}>
                         <span className="truncate">{c.title}</span>
@@ -356,7 +395,14 @@ export default function Assistant(p: Props) {
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <Button variant="ghost" size="icon-sm" className="text-muted-foreground" onClick={newChat} disabled={running} aria-label={t('New chat')} />
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="text-muted-foreground"
+                      onClick={newChat}
+                      disabled={running}
+                      aria-label={t('New chat')}
+                    />
                   }
                 >
                   <MessageSquarePlus />
@@ -401,18 +447,22 @@ export default function Assistant(p: Props) {
                   >
                     {prefs.chatBubble ? <PanelBottom /> : <Minimize2 />}
                   </TooltipTrigger>
-                  <TooltipContent>{prefs.chatBubble ? t('Collapse to input bar') : t('Minimize to bubble')}</TooltipContent>
+                  <TooltipContent>
+                    {prefs.chatBubble ? t('Collapse to input bar') : t('Minimize to bubble')}
+                  </TooltipContent>
                 </Tooltip>
               )}
             </div>
 
-            <Conversation className="enter min-h-0 flex-1">
+            <Conversation className="min-h-0 flex-1 enter">
               <ConversationContent className="max-w-3xl gap-6 px-5 pt-3 pb-4 sm:px-6">
                 {turns.length === 0 && (
                   <div className="mx-auto mt-6 max-w-sm text-center">
                     <p className="text-sm font-medium">{t('Ask for a change')}</p>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      {t('The assistant reads your project, edits a copy and proposes a diff. Nothing changes until you accept.')}
+                      {t(
+                        'The assistant reads your project, edits a copy and proposes a diff. Nothing changes until you accept.',
+                      )}
                     </p>
                     <div className="mt-4 flex flex-wrap justify-center gap-1.5">
                       {suggestions.map((s) => (
@@ -431,7 +481,13 @@ export default function Assistant(p: Props) {
                   </div>
                 )}
                 {turns.map((t) => (
-                  <TurnView key={t.id} turn={t} status={p.status} reviewing={p.reviewing === t.id} onReview={() => p.onReview(t)} />
+                  <TurnView
+                    key={t.id}
+                    turn={t}
+                    status={p.status}
+                    reviewing={p.reviewing === t.id}
+                    onReview={() => p.onReview(t)}
+                  />
                 ))}
               </ConversationContent>
               <ScrollToBottom />
@@ -440,12 +496,15 @@ export default function Assistant(p: Props) {
         )}
 
         {!open && (running || pendingReview) && (
-          <div className="enter flex items-center gap-2 border-b px-4 py-2 text-xs">
+          <div className="flex enter items-center gap-2 border-b px-4 py-2 text-xs">
             {running ? (
-              <ShimmerText className="min-w-0 truncate">{last?.activity[last.activity.length - 1] ?? t('Thinking')}</ShimmerText>
+              <ShimmerText className="min-w-0 truncate">
+                {last?.activity[last.activity.length - 1] ?? t('Thinking')}
+              </ShimmerText>
             ) : (
               <span className="flex items-center gap-1.5 text-muted-foreground">
-                <FileDiff className="size-3.5" /> {tn(pendingReview!.files.length, '{n} file changed', '{n} files changed')}
+                <FileDiff className="size-3.5" />{' '}
+                {tn(pendingReview!.files.length, '{n} file changed', '{n} files changed')}
               </span>
             )}
             <span className="flex-1" />
@@ -461,7 +520,7 @@ export default function Assistant(p: Props) {
         )}
 
         {notice && (
-          <p className="enter flex items-center gap-2 px-4 pt-2 text-xs text-destructive">
+          <p className="flex enter items-center gap-2 px-4 pt-2 text-xs text-destructive">
             <span className="min-w-0 flex-1">{notice}</span>
             {!error && (
               <Button size="xs" variant="ghost" onClick={() => openSettings('assistant')}>
@@ -512,7 +571,13 @@ export default function Assistant(p: Props) {
                 <Tooltip>
                   <TooltipTrigger
                     render={
-                      <Button variant="ghost" size="icon-sm" className="text-muted-foreground" onClick={() => p.onOpen(true)} aria-label={t('Show chat')} />
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-muted-foreground"
+                        onClick={() => p.onOpen(true)}
+                        aria-label={t('Show chat')}
+                      />
                     }
                   >
                     <ChevronUp />
@@ -539,11 +604,23 @@ export default function Assistant(p: Props) {
                 </Tooltip>
               )}
               {running ? (
-                <Button size="icon-sm" variant="secondary" className="rounded-full" onClick={() => abort.current?.abort()} aria-label={t('Stop')}>
+                <Button
+                  size="icon-sm"
+                  variant="secondary"
+                  className="rounded-full"
+                  onClick={() => abort.current?.abort()}
+                  aria-label={t('Stop')}
+                >
                   <Square className="size-3 fill-current" />
                 </Button>
               ) : (
-                <Button size="icon-sm" className="rounded-full" onClick={() => send()} disabled={!draft.trim()} aria-label={t('Send')}>
+                <Button
+                  size="icon-sm"
+                  className="rounded-full"
+                  onClick={() => send()}
+                  disabled={!draft.trim()}
+                  aria-label={t('Send')}
+                >
                   <ArrowUp />
                 </Button>
               )}
@@ -570,7 +647,7 @@ function Reasoning({ text, live }: { text: string; live: boolean }) {
         {live ? <ShimmerText className="font-normal">{t('Thinking')}</ShimmerText> : t('Reasoning')}
       </button>
       {shown && (
-        <div className="enter mt-1.5 ml-1.5 max-h-56 overflow-y-auto border-l pl-3 text-xs leading-relaxed text-muted-foreground">
+        <div className="mt-1.5 ml-1.5 max-h-56 enter overflow-y-auto border-l pl-3 text-xs leading-relaxed text-muted-foreground">
           <Markdown text={text} />
         </div>
       )}
@@ -578,7 +655,17 @@ function Reasoning({ text, live }: { text: string; live: boolean }) {
   )
 }
 
-function TurnView({ turn, status, reviewing, onReview }: { turn: Turn; status: ChatGPTStatus | null; reviewing: boolean; onReview: () => void }) {
+function TurnView({
+  turn,
+  status,
+  reviewing,
+  onReview,
+}: {
+  turn: Turn
+  status: ChatGPTStatus | null
+  reviewing: boolean
+  onReview: () => void
+}) {
   const [showSteps, setShowSteps] = useState(false)
   const request = turn.message.split('\n\n[Open file:')[0]
   const running = turn.status === 'running'
@@ -588,7 +675,7 @@ function TurnView({ turn, status, reviewing, onReview }: { turn: Turn; status: C
       <div
         data-slot="message"
         data-role="user"
-        className="enter ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-md bg-secondary px-3.5 py-2 text-sm whitespace-pre-wrap"
+        className="ml-auto w-fit max-w-[85%] enter rounded-2xl rounded-br-md bg-secondary px-3.5 py-2 text-sm whitespace-pre-wrap"
       >
         {request}
       </div>
@@ -607,11 +694,13 @@ function TurnView({ turn, status, reviewing, onReview }: { turn: Turn; status: C
               onClick={() => setShowSteps(!showSteps)}
               aria-expanded={showSteps}
             >
-              <ChevronRight className={cn('size-3.5 transition-transform duration-150 ease-out', showSteps && 'rotate-90')} />
+              <ChevronRight
+                className={cn('size-3.5 transition-transform duration-150 ease-out', showSteps && 'rotate-90')}
+              />
               {tn(turn.activity.length, 'Worked · {n} step', 'Worked · {n} steps')}
             </button>
             {showSteps && (
-              <ul className="enter mt-1.5 ml-1.5 space-y-0.5 border-l pl-3 font-mono text-xs text-muted-foreground">
+              <ul className="mt-1.5 ml-1.5 enter space-y-0.5 border-l pl-3 font-mono text-xs text-muted-foreground">
                 {turn.activity.map((a, i) => (
                   <li key={i}>{a}</li>
                 ))}
@@ -636,7 +725,8 @@ function TurnView({ turn, status, reviewing, onReview }: { turn: Turn; status: C
       {turn.status === 'review' && (
         <div className="enter rounded-xl border bg-background p-3">
           <div className="flex items-center gap-2 text-sm font-medium">
-            <FileDiff className="size-4 text-muted-foreground" /> {tn(turn.files.length, '{n} file changed', '{n} files changed')}
+            <FileDiff className="size-4 text-muted-foreground" />{' '}
+            {tn(turn.files.length, '{n} file changed', '{n} files changed')}
           </div>
           <ul className="mt-1.5 space-y-0.5 font-mono text-xs text-muted-foreground">
             {turn.files.slice(0, 5).map((f) => (
@@ -654,7 +744,11 @@ function TurnView({ turn, status, reviewing, onReview }: { turn: Turn; status: C
 
       {done && (
         <p className={cn('flex items-center gap-1.5 text-xs', done.tone)}>
-          {turn.status === 'accepted' ? <Check className="size-3.5" /> : turn.status === 'rejected' ? <X className="size-3.5" /> : null}
+          {turn.status === 'accepted' ? (
+            <Check className="size-3.5" />
+          ) : turn.status === 'rejected' ? (
+            <X className="size-3.5" />
+          ) : null}
           {done.label}
         </p>
       )}

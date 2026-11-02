@@ -6,8 +6,12 @@ const api = { 'X-Refract': '1' }
 // Open project → edit → compile → see PDF.
 test('open project, edit, compile, see the PDF', async ({ page, request }) => {
   const project = await (await request.post('/api/projects', { headers: api, data: { name: 'Smoke' } })).json()
-  expect((await request.put(`/api/projects/${project.id}/file?path=main.tex`, { headers: api, data: doc })).ok()).toBeTruthy()
-  expect((await request.patch(`/api/projects/${project.id}`, { headers: api, data: { main_file: 'main.tex' } })).ok()).toBeTruthy()
+  expect(
+    (await request.put(`/api/projects/${project.id}/file?path=main.tex`, { headers: api, data: doc })).ok(),
+  ).toBeTruthy()
+  expect(
+    (await request.patch(`/api/projects/${project.id}`, { headers: api, data: { main_file: 'main.tex' } })).ok(),
+  ).toBeTruthy()
 
   await page.goto(`/p/${project.id}`)
   await page.getByRole('button', { name: 'main.tex' }).first().click()
@@ -17,7 +21,9 @@ test('open project, edit, compile, see the PDF', async ({ page, request }) => {
   await page.keyboard.type('% edited in the browser\n')
   await page.keyboard.press('ControlOrMeta+Enter') // saves, then compiles
 
-  await expect(page.getByRole('button', { name: 'Compile status and problems' })).toContainText(/Compiled/, { timeout: 90_000 })
+  await expect(page.getByRole('button', { name: 'Compile status and problems' })).toContainText(/Compiled/, {
+    timeout: 90_000,
+  })
   const canvas = page.locator('[data-page="1"] canvas')
   await expect.poll(() => canvas.evaluate((c: HTMLCanvasElement) => c.width)).toBeGreaterThan(0)
 
@@ -43,7 +49,13 @@ A citation: \\cite{example2024}.
     headers: api,
     multipart: {
       file: { name: 'main.tex', mimeType: 'application/x-tex', buffer: Buffer.from(source) },
-      bibliography: { name: 'references.bib', mimeType: 'application/x-bibtex', buffer: Buffer.from('@article{example2024,author={Example, Ada},title={Synthetic bibliography test},journal={Example Journal},year={2024}}') },
+      bibliography: {
+        name: 'references.bib',
+        mimeType: 'application/x-bibtex',
+        buffer: Buffer.from(
+          '@article{example2024,author={Example, Ada},title={Synthetic bibliography test},journal={Example Journal},year={2024}}',
+        ),
+      },
     },
   })
   expect(response.ok()).toBeTruthy()
@@ -53,8 +65,12 @@ A citation: \\cite{example2024}.
   await page.getByRole('button', { name: 'main.tex' }).first().click()
   await page.locator('.cm-content').click()
   await page.keyboard.press('ControlOrMeta+Enter')
-  await expect(page.getByRole('button', { name: 'Compile status and problems' })).toContainText(/Compiled/, { timeout: 90_000 })
-  await expect.poll(() => page.locator('[data-page="1"] canvas').evaluate((c: HTMLCanvasElement) => c.width)).toBeGreaterThan(0)
+  await expect(page.getByRole('button', { name: 'Compile status and problems' })).toContainText(/Compiled/, {
+    timeout: 90_000,
+  })
+  await expect
+    .poll(() => page.locator('[data-page="1"] canvas').evaluate((c: HTMLCanvasElement) => c.width))
+    .toBeGreaterThan(0)
   const saved = await request.get(`/api/projects/${imported.project.id}/file?path=main.tex`, { headers: api })
   expect(await saved.text()).toBe(source)
   const checks = await request.get(`/api/projects/${imported.project.id}/checks`, { headers: api })

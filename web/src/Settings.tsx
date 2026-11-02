@@ -1,5 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
-import { CheckCircle2, Code2, Copy, ExternalLink, GitBranch, Keyboard, Loader2, Monitor, Moon, Plus, Sparkles, Sun, SunMoon, Upload } from 'lucide-react'
+import {
+  CheckCircle2,
+  Code2,
+  Copy,
+  ExternalLink,
+  GitBranch,
+  Keyboard,
+  Loader2,
+  Monitor,
+  Moon,
+  Plus,
+  Sparkles,
+  Sun,
+  SunMoon,
+  Upload,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { api, describe, errorText, modelsChanged, RequestError, type ChatGPTStatus } from './api'
 import { Button } from '@/components/ui/button'
@@ -55,12 +70,18 @@ export default function SettingsDialog({ status, onChange }: Props) {
           <EditorPane />
           <AssistantPane status={status} onChange={onChange} />
           <Integrations />
-          <SettingsPane value="shortcuts" title={t('Keyboard shortcuts')} description={t('Hold ⌘ (Ctrl) anywhere, or press ?, to see them over the page.')}>
+          <SettingsPane
+            value="shortcuts"
+            title={t('Keyboard shortcuts')}
+            description={t('Hold ⌘ (Ctrl) anywhere, or press ?, to see them over the page.')}
+          >
             {shortcutGroups.map((g) => (
               <SettingsGroup key={g.title} title={g.title}>
                 {g.items.map(([k, v]) => (
                   <SettingsRow key={k + v} label={v}>
-                    <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">{k}</kbd>
+                    <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+                      {k}
+                    </kbd>
                   </SettingsRow>
                 ))}
               </SettingsGroup>
@@ -88,7 +109,10 @@ function General() {
             ]}
           />
         </SettingsRow>
-        <SettingsRow label={t('Language')} description={t('System follows your browser. Changing it reloads the page.')}>
+        <SettingsRow
+          label={t('Language')}
+          description={t('System follows your browser. Changing it reloads the page.')}
+        >
           <SettingsSegmented
             value={getPrefs().language}
             onValueChange={(v) => {
@@ -151,7 +175,11 @@ function AssistantPane({ status, onChange }: Props) {
 
   const s = status?.status
   return (
-    <SettingsPane value="assistant" title={t('Assistant')} description={t('Refract uses your ChatGPT plan or your own API keys for AI requests.')}>
+    <SettingsPane
+      value="assistant"
+      title={t('Assistant')}
+      description={t('Refract uses your ChatGPT plan or your own API keys for AI requests.')}
+    >
       <SettingsGroup title={t('ChatGPT account')}>
         {!status ? (
           <SettingsRow label={t('Loading…')} />
@@ -173,16 +201,29 @@ function AssistantPane({ status, onChange }: Props) {
             >
               {s.plan_granted && <PlanBadge manageUsage={status.manage_usage} />}
             </SettingsRow>
-            <SettingsRow label={t('Credentials')} description={t('Replace them after running {cmd} again.', { cmd: 'refract login' })}>
+            <SettingsRow
+              label={t('Credentials')}
+              description={t('Replace them after running {cmd} again.', { cmd: 'refract login' })}
+            >
               <Button size="sm" variant="secondary" disabled={busy} onClick={() => input.current?.click()}>
                 <Upload /> {t('Replace…')}
               </Button>
-              <Button size="sm" variant="ghost" disabled={busy} onClick={() => run(() => api('/api/chatgpt/signout', { method: 'POST' }), t('Signed out'))}>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy}
+                onClick={() => run(() => api('/api/chatgpt/signout', { method: 'POST' }), t('Signed out'))}
+              >
                 {t('Sign out')}
               </Button>
             </SettingsRow>
             <SettingsRow label={t('Usage')} description={t('Limits and remaining usage are managed by ChatGPT.')}>
-              <Button size="sm" variant="ghost" render={<a href={status.manage_usage} target="_blank" rel="noreferrer" />} nativeButton={false}>
+              <Button
+                size="sm"
+                variant="ghost"
+                render={<a href={status.manage_usage} target="_blank" rel="noreferrer" />}
+                nativeButton={false}
+              >
                 {t('Manage usage')} <ExternalLink />
               </Button>
             </SettingsRow>
@@ -193,8 +234,9 @@ function AssistantPane({ status, onChange }: Props) {
             label={t('Not connected')}
             description={
               <>
-                {t('Sign-in happens on your own computer: run')} <code className="rounded bg-muted px-1 py-0.5 text-foreground">refract login</code>,{' '}
-                {t('choose')} <em>Continue with ChatGPT</em>, {t('then upload the credentials file it writes.')}
+                {t('Sign-in happens on your own computer: run')}{' '}
+                <code className="rounded bg-muted px-1 py-0.5 text-foreground">refract login</code>, {t('choose')}{' '}
+                <em>Continue with ChatGPT</em>, {t('then upload the credentials file it writes.')}
               </>
             }
           >
@@ -206,7 +248,10 @@ function AssistantPane({ status, onChange }: Props) {
       </SettingsGroup>
       <Providers onChange={() => api<ChatGPTStatus>('/api/chatgpt/status').then(onChange, () => {})} />
       <SettingsGroup title={t('Chat')}>
-        <SettingsRow label={t('When collapsed')} description={t('Keep an input bar under the editor, or tuck the chat into a bubble.')}>
+        <SettingsRow
+          label={t('When collapsed')}
+          description={t('Keep an input bar under the editor, or tuck the chat into a bubble.')}
+        >
           <SettingsSegmented
             value={prefs.chatBubble ? 'bubble' : 'bar'}
             onValueChange={(v) => setPref('chatBubble', v === 'bubble')}
@@ -224,7 +269,11 @@ function AssistantPane({ status, onChange }: Props) {
         hidden
         onChange={(e) => {
           const f = e.target.files?.[0]
-          if (f) run(async () => api<ChatGPTStatus>('/api/chatgpt/credentials', { method: 'POST', body: await f.text() }), t('Credentials imported'))
+          if (f)
+            run(
+              async () => api<ChatGPTStatus>('/api/chatgpt/credentials', { method: 'POST', body: await f.text() }),
+              t('Credentials imported'),
+            )
           e.target.value = ''
         }}
       />
@@ -240,7 +289,11 @@ function Account() {
   const [next, setNext] = useState('')
   const [busy, setBusy] = useState(false)
   useEffect(() => {
-    if (me?.can_sign_out) api<{ has_password: boolean }>('/api/account').then((a) => setHas(a.has_password), () => {})
+    if (me?.can_sign_out)
+      api<{ has_password: boolean }>('/api/account').then(
+        (a) => setHas(a.has_password),
+        () => {},
+      )
   }, [me?.can_sign_out])
   if (!me?.can_sign_out || !has) return null
 
@@ -262,7 +315,15 @@ function Account() {
     <SettingsGroup title={t('Account')}>
       <SettingsRow stacked label={t('Password')} description={t('Signed in as {email}.', { email: me.email })}>
         <form onSubmit={save} className="grid w-full gap-2 sm:grid-cols-[1fr_1fr_auto]">
-          <Input type="password" autoComplete="current-password" required value={current} onChange={(e) => setCurrent(e.target.value)} placeholder={t('Current password')} aria-label={t('Current password')} />
+          <Input
+            type="password"
+            autoComplete="current-password"
+            required
+            value={current}
+            onChange={(e) => setCurrent(e.target.value)}
+            placeholder={t('Current password')}
+            aria-label={t('Current password')}
+          />
           <Input
             type="password"
             autoComplete="new-password"
@@ -282,10 +343,25 @@ function Account() {
   )
 }
 
-type Kind = { id: string; name: string; needs_key: boolean; base_url: string; needs_base: boolean; key_help_url?: string }
+type Kind = {
+  id: string
+  name: string
+  needs_key: boolean
+  base_url: string
+  needs_base: boolean
+  key_help_url?: string
+}
 type ProviderConfig = { id: string; kind: string; name: string; base_url?: string; models?: string[]; has_key: boolean }
 type ProvidersState = { kinds: Kind[]; configured: ProviderConfig[] }
-type Draft = { id: string; kind: string; name: string; api_key: string; base_url: string; models: string; editing: boolean }
+type Draft = {
+  id: string
+  kind: string
+  name: string
+  api_key: string
+  base_url: string
+  models: string
+  editing: boolean
+}
 
 const blank = (kind: Kind, taken: string[]): Draft => {
   let id = kind.id
@@ -312,7 +388,13 @@ function Providers({ onChange }: { onChange: () => void }) {
   async function save(d: Draft) {
     setBusy('save')
     try {
-      const body = { kind: d.kind, name: d.name.trim(), api_key: d.api_key.trim(), base_url: d.base_url.trim(), models: d.models.split(/[\s,]+/).filter(Boolean) }
+      const body = {
+        kind: d.kind,
+        name: d.name.trim(),
+        api_key: d.api_key.trim(),
+        base_url: d.base_url.trim(),
+        models: d.models.split(/[\s,]+/).filter(Boolean),
+      }
       changed(await api<ProvidersState>(`/api/providers/${encodeURIComponent(d.id)}`, { method: 'PUT', body }))
       setDraft(null)
       test(d.id)
@@ -348,7 +430,10 @@ function Providers({ onChange }: { onChange: () => void }) {
   const kindOf = (id: string) => state.kinds.find((k) => k.id === id)
   const kind = draft && kindOf(draft.kind)
   return (
-    <SettingsGroup title={t('API providers')} description={t('Use your own API keys or a local model server. Their models appear in the model picker.')}>
+    <SettingsGroup
+      title={t('API providers')}
+      description={t('Use your own API keys or a local model server. Their models appear in the model picker.')}
+    >
       {state.configured.map((c) => (
         <SettingsRow
           key={c.id}
@@ -362,7 +447,17 @@ function Providers({ onChange }: { onChange: () => void }) {
             size="sm"
             variant="ghost"
             disabled={!!busy}
-            onClick={() => setDraft({ id: c.id, kind: c.kind, name: c.name, api_key: '', base_url: c.base_url ?? '', models: (c.models ?? []).join(', '), editing: true })}
+            onClick={() =>
+              setDraft({
+                id: c.id,
+                kind: c.kind,
+                name: c.name,
+                api_key: '',
+                base_url: c.base_url ?? '',
+                models: (c.models ?? []).join(', '),
+                editing: true,
+              })
+            }
           >
             {t('Edit')}
           </Button>
@@ -372,7 +467,10 @@ function Providers({ onChange }: { onChange: () => void }) {
         </SettingsRow>
       ))}
       {draft && kind ? (
-        <SettingsRow stacked label={draft.editing ? t('Edit {name}', { name: draft.name || kind.name }) : t('Add a provider')}>
+        <SettingsRow
+          stacked
+          label={draft.editing ? t('Edit {name}', { name: draft.name || kind.name }) : t('Add a provider')}
+        >
           <form
             className="grid w-full gap-2"
             onSubmit={(e) => {
@@ -386,7 +484,13 @@ function Providers({ onChange }: { onChange: () => void }) {
                 items={state.kinds.map((k) => ({ value: k.id, label: k.name }))}
                 onValueChange={(v) => {
                   const k = v && kindOf(v)
-                  if (k) setDraft(blank(k, state.configured.map((c) => c.id)))
+                  if (k)
+                    setDraft(
+                      blank(
+                        k,
+                        state.configured.map((c) => c.id),
+                      ),
+                    )
                 }}
               >
                 <SelectTrigger size="sm" className="w-full" aria-label={t('Provider')}>
@@ -401,14 +505,25 @@ function Providers({ onChange }: { onChange: () => void }) {
                 </SelectContent>
               </Select>
             )}
-            <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder={t('Name (optional)')} aria-label={t('Name')} />
+            <Input
+              value={draft.name}
+              onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+              placeholder={t('Name (optional)')}
+              aria-label={t('Name')}
+            />
             {(kind.needs_key || kind.id === 'compat') && (
               <Input
                 type="password"
                 autoComplete="off"
                 value={draft.api_key}
                 onChange={(e) => setDraft({ ...draft, api_key: e.target.value })}
-                placeholder={draft.editing ? t('API key (leave empty to keep the saved one)') : kind.needs_key ? t('API key') : t('API key (if the server needs one)')}
+                placeholder={
+                  draft.editing
+                    ? t('API key (leave empty to keep the saved one)')
+                    : kind.needs_key
+                      ? t('API key')
+                      : t('API key (if the server needs one)')
+                }
                 aria-label={t('API key')}
                 required={kind.needs_key && !draft.editing}
               />
@@ -428,7 +543,12 @@ function Providers({ onChange }: { onChange: () => void }) {
             />
             <div className="flex items-center gap-2">
               {kind.key_help_url && (
-                <a className="text-xs text-muted-foreground underline" href={kind.key_help_url} target="_blank" rel="noreferrer">
+                <a
+                  className="text-xs text-muted-foreground underline"
+                  href={kind.key_help_url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   {t('Get an API key')}
                 </a>
               )}
@@ -444,7 +564,18 @@ function Providers({ onChange }: { onChange: () => void }) {
         </SettingsRow>
       ) : (
         <SettingsRow label={state.configured.length ? t('Another provider') : t('No API providers yet')}>
-          <Button size="sm" variant="secondary" onClick={() => setDraft(blank(state.kinds[0], state.configured.map((c) => c.id)))}>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() =>
+              setDraft(
+                blank(
+                  state.kinds[0],
+                  state.configured.map((c) => c.id),
+                ),
+              )
+            }
+          >
             <Plus /> {t('Add provider')}
           </Button>
         </SettingsRow>
@@ -475,7 +606,9 @@ function Integrations() {
     const tick = async () => {
       if (stop) return
       try {
-        const r = await api<{ status: string; login?: string; error?: string }>('/api/github/device/poll', { method: 'POST' })
+        const r = await api<{ status: string; login?: string; error?: string }>('/api/github/device/poll', {
+          method: 'POST',
+        })
         if (r.status === 'connected') {
           setDevice(null)
           toast.success(t('Connected to GitHub as @{login}', { login: r.login ?? '' }))
@@ -518,7 +651,11 @@ function Integrations() {
   }
 
   return (
-    <SettingsPane value="integrations" title={t('Integrations')} description={t('Accounts Refract can use for your projects.')}>
+    <SettingsPane
+      value="integrations"
+      title={t('Integrations')}
+      description={t('Accounts Refract can use for your projects.')}
+    >
       <SettingsGroup title="GitHub">
         {!gh ? (
           <SettingsRow label={t('Loading…')} />
@@ -546,20 +683,39 @@ function Integrations() {
             </Button>
           </SettingsRow>
         ) : device ? (
-          <SettingsRow stacked label={t('Enter this code on GitHub')} description={t('Waiting for you to approve Refract on github.com…')}>
+          <SettingsRow
+            stacked
+            label={t('Enter this code on GitHub')}
+            description={t('Waiting for you to approve Refract on github.com…')}
+          >
             <span className="flex items-center gap-2">
-              <code className="rounded-md border bg-muted px-3 py-1.5 font-mono text-lg tracking-widest">{device.user_code}</code>
-              <Button size="icon-sm" variant="ghost" aria-label={t('Copy code')} onClick={() => navigator.clipboard.writeText(device.user_code)}>
+              <code className="rounded-md border bg-muted px-3 py-1.5 font-mono text-lg tracking-widest">
+                {device.user_code}
+              </code>
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label={t('Copy code')}
+                onClick={() => navigator.clipboard.writeText(device.user_code)}
+              >
                 <Copy />
               </Button>
-              <Button size="sm" variant="secondary" render={<a href={device.verification_uri} target="_blank" rel="noreferrer" />} nativeButton={false}>
+              <Button
+                size="sm"
+                variant="secondary"
+                render={<a href={device.verification_uri} target="_blank" rel="noreferrer" />}
+                nativeButton={false}
+              >
                 github.com/login/device <ExternalLink />
               </Button>
               <Loader2 className="size-4 animate-spin text-muted-foreground" />
             </span>
           </SettingsRow>
         ) : (
-          <SettingsRow label={t('Not connected')} description={t('Connect to push projects to your repositories, or create new ones.')}>
+          <SettingsRow
+            label={t('Not connected')}
+            description={t('Connect to push projects to your repositories, or create new ones.')}
+          >
             <Button size="sm" disabled={busy} onClick={connect}>
               <GitBranch /> {t('Connect GitHub')}
             </Button>

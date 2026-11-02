@@ -95,7 +95,9 @@ export default function FileTree(p: Props) {
           '-' as const,
         ]
       : [{ label: t('Open'), icon: FileText, onSelect: () => p.onOpen(n.path) }]),
-    ...(!n.dir && n.path.endsWith('.tex') && n.path !== p.mainFile ? [{ label: t('Set as main file'), icon: Star, onSelect: () => p.onSetMain(n.path) }] : []),
+    ...(!n.dir && n.path.endsWith('.tex') && n.path !== p.mainFile
+      ? [{ label: t('Set as main file'), icon: Star, onSelect: () => p.onSetMain(n.path) }]
+      : []),
     ...(!n.dir ? [{ label: t('Download'), icon: Download, onSelect: () => p.onDownload(n.path) }] : []),
     { label: t('Copy path'), icon: Copy, onSelect: () => navigator.clipboard.writeText(n.path) },
     '-',
@@ -113,7 +115,9 @@ export default function FileTree(p: Props) {
             <div
               className={cn(
                 'group/row relative flex h-8 items-center rounded-md pr-1 text-sm transition-colors duration-100',
-                n.path === p.active ? 'bg-foreground/[0.07] text-foreground' : 'text-foreground/80 hover:bg-foreground/[0.04] hover:text-foreground',
+                n.path === p.active
+                  ? 'bg-foreground/[0.07] text-foreground'
+                  : 'text-foreground/80 hover:bg-foreground/[0.04] hover:text-foreground',
                 dropTarget === n.path && 'ring-1 ring-ring',
               )}
               style={{ paddingLeft: 6 + depth * 14 }}
@@ -127,22 +131,38 @@ export default function FileTree(p: Props) {
                 title={n.path}
               >
                 {n.dir ? (
-                  <ChevronRight className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform duration-150 ease-out', isOpen && 'rotate-90')} />
+                  <ChevronRight
+                    className={cn(
+                      'size-3.5 shrink-0 text-muted-foreground transition-transform duration-150 ease-out',
+                      isOpen && 'rotate-90',
+                    )}
+                  />
                 ) : (
                   <span className="w-3.5 shrink-0" />
                 )}
                 <Icon className="size-4 shrink-0 text-muted-foreground" />
                 <span className="truncate">{n.name}</span>
-                {!n.dir && p.dirty(n.path) && <span className="ml-1 size-1.5 shrink-0 rounded-full bg-warning" aria-label={t('unsaved changes')} />}
+                {!n.dir && p.dirty(n.path) && (
+                  <span className="ml-1 size-1.5 shrink-0 rounded-full bg-warning" aria-label={t('unsaved changes')} />
+                )}
               </button>
-              <span className="flex items-center opacity-0 transition-opacity duration-100 group-hover/row:opacity-100 group-focus-within/row:opacity-100 has-data-popup-open:opacity-100">
+              <span className="flex items-center opacity-0 transition-opacity duration-100 group-focus-within/row:opacity-100 group-hover/row:opacity-100 has-data-popup-open:opacity-100">
                 {n.dir && (
-                  <Button variant="ghost" size="icon-xs" aria-label={t('New file in {path}', { path: n.path })} onClick={() => p.onNew(n.path, 'file')}>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={t('New file in {path}', { path: n.path })}
+                    onClick={() => p.onNew(n.path, 'file')}
+                  >
                     <Plus />
                   </Button>
                 )}
                 <DropdownMenu>
-                  <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" aria-label={t('Actions for {path}', { path: n.path })} />}>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button variant="ghost" size="icon-xs" aria-label={t('Actions for {path}', { path: n.path })} />
+                    }
+                  >
                     <MoreHorizontal />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="w-52">
@@ -159,7 +179,10 @@ export default function FileTree(p: Props) {
 
   return (
     <div
-      className={cn('flex min-h-0 flex-1 flex-col overflow-auto px-2 pb-2', dropTarget === '' && 'rounded-md ring-1 ring-ring ring-inset')}
+      className={cn(
+        'flex min-h-0 flex-1 flex-col overflow-auto px-2 pb-2',
+        dropTarget === '' && 'rounded-md ring-1 ring-ring ring-inset',
+      )}
       onDragOver={(e) => over(e, '')}
       onDragLeave={(e) => e.currentTarget === e.target && setDropTarget(null)}
       onDrop={(e) => drop(e, '')}

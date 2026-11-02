@@ -24,7 +24,10 @@ export default function Login() {
   })
 
   useEffect(() => {
-    api<{ oidc: string }>('/api/auth/config').then((c) => setOidc(c.oidc), () => {})
+    api<{ oidc: string }>('/api/auth/config').then(
+      (c) => setOidc(c.oidc),
+      () => {},
+    )
     if (location.search.includes('login_error')) history.replaceState(null, '', location.pathname)
   }, [])
 
@@ -49,7 +52,16 @@ export default function Login() {
           <h1 className="text-xl font-semibold">{t('Sign in to Refract')}</h1>
         </div>
         <form onSubmit={submit} className="space-y-3 rounded-2xl border bg-card p-5 shadow-xs">
-          <Input type="email" autoComplete="username" autoFocus required value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('Email')} aria-label={t('Email')} />
+          <Input
+            type="email"
+            autoComplete="username"
+            autoFocus
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder={t('Email')}
+            aria-label={t('Email')}
+          />
           <Input
             type="password"
             autoComplete="current-password"
@@ -72,7 +84,13 @@ export default function Login() {
               <div className="flex items-center gap-3 text-xs text-muted-foreground">
                 <span className="h-px flex-1 bg-border" /> {t('or')} <span className="h-px flex-1 bg-border" />
               </div>
-              <Button type="button" variant="secondary" className="w-full" nativeButton={false} render={<a href="/api/auth/oidc/start" />}>
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full"
+                nativeButton={false}
+                render={<a href="/api/auth/oidc/start" />}
+              >
                 {t('Continue with {name}', { name: oidc })}
               </Button>
             </>

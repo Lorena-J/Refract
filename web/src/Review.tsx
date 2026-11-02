@@ -12,7 +12,13 @@ import { latex } from '@/lib/editor'
 import { cn } from '@/lib/utils'
 import { t, tn } from '@/lib/i18n'
 
-type FileDiff = { path: string; status: 'added' | 'modified' | 'deleted'; before: string; after: string; binary: boolean }
+type FileDiff = {
+  path: string
+  status: 'added' | 'modified' | 'deleted'
+  before: string
+  after: string
+  binary: boolean
+}
 
 type Props = {
   turn: Turn
@@ -26,7 +32,11 @@ const statusTone: Record<FileDiff['status'], string> = {
   modified: 'text-muted-foreground',
   deleted: 'text-destructive',
 }
-const statusLabel: Record<FileDiff['status'], string> = { added: t('added'), modified: t('modified'), deleted: t('deleted') }
+const statusLabel: Record<FileDiff['status'], string> = {
+  added: t('added'),
+  modified: t('modified'),
+  deleted: t('deleted'),
+}
 
 // A turn's pending changes as unified diffs, file by file.
 export default function Review({ turn, onAccept, onReject, onClose }: Props) {
@@ -48,9 +58,12 @@ export default function Review({ turn, onAccept, onReject, onClose }: Props) {
       const conflicts = await fn()
       if (conflicts && conflicts.length) {
         setMessage(
-          t('Not applied: {files} changed since the assistant started, in the same places. Nothing was changed. Edit the file or reject these changes.', {
-            files: conflicts.join(', '),
-          }),
+          t(
+            'Not applied: {files} changed since the assistant started, in the same places. Nothing was changed. Edit the file or reject these changes.',
+            {
+              files: conflicts.join(', '),
+            },
+          ),
         )
       }
     } catch (e) {
@@ -73,9 +86,17 @@ export default function Review({ turn, onAccept, onReject, onClose }: Props) {
       <div className="@container flex h-11 shrink-0 items-center gap-2 border-b px-3">
         <FileDiff className="size-4 shrink-0 text-muted-foreground" />
         <span className="hidden truncate text-sm font-medium whitespace-nowrap @md:inline">{t('Review changes')}</span>
-        <span className="truncate text-xs whitespace-nowrap text-muted-foreground">{tn(turn.files.length, '{n} file', '{n} files')}</span>
+        <span className="truncate text-xs whitespace-nowrap text-muted-foreground">
+          {tn(turn.files.length, '{n} file', '{n} files')}
+        </span>
         <span className="flex-1" />
-        <Button size="sm" variant="ghost" className="shrink-0" disabled={!!busy} onClick={() => act('reject', onReject)}>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="shrink-0"
+          disabled={!!busy}
+          onClick={() => act('reject', onReject)}
+        >
           <X /> {t('Reject all')}
         </Button>
         <Button size="sm" className="shrink-0" disabled={!!busy} onClick={() => act('all', () => onAccept(null))}>
@@ -102,7 +123,12 @@ export default function Review({ turn, onAccept, onReject, onClose }: Props) {
                   className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
                   onClick={() => setCollapsed(open ? [...collapsed, d.path] : collapsed.filter((p) => p !== d.path))}
                 >
-                  <ChevronRight className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform duration-150 ease-out', open && 'rotate-90')} />
+                  <ChevronRight
+                    className={cn(
+                      'size-3.5 shrink-0 text-muted-foreground transition-transform duration-150 ease-out',
+                      open && 'rotate-90',
+                    )}
+                  />
                   <code className="truncate text-sm">{d.path}</code>
                   <Badge variant="outline" className={cn('font-normal', statusTone[d.status])}>
                     {statusLabel[d.status]}
@@ -113,7 +139,12 @@ export default function Review({ turn, onAccept, onReject, onClose }: Props) {
                     </span>
                   )}
                 </button>
-                <Button size="xs" variant="secondary" disabled={!!busy} onClick={() => act(d.path, () => onAccept([d.path]))}>
+                <Button
+                  size="xs"
+                  variant="secondary"
+                  disabled={!!busy}
+                  onClick={() => act(d.path, () => onAccept([d.path]))}
+                >
                   {busy === d.path ? <Loader2 className="animate-spin" /> : <Check />} {t('Accept file')}
                 </Button>
               </div>
