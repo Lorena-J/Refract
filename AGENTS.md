@@ -75,6 +75,7 @@ Variants:
 ```sh
 make test                     # go vet, Go tests, web unit tests
 cd web && npx tsc --noEmit    # type-check the web app
+cd web && npm run fmt && npm run lint   # format (oxfmt) and lint (oxlint) the web app
 ```
 
 `make e2e` builds the binary and runs a Playwright smoke test (needs Tectonic and Chrome).

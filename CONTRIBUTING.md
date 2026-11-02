@@ -25,7 +25,7 @@ Follow the conventions in [AGENTS.md](AGENTS.md#conventions). The ones that trip
 - Every user-facing string goes through `t()` and needs a Spanish translation; a test fails otherwise.
 - Database changes are new migrations; never edit an existing one.
 - New behaviour comes with tests, and changed configuration or commands with a README update.
-- Run `gofmt` on Go code and `npx tsc --noEmit` in `web/` (not `tsc -b`, which writes `.js` files next to the sources).
+- Run `gofmt` on Go code. In `web/`, run `npm run fmt` (oxfmt), `npm run lint` (oxlint) and `npx tsc --noEmit` (not `tsc -b`, which writes `.js` files next to the sources).
 
 ## Pull requests
 
