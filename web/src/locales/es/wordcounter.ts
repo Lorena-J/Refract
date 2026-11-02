@@ -1,0 +1,21 @@
+export default {
+  'Count words': 'Contar palabras',
+  'Word count': 'Contador de palabras',
+  'Selected fragment': 'Fragmento seleccionado',
+  'The suggestion does not meet the word limit. Try again.':
+    'La propuesta no cumple el límite de palabras. Vuelve a intentarlo.',
+  '{before} → {after} words': '{before} → {after} palabras',
+  'Maximum words': 'Máximo de palabras',
+  'Set limit': 'Establecer límite',
+  'Connect AI in Settings to adapt text.': 'Conecta la IA en Ajustes para adaptar el texto.',
+  'Word limit': 'Límite de palabras',
+  'Word limit…': 'Límite de palabras…',
+  'Word limit for selection…': 'Límite de palabras de la selección…',
+  'Remove limit': 'Eliminar límite',
+  'Counter: {n} words': 'Contador: {n} palabras',
+  'Word limit assistant': 'Asistente del límite de palabras',
+  'Preparing a shorter version…': 'Preparando una versión más breve…',
+  'Suggest a shorter version': 'Proponer versión más breve',
+  'Counter: {n} word': 'Contador: {n} palabra',
+  'Account menu': 'Menú de la cuenta',
+}

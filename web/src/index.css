@@ -921,3 +921,115 @@
     transform: scale(1.015);
   }
 }
+
+/* Word budgets keep prose readable in both themes. */
+.cm-word-excess {
+  background: rgb(239 68 68 / 0.2);
+  border-radius: 2px;
+}
+
+/* PDF.js TextLayer positioning, scoped to our continuous viewer. */
+.refract-pdf-text {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  line-height: 1;
+  text-align: initial;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  --scale-round-x: 1px;
+  --scale-round-y: 1px;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+.refract-pdf-text :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  user-select: text;
+}
+.refract-pdf-text > :not(.markedContent),
+.refract-pdf-text .markedContent span:not(.markedContent) {
+  z-index: 1;
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+.refract-pdf-text .markedContent {
+  display: contents;
+}
+.refract-pdf-text ::selection {
+  background: rgb(59 130 246 / 0.3);
+}
+
+/* Compact, tactile toggle inspired by https://uiverse.io/njesenberger/friendly-otter-40. */
+.word-count-toggle > [data-slot='dropdown-menu-checkbox-item-indicator'] {
+  display: none;
+}
+.word-count-switch {
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
+  width: 36px;
+  height: 22px;
+  border-radius: 999px;
+  background: #b8bcc4;
+  box-shadow: inset 0 1px 3px rgb(0 0 0 / 0.12);
+  transition: background-color 220ms ease;
+}
+.dark .word-count-switch {
+  background: #515560;
+}
+.word-count-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
+  transition:
+    transform 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 160ms ease;
+}
+.word-count-toggle[aria-checked='true'] .word-count-switch {
+  background: #30c878;
+}
+.word-count-toggle[aria-checked='true'] .word-count-switch-thumb {
+  transform: translateX(14px);
+}
+.word-count-toggle:active .word-count-switch-thumb {
+  width: 22px;
+}
+.word-count-toggle[aria-checked='true']:active .word-count-switch-thumb {
+  transform: translateX(10px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .word-count-switch,
+  .word-count-switch-thumb {
+    transition: none;
+  }
+}
+@media (forced-colors: active) {
+  .word-count-switch {
+    border: 1px solid ButtonText;
+    box-shadow: none;
+  }
+  .word-count-switch-thumb {
+    background: ButtonText;
+    box-shadow: none;
+  }
+  .word-count-toggle[aria-checked='true'] .word-count-switch {
+    background: Highlight;
+  }
+  .word-count-toggle[aria-checked='true'] .word-count-switch-thumb {
+    background: HighlightText;
+  }
+}
