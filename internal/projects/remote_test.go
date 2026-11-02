@@ -67,19 +67,19 @@ func TestRemoteSettings(t *testing.T) {
 			t.Errorf("accepted %+v", bad)
 		}
 	}
-	if err := s.SetRemote(ctx, id, Remote{URL: "https://github.com/a/b.git", Token: "t1", AutoPush: true}, true); err != nil {
+	if err := s.SetRemote(ctx, id, Remote{URL: "https://github.com/a/b.git", Token: "tok.secret.1", AutoPush: true}, true); err != nil {
 		t.Fatal(err)
 	}
 	// An empty token keeps the stored one; the branch defaults to main.
 	s.SetRemote(ctx, id, Remote{URL: "https://github.com/a/c.git"}, true)
 	r, err := s.Remote(ctx, id)
-	if err != nil || r.Token != "t1" || r.Branch != "main" || r.URL != "https://github.com/a/c.git" {
+	if err != nil || r.Token != "tok.secret.1" || r.Branch != "main" || r.URL != "https://github.com/a/c.git" {
 		t.Fatalf("remote = %+v, %v", r, err)
 	}
-	// Sealed at rest.
+	// Sealed at rest. The token contains dots, which base64 never does, so a match can only mean it is stored in clear.
 	var raw string
 	s.DB.QueryRow(`SELECT value FROM settings WHERE key = ?`, remoteKey(id)).Scan(&raw)
-	if strings.Contains(raw, "t1") || strings.Contains(raw, "github.com") {
+	if strings.Contains(raw, "tok.secret.1") || strings.Contains(raw, "github.com") {
 		t.Errorf("stored in clear: %q", raw)
 	}
 	if err := s.SetRemote(ctx, id, Remote{}, true); err != nil {
