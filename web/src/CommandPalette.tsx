@@ -48,7 +48,10 @@ function rank(all: Command[], query: string): Command[] {
     return [...pinned, ...rest.filter((c) => (seen[c.group] = (seen[c.group] ?? 0) + 1) <= PER_GROUP)]
   }
   const scored = rest
-    .map((c) => ({ c, s: Math.max(score(c.label, query) * 2, score(`${c.label} ${c.hint ?? ''} ${c.keywords ?? ''} ${c.group}`, query)) }))
+    .map((c) => ({
+      c,
+      s: Math.max(score(c.label, query) * 2, score(`${c.label} ${c.hint ?? ''} ${c.keywords ?? ''} ${c.group}`, query)),
+    }))
     .filter((x) => x.s > 0)
     .sort((a, b) => b.s - a.s)
   // Letters scattered through a long label are noise next to a real match.
@@ -115,7 +118,9 @@ function Palette() {
           const heading = grouped && !c.pinned && c.group !== items[i - 1]?.group
           return (
             <div key={c.id}>
-              {heading && <div className="px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground">{groupName(c.group)}</div>}
+              {heading && (
+                <div className="px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground">{groupName(c.group)}</div>
+              )}
               <div
                 id={`palette-${i}`}
                 data-index={i}
@@ -123,14 +128,27 @@ function Palette() {
                 aria-selected={i === active}
                 onMouseMove={() => i !== active && setActive(i)}
                 onClick={() => run(c)}
-                className={cn('flex h-9 cursor-default items-center gap-2.5 rounded-lg px-2 text-sm', i === active && 'bg-accent text-accent-foreground')}
+                className={cn(
+                  'flex h-9 cursor-default items-center gap-2.5 rounded-lg px-2 text-sm',
+                  i === active && 'bg-accent text-accent-foreground',
+                )}
               >
-                {c.icon ? <c.icon className="size-4 shrink-0 text-muted-foreground" /> : <span className="size-4 shrink-0" />}
+                {c.icon ? (
+                  <c.icon className="size-4 shrink-0 text-muted-foreground" />
+                ) : (
+                  <span className="size-4 shrink-0" />
+                )}
                 <span className="truncate">{c.label}</span>
                 {c.hint && <span className="min-w-0 truncate text-xs text-muted-foreground">{c.hint}</span>}
                 <span className="flex-1" />
-                {!grouped && !c.pinned && <span className="shrink-0 text-xs text-muted-foreground">{groupName(c.group)}</span>}
-                {c.shortcut && <kbd className="shrink-0 rounded border bg-muted px-1.5 font-mono text-[11px] text-muted-foreground">{c.shortcut}</kbd>}
+                {!grouped && !c.pinned && (
+                  <span className="shrink-0 text-xs text-muted-foreground">{groupName(c.group)}</span>
+                )}
+                {c.shortcut && (
+                  <kbd className="shrink-0 rounded border bg-muted px-1.5 font-mono text-[11px] text-muted-foreground">
+                    {c.shortcut}
+                  </kbd>
+                )}
                 {i === active && <CornerDownLeft className="size-3.5 shrink-0 text-muted-foreground" />}
               </div>
             </div>

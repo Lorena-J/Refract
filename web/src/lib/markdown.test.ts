@@ -15,13 +15,16 @@ test('inline formatting', () => {
 })
 
 test('links only for http(s); no HTML ever', () => {
-  assert.deepEqual(parseInline('[docs](https://example.com)'), [{ t: 'link', href: 'https://example.com', c: [{ t: 'text', v: 'docs' }] }])
+  assert.deepEqual(parseInline('[docs](https://example.com)'), [
+    { t: 'link', href: 'https://example.com', c: [{ t: 'text', v: 'docs' }] },
+  ])
   assert.deepEqual(parseInline('[x](javascript:alert(1))'), [{ t: 'text', v: '[x](javascript:alert(1))' }])
   assert.deepEqual(parseInline('<img src=x onerror=alert(1)>'), [{ t: 'text', v: '<img src=x onerror=alert(1)>' }])
 })
 
 test('blocks', () => {
-  const md = 'I changed:\n\n- **intro**\n- `main.tex`\n\n1. one\n2. two\n\n```latex\n\\section{A}\n```\n## Done\nLast line'
+  const md =
+    'I changed:\n\n- **intro**\n- `main.tex`\n\n1. one\n2. two\n\n```latex\n\\section{A}\n```\n## Done\nLast line'
   const b = parseMarkdown(md)
   assert.deepEqual(
     b.map((x) => x.t),

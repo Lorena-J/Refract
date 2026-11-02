@@ -20,7 +20,10 @@ export class Autosaver {
   private retryDelay: number
   private onStatus: (path: string, status: SaveStatus) => void
 
-  constructor(save: SaveFn, opts: { delay?: number; retryDelay?: number; onStatus?: (path: string, status: SaveStatus) => void } = {}) {
+  constructor(
+    save: SaveFn,
+    opts: { delay?: number; retryDelay?: number; onStatus?: (path: string, status: SaveStatus) => void } = {},
+  ) {
     this.save = save
     this.delay = opts.delay ?? 800
     this.retryDelay = opts.retryDelay ?? 3000
@@ -68,7 +71,9 @@ export class Autosaver {
 
   isDirty(path?: string): boolean {
     const dirty = (f: FileState) => f.pending !== undefined || f.inflight !== undefined
-    return path === undefined ? [...this.files.values()].some(dirty) : !!this.files.get(path) && dirty(this.files.get(path)!)
+    return path === undefined
+      ? [...this.files.values()].some(dirty)
+      : !!this.files.get(path) && dirty(this.files.get(path)!)
   }
 
   status(path: string): SaveStatus {

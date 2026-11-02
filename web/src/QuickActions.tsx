@@ -1,6 +1,19 @@
 import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref } from 'react'
 import type { EditorView } from '@codemirror/view'
-import { ArrowUp, BookMarked, BookOpen, Check, Pencil, RotateCcw, Scissors, Sparkles, SpellCheck, Square, Table, X } from 'lucide-react'
+import {
+  ArrowUp,
+  BookMarked,
+  BookOpen,
+  Check,
+  Pencil,
+  RotateCcw,
+  Scissors,
+  Sparkles,
+  SpellCheck,
+  Square,
+  Table,
+  X,
+} from 'lucide-react'
 import { api, errorText } from './api'
 import { Button } from '@/components/ui/button'
 import { ShimmerText } from '@/components/ui/chatcn/shimmer-text'
@@ -108,7 +121,8 @@ export default function QuickActions({ view, path, dragging, handle, onCite }: P
       })
       if (action === 'explain') setExplanation(res.text)
       else if (res.text === doc.sliceString(from, to)) setError(noChanges)
-      else if (view.state.sliceDoc(from, to) !== doc.sliceString(from, to)) setError(t('The text changed while the assistant was working. Try again.'))
+      else if (view.state.sliceDoc(from, to) !== doc.sliceString(from, to))
+        setError(t('The text changed while the assistant was working. Try again.'))
       else {
         propose(view, from, to, res.text)
         setJob(null)
@@ -200,11 +214,22 @@ export default function QuickActions({ view, path, dragging, handle, onCite }: P
           </>
         ) : error ? (
           <>
-            <span className={cn('max-w-80 truncate px-2', error === noChanges ? 'text-muted-foreground' : 'text-destructive')} title={error}>
+            <span
+              className={cn(
+                'max-w-80 truncate px-2',
+                error === noChanges ? 'text-muted-foreground' : 'text-destructive',
+              )}
+              title={error}
+            >
               {error}
             </span>
             {job && (
-              <Button size="icon-xs" variant="ghost" onClick={() => run(job.action, job.instruction)} aria-label={t('Retry')}>
+              <Button
+                size="icon-xs"
+                variant="ghost"
+                onClick={() => run(job.action, job.instruction)}
+                aria-label={t('Retry')}
+              >
                 <RotateCcw />
               </Button>
             )}
@@ -235,7 +260,13 @@ export default function QuickActions({ view, path, dragging, handle, onCite }: P
               aria-label={t('Instruction')}
               className="h-7 w-72 bg-transparent px-2 text-xs outline-none placeholder:text-muted-foreground"
             />
-            <Button type="submit" size="icon-xs" className="rounded-full" disabled={!instruction.trim()} aria-label={t('Apply instruction')}>
+            <Button
+              type="submit"
+              size="icon-xs"
+              className="rounded-full"
+              disabled={!instruction.trim()}
+              aria-label={t('Apply instruction')}
+            >
               <ArrowUp />
             </Button>
           </form>
@@ -285,7 +316,7 @@ export default function QuickActions({ view, path, dragging, handle, onCite }: P
       </div>
 
       {explanation && (
-        <div className="enter max-h-72 w-[min(28rem,calc(100vw-2rem))] overflow-auto rounded-xl border bg-popover p-3 text-sm text-popover-foreground shadow-lg">
+        <div className="max-h-72 w-[min(28rem,calc(100vw-2rem))] enter overflow-auto rounded-xl border bg-popover p-3 text-sm text-popover-foreground shadow-lg">
           <div className="mb-1 flex items-center justify-between">
             <span className="text-xs font-medium text-muted-foreground">{t('Explanation')}</span>
             <Button size="icon-xs" variant="ghost" onClick={reset} aria-label={t('Close explanation')}>

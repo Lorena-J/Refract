@@ -1,4 +1,4 @@
-import * as React from "react"
+import * as React from 'react'
 
 /**
  * Stick-to-bottom scrolling for chat transcripts.
@@ -32,7 +32,7 @@ export interface UseChatcnStickToBottomOptions {
 }
 
 /** Scroll behavior for imperative calls. `smooth` falls back to instant under reduced motion. */
-export type ChatcnScrollBehavior = "smooth" | "instant"
+export type ChatcnScrollBehavior = 'smooth' | 'instant'
 
 /** Return value of `useChatcnStickToBottom`. */
 export interface ChatcnStickToBottom {
@@ -58,10 +58,10 @@ export interface ChatcnStickToBottom {
 
 const MESSAGE = '[data-slot="message"]'
 const USER_TURN = '[data-slot="message"][data-role="user"]'
-const UP_KEYS = new Set(["ArrowUp", "PageUp", "Home"])
+const UP_KEYS = new Set(['ArrowUp', 'PageUp', 'Home'])
 
 const prefersReducedMotion = () =>
-  typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+  typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 
 /** True when a nested element between `target` and `root` can still scroll in `dy`'s direction. */
 function nestedCanScroll(target: EventTarget | null, root: HTMLElement, dy: number) {
@@ -69,7 +69,7 @@ function nestedCanScroll(target: EventTarget | null, root: HTMLElement, dy: numb
   while (node && node !== root) {
     if (node instanceof HTMLElement && node.scrollHeight > node.clientHeight) {
       const overflow = getComputedStyle(node).overflowY
-      if (overflow === "auto" || overflow === "scroll") {
+      if (overflow === 'auto' || overflow === 'scroll') {
         if (dy < 0 && node.scrollTop > 0) return true
         if (dy > 0 && node.scrollTop + node.clientHeight < node.scrollHeight - 1) return true
       }
@@ -80,10 +80,7 @@ function nestedCanScroll(target: EventTarget | null, root: HTMLElement, dy: numb
 }
 
 function isEditable(target: EventTarget | null) {
-  return (
-    target instanceof HTMLElement &&
-    (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))
-  )
+  return target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))
 }
 
 /** Stick-to-bottom scroll state and refs for a chat transcript. */
@@ -132,8 +129,7 @@ export function useChatcnStickToBottom({
   React.useEffect(() => {
     const el = scroller
     if (!el) return
-    const nativeAnchoring =
-      typeof CSS !== "undefined" && CSS.supports?.("overflow-anchor", "auto") === true
+    const nativeAnchoring = typeof CSS !== 'undefined' && CSS.supports?.('overflow-anchor', 'auto') === true
 
     const maxTop = () => Math.max(0, el.scrollHeight - el.clientHeight)
     const distance = () => maxTop() - el.scrollTop
@@ -172,7 +168,7 @@ export function useChatcnStickToBottom({
     /** Chase a moving target with exponential smoothing: fast, settles without overshoot. */
     const chase = (target: () => number, behavior: ChatcnScrollBehavior) => {
       s.target = target
-      if (behavior === "instant" || prefersReducedMotion()) {
+      if (behavior === 'instant' || prefersReducedMotion()) {
         stop()
         write(Math.min(target(), maxTop()))
         sync()
@@ -205,10 +201,7 @@ export function useChatcnStickToBottom({
     }
 
     const turnTop = (turn: HTMLElement) =>
-      turn.getBoundingClientRect().top -
-      el.getBoundingClientRect().top +
-      el.scrollTop -
-      options.current.anchorOffset
+      turn.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop - options.current.anchorOffset
 
     /** Size the spacer so the anchored turn can reach the top while its reply is short. */
     const fitSpacer = () => {
@@ -217,7 +210,7 @@ export function useChatcnStickToBottom({
       const turn = s.anchorEl
       if (!turn?.isConnected || !content) {
         s.anchorEl = null
-        if (pad.style.height !== "0px") pad.style.height = "0px"
+        if (pad.style.height !== '0px') pad.style.height = '0px'
         return
       }
       const box = el.getBoundingClientRect()
@@ -241,13 +234,13 @@ export function useChatcnStickToBottom({
       s.keep = null
     }
 
-    const toBottom = (behavior: ChatcnScrollBehavior = "smooth") => {
+    const toBottom = (behavior: ChatcnScrollBehavior = 'smooth') => {
       s.sticky = true
       setSticky(true)
       chase(maxTop, behavior)
     }
 
-    const toTurn = (turn: HTMLElement, behavior: ChatcnScrollBehavior = "smooth") => {
+    const toTurn = (turn: HTMLElement, behavior: ChatcnScrollBehavior = 'smooth') => {
       s.anchorEl = turn
       fitSpacer()
       s.sticky = true
@@ -291,7 +284,7 @@ export function useChatcnStickToBottom({
     }
     const onKeyDown = (event: KeyboardEvent) => {
       if (isEditable(event.target)) return
-      if (UP_KEYS.has(event.key) || (event.key === " " && event.shiftKey)) release()
+      if (UP_KEYS.has(event.key) || (event.key === ' ' && event.shiftKey)) release()
     }
 
     const onResize = () => {
@@ -304,7 +297,7 @@ export function useChatcnStickToBottom({
       // Streamed growth is a few lines at a time and glides. A jump of more than a viewport is
       // a history load or a layout change, so it lands instantly instead of scrolling past.
       if (s.sticky && !s.target) {
-        chase(maxTop, s.mounted && distance() <= el.clientHeight ? "smooth" : "instant")
+        chase(maxTop, s.mounted && distance() <= el.clientHeight ? 'smooth' : 'instant')
       }
       // Record growth only. On a shrink the browser clamps scrollTop and fires a scroll event;
       // onScroll needs the old, larger height to recognise that clamp and keep following.
@@ -322,7 +315,7 @@ export function useChatcnStickToBottom({
       const selector =
         options.current.anchor === false
           ? null
-          : typeof options.current.anchor === "string"
+          : typeof options.current.anchor === 'string'
             ? options.current.anchor
             : USER_TURN
       let turn: HTMLElement | null = null
@@ -333,9 +326,7 @@ export function useChatcnStickToBottom({
           const isMessage = node.matches(MESSAGE) || node.querySelector(MESSAGE)
           if (isMessage) added++
           if (!selector) continue
-          const match = node.matches(selector)
-            ? node
-            : (node.querySelector<HTMLElement>(selector) ?? null)
+          const match = node.matches(selector) ? node : (node.querySelector<HTMLElement>(selector) ?? null)
           if (match) turn = match
         }
       }
@@ -356,11 +347,11 @@ export function useChatcnStickToBottom({
     })
     if (content) mo.observe(content, { childList: true, subtree: true })
 
-    el.addEventListener("scroll", onScroll, { passive: true })
-    el.addEventListener("wheel", onWheel, { passive: true })
-    el.addEventListener("touchstart", onTouchStart, { passive: true })
-    el.addEventListener("touchmove", onTouchMove, { passive: true })
-    el.addEventListener("keydown", onKeyDown)
+    el.addEventListener('scroll', onScroll, { passive: true })
+    el.addEventListener('wheel', onWheel, { passive: true })
+    el.addEventListener('touchstart', onTouchStart, { passive: true })
+    el.addEventListener('touchmove', onTouchMove, { passive: true })
+    el.addEventListener('keydown', onKeyDown)
 
     if (!s.mounted) {
       if (initial) write(maxTop())
@@ -380,11 +371,11 @@ export function useChatcnStickToBottom({
       stop()
       ro.disconnect()
       mo.disconnect()
-      el.removeEventListener("scroll", onScroll)
-      el.removeEventListener("wheel", onWheel)
-      el.removeEventListener("touchstart", onTouchStart)
-      el.removeEventListener("touchmove", onTouchMove)
-      el.removeEventListener("keydown", onKeyDown)
+      el.removeEventListener('scroll', onScroll)
+      el.removeEventListener('wheel', onWheel)
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('keydown', onKeyDown)
     }
   }, [scroller, content, initial, s])
 
@@ -393,8 +384,7 @@ export function useChatcnStickToBottom({
     [],
   )
   const scrollToTurn = React.useCallback(
-    (element: HTMLElement, opts?: { behavior?: ChatcnScrollBehavior }) =>
-      api.current?.toTurn(element, opts?.behavior),
+    (element: HTMLElement, opts?: { behavior?: ChatcnScrollBehavior }) => api.current?.toTurn(element, opts?.behavior),
     [],
   )
   const spacerRef = React.useCallback((element: HTMLElement | null) => {

@@ -29,6 +29,7 @@ test('the assistant proposes a change that is reviewed and accepted', async ({ p
   expect(await (await request.get(`/api/projects/${project.id}/file?path=main.tex`, { headers: api })).text()).toBe(doc)
 
   await page.getByRole('button', { name: 'Accept all' }).click()
-  const read = async () => (await request.get(`/api/projects/${project.id}/file?path=main.tex`, { headers: api })).text()
+  const read = async () =>
+    (await request.get(`/api/projects/${project.id}/file?path=main.tex`, { headers: api })).text()
   await expect.poll(read).toBe(doc.replace(before, after))
 })

@@ -1,10 +1,10 @@
-"use client"
+'use client'
 
-import * as React from "react"
-import { ShimmerText } from "@/components/ui/chatcn/shimmer-text"
-import { StreamingCaret } from "@/components/ui/chatcn/streaming-caret"
+import * as React from 'react'
+import { ShimmerText } from '@/components/ui/chatcn/shimmer-text'
+import { StreamingCaret } from '@/components/ui/chatcn/streaming-caret'
 import { t } from '@/lib/i18n'
-import { cn } from "@/lib/utils"
+import { cn } from '@/lib/utils'
 
 /* -------------------------------------------------------------------------------------------------
  * Timing
@@ -41,7 +41,7 @@ function useDelayedPresence(active: boolean, delay = 300, minDuration = 400) {
   return shown
 }
 
-const NBSP = "\u00a0"
+const NBSP = '\u00a0'
 
 function formatElapsed(ms: number) {
   const s = Math.floor(ms / 1000)
@@ -65,9 +65,9 @@ function useSeconds(since: number | undefined, running: boolean) {
  * ThinkingIndicator
  * -----------------------------------------------------------------------------------------------*/
 
-type ThinkingIndicatorVariant = "label" | "timer" | "motif"
+type ThinkingIndicatorVariant = 'label' | 'timer' | 'motif'
 
-interface ThinkingIndicatorProps extends Omit<React.ComponentProps<"div">, "children"> {
+interface ThinkingIndicatorProps extends Omit<React.ComponentProps<'div'>, 'children'> {
   /** True while the model is working and nothing visible has arrived yet. Defaults to true. */
   active?: boolean
   /** `label` is the shimmer word, `timer` adds elapsed seconds, `motif` is the square alone. */
@@ -88,7 +88,7 @@ interface ThinkingIndicatorProps extends Omit<React.ComponentProps<"div">, "chil
  */
 function ThinkingIndicator({
   active = true,
-  variant = "label",
+  variant = 'label',
   label = t('Thinking'),
   startedAt,
   delay = 300,
@@ -102,34 +102,34 @@ function ThinkingIndicator({
     if (active) setSince((s) => s ?? Date.now())
     else setSince(undefined)
   }, [active])
-  const elapsed = useSeconds(startedAt ?? since, shown && variant === "timer")
+  const elapsed = useSeconds(startedAt ?? since, shown && variant === 'timer')
 
   return (
     <div
       role="status"
       data-slot="thinking-indicator"
       data-variant={variant}
-      data-visible={shown ? "" : undefined}
+      data-visible={shown ? '' : undefined}
       // Hidden, it keeps no space but stays mounted, so the live region announces reliably.
-      className={cn(shown ? "chatcn-text-14 flex h-6 items-center gap-2" : "sr-only", className)}
+      className={cn(shown ? 'flex h-6 items-center gap-2 chatcn-text-14' : 'sr-only', className)}
       {...props}
     >
       {shown ? (
         <span
           className={cn(
-            "inline-flex items-center gap-2",
-            "ease-chatcn-out transition-opacity duration-150 starting:opacity-0",
+            'inline-flex items-center gap-2',
+            'transition-opacity duration-150 ease-chatcn-out starting:opacity-0',
           )}
         >
-          {variant === "motif" ? (
+          {variant === 'motif' ? (
             <>
-              <StreamingCaret status="waiting" className="chatcn-text-16 ms-0" />
+              <StreamingCaret status="waiting" className="ms-0 chatcn-text-16" />
               <span className="sr-only">{label}</span>
             </>
           ) : (
             <>
               <ShimmerText>{label}</ShimmerText>
-              {variant === "timer" && elapsed >= 1000 ? (
+              {variant === 'timer' && elapsed >= 1000 ? (
                 <span aria-hidden="true" className="text-chatcn-fg-subtle tabular-nums">
                   {formatElapsed(elapsed)}
                 </span>

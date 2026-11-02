@@ -4,7 +4,16 @@ import assert from 'node:assert/strict'
 import { resolveChoice } from './models.ts'
 
 const ms = [
-  { slug: 'a', display_name: 'A', description: '', default_effort: 'medium', efforts: [{ effort: 'low', description: '' }, { effort: 'medium', description: '' }] },
+  {
+    slug: 'a',
+    display_name: 'A',
+    description: '',
+    default_effort: 'medium',
+    efforts: [
+      { effort: 'low', description: '' },
+      { effort: 'medium', description: '' },
+    ],
+  },
   { slug: 'b', display_name: 'B', description: '', default_effort: '', efforts: [] },
 ]
 

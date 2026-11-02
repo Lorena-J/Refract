@@ -35,18 +35,29 @@ for (const f of files(src)) {
 
 const es: Record<string, string> = {}
 const dir = join(src, 'locales/es')
-for (const f of readdirSync(dir).filter((f) => f !== 'index.ts')) Object.assign(es, (await import(join(dir, f))).default)
+for (const f of readdirSync(dir).filter((f) => f !== 'index.ts'))
+  Object.assign(es, (await import(join(dir, f))).default)
 
 test('every UI string has a Spanish translation', () => {
-  const missing = [...used.keys()].filter((k) => !(k in es)).map((k) => `${JSON.stringify(k)} (${used.get(k)!.replace(src, '')})`)
+  const missing = [...used.keys()]
+    .filter((k) => !(k in es))
+    .map((k) => `${JSON.stringify(k)} (${used.get(k)!.replace(src, '')})`)
   assert.deepEqual(missing, [])
 })
 
 test('no stale translations', () => {
-  assert.deepEqual(Object.keys(es).filter((k) => !used.has(k)), [])
+  assert.deepEqual(
+    Object.keys(es).filter((k) => !used.has(k)),
+    [],
+  )
 })
 
 test('placeholders survive translation', () => {
   const vars = (s: string) => (s.match(/\{\w+\}/g) ?? []).sort().join()
-  assert.deepEqual(Object.entries(es).filter(([k, v]) => vars(k) !== vars(v)).map(([k]) => k), [])
+  assert.deepEqual(
+    Object.entries(es)
+      .filter(([k, v]) => vars(k) !== vars(v))
+      .map(([k]) => k),
+    [],
+  )
 })

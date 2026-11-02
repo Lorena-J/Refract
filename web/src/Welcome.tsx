@@ -1,10 +1,25 @@
 import { api } from './api'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { t } from '@/lib/i18n'
 
 // First sign-in only (SIWC UI guidelines).
-export default function Welcome({ open, manageUsage, onClose }: { open: boolean; manageUsage: string; onClose: () => void }) {
+export default function Welcome({
+  open,
+  manageUsage,
+  onClose,
+}: {
+  open: boolean
+  manageUsage: string
+  onClose: () => void
+}) {
   async function close() {
     await api('/api/chatgpt/welcome-seen', { method: 'POST' }).catch(() => {})
     onClose()

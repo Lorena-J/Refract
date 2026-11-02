@@ -52,7 +52,17 @@ function groups(models: Model[]): [string, Model[]][] {
 }
 
 // "GPT-6.1-Sol Medium ▾" in the composer, like Prism's: reasoning levels up front, models in a submenu.
-export default function ModelPicker({ models, model, effort, compact }: { models: Model[]; model?: Model; effort: string; compact?: boolean }) {
+export default function ModelPicker({
+  models,
+  model,
+  effort,
+  compact,
+}: {
+  models: Model[]
+  model?: Model
+  effort: string
+  compact?: boolean
+}) {
   const [query, setQuery] = useState('')
   if (!model) return null
   const shown = search(models, query)
@@ -76,13 +86,17 @@ export default function ModelPicker({ models, model, effort, compact }: { models
         {model.efforts.length > 0 && (
           <>
             <DropdownMenuGroup>
-              <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">{t('Reasoning')}</DropdownMenuLabel>
+              <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                {t('Reasoning')}
+              </DropdownMenuLabel>
               {model.efforts.map((e) => (
                 <DropdownMenuItem key={e.effort} onClick={() => setPref('effort', e.effort)} className="items-start">
                   <span className="min-w-0 flex-1">
                     <span className="block">
                       {effortLabel(e.effort)}
-                      {e.effort === model.default_effort && <span className="ml-1.5 text-xs text-muted-foreground">{t('default')}</span>}
+                      {e.effort === model.default_effort && (
+                        <span className="ml-1.5 text-xs text-muted-foreground">{t('default')}</span>
+                      )}
                     </span>
                     {e.description && <span className="block text-xs text-muted-foreground">{e.description}</span>}
                   </span>
@@ -101,7 +115,10 @@ export default function ModelPicker({ models, model, effort, compact }: { models
           <DropdownMenuSubContent className="max-h-[min(70vh,520px)] w-72">
             {models.length > SEARCH_FROM && (
               // Typing stays in the field: the menu would read letters as typeahead.
-              <div className="sticky -top-1 z-10 -mx-1 -mt-1 mb-1 border-b bg-popover px-3 py-2" onKeyDown={(e) => !/^(Escape|ArrowUp|ArrowDown|Enter|Tab)$/.test(e.key) && e.stopPropagation()}>
+              <div
+                className="sticky -top-1 z-10 -mx-1 -mt-1 mb-1 border-b bg-popover px-3 py-2"
+                onKeyDown={(e) => !/^(Escape|ArrowUp|ArrowDown|Enter|Tab)$/.test(e.key) && e.stopPropagation()}
+              >
                 <label className="flex items-center gap-2 text-sm">
                   <Search className="size-3.5 shrink-0 text-muted-foreground" />
                   <input
@@ -115,11 +132,15 @@ export default function ModelPicker({ models, model, effort, compact }: { models
                 </label>
               </div>
             )}
-            {shown.length === 0 && <p className="px-2 py-3 text-center text-sm text-muted-foreground">{t('No models match')}</p>}
+            {shown.length === 0 && (
+              <p className="px-2 py-3 text-center text-sm text-muted-foreground">{t('No models match')}</p>
+            )}
             {groups(shown).map(([name, ms], i) => (
               <DropdownMenuGroup key={name}>
                 {i > 0 && <DropdownMenuSeparator />}
-                {name && <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">{name}</DropdownMenuLabel>}
+                {name && (
+                  <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">{name}</DropdownMenuLabel>
+                )}
                 {ms.map((m) => (
                   <DropdownMenuItem key={m.slug} onClick={() => setPref('model', m.slug)} className="items-start">
                     <span className="min-w-0 flex-1">

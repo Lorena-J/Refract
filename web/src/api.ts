@@ -12,7 +12,10 @@ export class RequestError extends Error {
 }
 
 // body: an object is sent as JSON; a string, Blob or FormData is sent as is.
-export async function api<T>(path: string, init: { method?: string; body?: unknown; signal?: AbortSignal } = {}): Promise<T> {
+export async function api<T>(
+  path: string,
+  init: { method?: string; body?: unknown; signal?: AbortSignal } = {},
+): Promise<T> {
   const raw = typeof init.body === 'string' || init.body instanceof Blob || init.body instanceof FormData
   const res = await fetch(path, {
     method: init.method ?? 'GET',
@@ -77,11 +80,15 @@ export type ChatGPTStatus = {
 export function describe(e: ApiError): string {
   switch (e.kind) {
     case 'not_signed_in':
-      return t('No AI connected. Sign in with ChatGPT (run `refract login` and upload the credentials) or add an API provider in Settings → Assistant.')
+      return t(
+        'No AI connected. Sign in with ChatGPT (run `refract login` and upload the credentials) or add an API provider in Settings → Assistant.',
+      )
     case 'plan_not_granted':
       return t('ChatGPT plan usage was not granted. Run `refract login` again and allow plan usage.')
     case 'usage_limit':
-      return t('You have reached a usage limit on your ChatGPT plan or for this app. Review it in ChatGPT settings → Usage.')
+      return t(
+        'You have reached a usage limit on your ChatGPT plan or for this app. Review it in ChatGPT settings → Usage.',
+      )
     case 'not_eligible':
       return t('ChatGPT plan usage is not available for this account: {message}', { message: e.message })
     case 'model_unavailable':
@@ -99,7 +106,10 @@ export function describe(e: ApiError): string {
     case 'quota':
       return t('The provider has no credit left on this API key: {message}', { message: e.message })
     case 'unsupported':
-      return t('Request not supported on plan usage ({param}): {message}', { param: e.param ?? t('unknown'), message: e.message })
+      return t('Request not supported on plan usage ({param}): {message}', {
+        param: e.param ?? t('unknown'),
+        message: e.message,
+      })
     case 'unavailable':
       return t('The AI provider is temporarily unavailable. Try again shortly. ({message})', { message: e.message })
     default:
@@ -110,7 +120,8 @@ export function describe(e: ApiError): string {
 // Downloads a file from an API route (a plain link can't send X-Refract).
 export async function download(path: string, filename: string) {
   const res = await fetch(path, { headers })
-  if (!res.ok) throw new RequestError({ kind: 'other', message: t('Download failed: HTTP {status}', { status: res.status }) })
+  if (!res.ok)
+    throw new RequestError({ kind: 'other', message: t('Download failed: HTTP {status}', { status: res.status }) })
   const url = URL.createObjectURL(await res.blob())
   const a = document.createElement('a')
   a.href = url
@@ -158,8 +169,10 @@ export async function writeFile(id: string, path: string, body: string | Blob) {
 }
 
 export const removeFile = (id: string, path: string) => api(fileURL(id, path), { method: 'DELETE' })
-export const mkdir = (id: string, path: string) => api(`/api/projects/${id}/mkdir?path=${encodeURIComponent(path)}`, { method: 'POST' })
-export const move = (id: string, from: string, to: string) => api(`/api/projects/${id}/move`, { method: 'POST', body: { from, to } })
+export const mkdir = (id: string, path: string) =>
+  api(`/api/projects/${id}/mkdir?path=${encodeURIComponent(path)}`, { method: 'POST' })
+export const move = (id: string, from: string, to: string) =>
+  api(`/api/projects/${id}/move`, { method: 'POST', body: { from, to } })
 
 // Fired after the user changes their API providers, so open model pickers reload.
 export const modelsChanged = () => window.dispatchEvent(new Event('refract:models'))

@@ -2,7 +2,8 @@
 export default {
   // Settings
   Language: 'Idioma',
-  'System follows your browser. Changing it reloads the page.': '«Sistema» usa el idioma del navegador. Al cambiarlo se recarga la página.',
+  'System follows your browser. Changing it reloads the page.':
+    '«Sistema» usa el idioma del navegador. Al cambiarlo se recarga la página.',
   System: 'Sistema',
   Settings: 'Ajustes',
   'Appearance, editor and ChatGPT settings': 'Ajustes de apariencia, editor y ChatGPT',
@@ -12,7 +13,8 @@ export default {
   Shortcuts: 'Atajos',
   Off: 'Inactivo',
   'Keyboard shortcuts': 'Atajos de teclado',
-  'Hold ⌘ (Ctrl) anywhere, or press ?, to see them over the page.': 'Mantén ⌘ (Ctrl) en cualquier sitio, o pulsa ?, para verlos sobre la página.',
+  'Hold ⌘ (Ctrl) anywhere, or press ?, to see them over the page.':
+    'Mantén ⌘ (Ctrl) en cualquier sitio, o pulsa ?, para verlos sobre la página.',
   'Interface theme': 'Tema de la interfaz',
   'System follows your operating system.': '«Sistema» sigue el tema de tu sistema operativo.',
   Light: 'Claro',
@@ -25,7 +27,8 @@ export default {
   Large: 'Grande',
   'Word wrap': 'Ajuste de línea',
   'Wrap long lines instead of scrolling sideways.': 'Ajusta las líneas largas en lugar de desplazarte en horizontal.',
-  'Refract uses your ChatGPT plan or your own API keys for AI requests.': 'Refract usa tu plan de ChatGPT o tus propias claves de API para las peticiones de IA.',
+  'Refract uses your ChatGPT plan or your own API keys for AI requests.':
+    'Refract usa tu plan de ChatGPT o tus propias claves de API para las peticiones de IA.',
   'API providers': 'Proveedores por API',
   'Use your own API keys or a local model server. Their models appear in the model picker.':
     'Usa tus propias claves de API o un servidor de modelos local. Sus modelos aparecen en el selector de modelos.',
@@ -51,7 +54,8 @@ export default {
   'Connected: {n} models available': 'Conectado: {n} modelos disponibles',
   'ChatGPT account': 'Cuenta de ChatGPT',
   'Loading…': 'Cargando…',
-  'Signed in. Requests count against your ChatGPT plan.': 'Sesión iniciada. Las peticiones cuentan para tu plan de ChatGPT.',
+  'Signed in. Requests count against your ChatGPT plan.':
+    'Sesión iniciada. Las peticiones cuentan para tu plan de ChatGPT.',
   Credentials: 'Credenciales',
   'Replace them after running {cmd} again.': 'Sustitúyelas tras volver a ejecutar {cmd}.',
   'Replace…': 'Sustituir…',
@@ -67,7 +71,8 @@ export default {
   'Upload credentials…': 'Subir credenciales…',
   Chat: 'Chat',
   'When collapsed': 'Al contraerlo',
-  'Keep an input bar under the editor, or tuck the chat into a bubble.': 'Deja una barra de entrada bajo el editor o recoge el chat en una burbuja.',
+  'Keep an input bar under the editor, or tuck the chat into a bubble.':
+    'Deja una barra de entrada bajo el editor o recoge el chat en una burbuja.',
   'Input bar': 'Barra de entrada',
   Bubble: 'Burbuja',
   'Credentials imported': 'Credenciales importadas',
@@ -116,15 +121,18 @@ export default {
   // Login, account
   'There is no Refract account for that email. Ask whoever runs this server to add you.':
     'No hay ninguna cuenta de Refract con ese correo. Pide a quien administra este servidor que te añada.',
-  'The sign-in took too long or started in another browser. Try again.': 'El inicio de sesión tardó demasiado o empezó en otro navegador. Vuelve a intentarlo.',
-  'Signing in with the provider failed. Try again, or use your password.': 'No se pudo iniciar sesión con el proveedor. Vuelve a intentarlo o usa tu contraseña.',
+  'The sign-in took too long or started in another browser. Try again.':
+    'El inicio de sesión tardó demasiado o empezó en otro navegador. Vuelve a intentarlo.',
+  'Signing in with the provider failed. Try again, or use your password.':
+    'No se pudo iniciar sesión con el proveedor. Vuelve a intentarlo o usa tu contraseña.',
   'Sign in to Refract': 'Inicia sesión en Refract',
   Email: 'Correo',
   Password: 'Contraseña',
   'Sign in': 'Iniciar sesión',
   or: 'o',
   'Continue with {name}': 'Continuar con {name}',
-  'Password changed. Other devices were signed out.': 'Contraseña cambiada. Se ha cerrado la sesión en los demás dispositivos.',
+  'Password changed. Other devices were signed out.':
+    'Contraseña cambiada. Se ha cerrado la sesión en los demás dispositivos.',
   Account: 'Cuenta',
   'Signed in as {email}.': 'Sesión iniciada como {email}.',
   'Current password': 'Contraseña actual',
@@ -133,8 +141,10 @@ export default {
   Change: 'Cambiar',
   'Wrong email or password.': 'Correo o contraseña incorrectos.',
   'The current password is wrong.': 'La contraseña actual no es correcta.',
-  'Too many failed attempts. Try again in a few minutes.': 'Demasiados intentos fallidos. Vuelve a intentarlo dentro de unos minutos.',
-  'Your session ended. Reload the page to sign in again.': 'Tu sesión ha terminado. Recarga la página para volver a entrar.',
+  'Too many failed attempts. Try again in a few minutes.':
+    'Demasiados intentos fallidos. Vuelve a intentarlo dentro de unos minutos.',
+  'Your session ended. Reload the page to sign in again.':
+    'Tu sesión ha terminado. Recarga la página para volver a entrar.',
   'ChatGPT not connected': 'ChatGPT no conectado',
   'Manage ChatGPT usage': 'Gestionar uso de ChatGPT',
   now: 'ahora',
@@ -184,17 +194,20 @@ export default {
   'Main file not found. Choose it:': 'No se encontró el archivo principal. Elígelo:',
   'Select…': 'Seleccionar…',
   'Skipped: {files}': 'Omitidos: {files}',
-  'Integrations': 'Integraciones',
+  Integrations: 'Integraciones',
   'Connected to GitHub as @{login}': 'Conectado a GitHub como @{login}',
   'The code expired: start again': 'El código caducó: empieza de nuevo',
   'Accounts Refract can use for your projects.': 'Cuentas que Refract puede usar para tus proyectos.',
   'Not set up on this server': 'No configurado en este servidor',
-  'Create a GitHub OAuth App with device flow enabled and set its client ID in REFRACT_GITHUB_CLIENT_ID. You can still use any remote with a token in each project.': 'Crea una OAuth App de GitHub con el device flow activado y pon su client ID en REFRACT_GITHUB_CLIENT_ID. Mientras tanto puedes usar cualquier remoto con un token en cada proyecto.',
-  'Projects can push to and pull from your repositories. To revoke access completely, also remove Refract in GitHub → Settings → Applications.': 'Los proyectos pueden enviar y traer de tus repositorios. Para revocar el acceso por completo, quita también Refract en GitHub → Settings → Applications.',
-  'Disconnect': 'Desconectar',
+  'Create a GitHub OAuth App with device flow enabled and set its client ID in REFRACT_GITHUB_CLIENT_ID. You can still use any remote with a token in each project.':
+    'Crea una OAuth App de GitHub con el device flow activado y pon su client ID en REFRACT_GITHUB_CLIENT_ID. Mientras tanto puedes usar cualquier remoto con un token en cada proyecto.',
+  'Projects can push to and pull from your repositories. To revoke access completely, also remove Refract in GitHub → Settings → Applications.':
+    'Los proyectos pueden enviar y traer de tus repositorios. Para revocar el acceso por completo, quita también Refract en GitHub → Settings → Applications.',
+  Disconnect: 'Desconectar',
   'Enter this code on GitHub': 'Introduce este código en GitHub',
   'Waiting for you to approve Refract on github.com…': 'Esperando a que apruebes Refract en github.com…',
   'Copy code': 'Copiar código',
-  'Connect to push projects to your repositories, or create new ones.': 'Conéctala para enviar proyectos a tus repositorios o crear otros nuevos.',
+  'Connect to push projects to your repositories, or create new ones.':
+    'Conéctala para enviar proyectos a tus repositorios o crear otros nuevos.',
   'Connect GitHub': 'Conectar GitHub',
 } as Record<string, string>

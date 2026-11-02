@@ -64,6 +64,8 @@ jobs:
       - name: Web
         working-directory: web
         run: |
+          npx oxfmt --check .
+          npx oxlint src e2e
           npx tsc --noEmit
           node --test src/*.test.ts src/lib/*.test.ts
 

@@ -8,8 +8,25 @@ import { ShimmerText } from '@/components/ui/chatcn/shimmer-text'
 import { t, tn } from '@/lib/i18n'
 import { getPrefs } from '@/lib/prefs'
 
-type Candidate = { id: string; title: string; authors: string[]; year: number; venue: string; abstract: string; cited_by: number; url: string; reason?: string }
-export type Citation = { key: string; path: string; added: boolean; needs_setup: boolean; text?: string; placed: boolean }
+type Candidate = {
+  id: string
+  title: string
+  authors: string[]
+  year: number
+  venue: string
+  abstract: string
+  cited_by: number
+  url: string
+  reason?: string
+}
+export type Citation = {
+  key: string
+  path: string
+  added: boolean
+  needs_setup: boolean
+  text?: string
+  placed: boolean
+}
 // The editor selection the citation is for (null: insert at the cursor).
 export type CiteTarget = { path: string; from: number; to: number; text: string; before: string; after: string }
 
@@ -55,7 +72,10 @@ export default function CiteDialog({ projectId, open, target, suggest, onClose, 
   const findSupport = () =>
     target &&
     load('suggest', () =>
-      api<Candidate[]>(`/api/projects/${projectId}/papers/suggest`, { method: 'POST', body: { text: target.text, model: getPrefs().model } }),
+      api<Candidate[]>(`/api/projects/${projectId}/papers/suggest`, {
+        method: 'POST',
+        body: { text: target.text, model: getPrefs().model },
+      }),
     )
 
   function search(e: React.FormEvent) {
@@ -67,7 +87,10 @@ export default function CiteDialog({ projectId, open, target, suggest, onClose, 
     setCiting(c.id)
     try {
       const place = target ? { selection: target.text, before: target.before, after: target.after } : undefined
-      const res = await api<Citation>(`/api/projects/${projectId}/cite`, { method: 'POST', body: { id: c.id, model: getPrefs().model, place } })
+      const res = await api<Citation>(`/api/projects/${projectId}/cite`, {
+        method: 'POST',
+        body: { id: c.id, model: getPrefs().model, place },
+      })
       await onCited(res, target)
       onClose()
     } catch (err) {
@@ -85,8 +108,12 @@ export default function CiteDialog({ projectId, open, target, suggest, onClose, 
         </DialogTitle>
         <DialogDescription className="px-5 pt-1 text-sm">
           {target
-            ? t('Find a paper that supports the selected text, or paste a DOI, arXiv id or URL. The citation is placed in your selection for you to review.')
-            : t('Search published papers and arXiv, or paste a DOI, arXiv id or URL. \\cite is inserted at the cursor.')}
+            ? t(
+                'Find a paper that supports the selected text, or paste a DOI, arXiv id or URL. The citation is placed in your selection for you to review.',
+              )
+            : t(
+                'Search published papers and arXiv, or paste a DOI, arXiv id or URL. \\cite is inserted at the cursor.',
+              )}
         </DialogDescription>
 
         {target && (
@@ -122,18 +149,29 @@ export default function CiteDialog({ projectId, open, target, suggest, onClose, 
             </li>
           )}
           {results?.length === 0 && (
-            <li className="p-4 text-center text-sm text-muted-foreground">{t('No suitable papers found. Try a search with your own keywords.')}</li>
+            <li className="p-4 text-center text-sm text-muted-foreground">
+              {t('No suitable papers found. Try a search with your own keywords.')}
+            </li>
           )}
-          {!results && !busy && <li className="p-4 text-center text-sm text-muted-foreground">{t('Search by keywords, title, author or id.')}</li>}
+          {!results && !busy && (
+            <li className="p-4 text-center text-sm text-muted-foreground">
+              {t('Search by keywords, title, author or id.')}
+            </li>
+          )}
           {results?.map((c) => (
-            <li key={c.id} className="enter group flex gap-3 rounded-lg p-3 hover:bg-foreground/[0.03]">
+            <li key={c.id} className="group flex enter gap-3 rounded-lg p-3 hover:bg-foreground/[0.03]">
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium">{c.title}</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   {authorsOf(c.authors)} · {c.year}
                   {c.venue && <> · {c.venue}</>}
                   {c.cited_by > 0 && <> · {tn(c.cited_by, 'cited {n} time', 'cited {n} times')}</>} ·{' '}
-                  <a className="inline-flex items-center gap-0.5 hover:text-foreground" href={c.url} target="_blank" rel="noreferrer">
+                  <a
+                    className="inline-flex items-center gap-0.5 hover:text-foreground"
+                    href={c.url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
                     {c.id.replace(/^doi:/, 'DOI ').replace(/^arxiv:/, 'arXiv:')} <ExternalLink className="size-3" />
                   </a>
                 </p>
@@ -144,7 +182,13 @@ export default function CiteDialog({ projectId, open, target, suggest, onClose, 
                 )}
                 {c.abstract && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{c.abstract}</p>}
               </div>
-              <Button size="sm" variant="secondary" className="shrink-0 self-start" disabled={!!citing} onClick={() => cite(c)}>
+              <Button
+                size="sm"
+                variant="secondary"
+                className="shrink-0 self-start"
+                disabled={!!citing}
+                onClick={() => cite(c)}
+              >
                 {citing === c.id ? <Loader2 className="animate-spin" /> : <Quote />} {t('Cite')}
               </Button>
             </li>

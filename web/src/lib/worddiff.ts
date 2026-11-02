@@ -13,7 +13,11 @@ const MAX_CELLS = 2_000_000
 export function wordDiff(a: string, b: string): Op[] {
   const x = tokens(a)
   const y = tokens(b)
-  if (x.length * y.length > MAX_CELLS) return merge([{ op: 'del', text: a }, { op: 'ins', text: b }])
+  if (x.length * y.length > MAX_CELLS)
+    return merge([
+      { op: 'del', text: a },
+      { op: 'ins', text: b },
+    ])
   // lcs[i][j]: length of the LCS of x[i:] and y[j:].
   const w = y.length + 1
   const lcs = new Uint32Array((x.length + 1) * w)
@@ -29,7 +33,8 @@ export function wordDiff(a: string, b: string): Op[] {
     if (i < x.length && j < y.length && x[i] === y[j]) {
       ops.push({ op: 'eq', text: x[i++] })
       j++
-    } else if (j < y.length && (i === x.length || lcs[i * w + j + 1] >= lcs[(i + 1) * w + j])) ops.push({ op: 'ins', text: y[j++] })
+    } else if (j < y.length && (i === x.length || lcs[i * w + j + 1] >= lcs[(i + 1) * w + j]))
+      ops.push({ op: 'ins', text: y[j++] })
     else ops.push({ op: 'del', text: x[i++] })
   }
   return merge(absorbSpaces(merge(ops)))

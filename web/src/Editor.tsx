@@ -8,7 +8,17 @@ import { accept, proposalField, propose, reject } from '@/lib/proposal'
 import type { CiteTarget } from './CiteDialog'
 import QuickActions, { actions, type QuickHandle } from './QuickActions'
 import { useCommands } from '@/lib/commands'
-import { BookMarked, ClipboardPaste, Copy, FileSearch, MessageSquareText, Pencil, Play, Scissors, TextSelect } from 'lucide-react'
+import {
+  BookMarked,
+  ClipboardPaste,
+  Copy,
+  FileSearch,
+  MessageSquareText,
+  Pencil,
+  Play,
+  Scissors,
+  TextSelect,
+} from 'lucide-react'
 import { WithContextMenu, type MenuEntry } from '@/components/Menu'
 import { mod } from '@/lib/shortcuts'
 import { t } from '@/lib/i18n'
@@ -93,7 +103,16 @@ export default function Editor({
         run: () => quickRef.current?.run(a.id),
       })),
       ...(onCite
-        ? [{ id: 'sel:cite', group: 'Selection', label: t('Find a citation for it'), hint: t('selection'), icon: BookMarked, run: () => cite(true) }]
+        ? [
+            {
+              id: 'sel:cite',
+              group: 'Selection',
+              label: t('Find a citation for it'),
+              hint: t('selection'),
+              icon: BookMarked,
+              run: () => cite(true),
+            },
+          ]
         : []),
     ]
   })
@@ -157,7 +176,13 @@ export default function Editor({
       // Keep the map live, so tab switches and renames always see the latest state.
       if (states.has(current.current)) states.set(current.current, u.state)
       if (u.docChanged) cb.current.onChange(current.current, u.state.doc.toString())
-      if (u.selectionSet || u.focusChanged || u.geometryChanged || u.viewportChanged || u.startState.field(proposalField) !== u.state.field(proposalField))
+      if (
+        u.selectionSet ||
+        u.focusChanged ||
+        u.geometryChanged ||
+        u.viewportChanged ||
+        u.startState.field(proposalField) !== u.state.field(proposalField)
+      )
         bump()
       if (u.selectionSet || u.docChanged) {
         const { from, to, empty } = u.state.selection.main
@@ -215,7 +240,10 @@ export default function Editor({
     const v = view.current!
     if (!jump || jump.path !== path) return
     const line = v.state.doc.line(Math.min(Math.max(jump.line, 1), v.state.doc.lines))
-    v.dispatch({ selection: EditorSelection.cursor(line.from), effects: EditorView.scrollIntoView(line.from, { y: 'center' }) })
+    v.dispatch({
+      selection: EditorSelection.cursor(line.from),
+      effects: EditorView.scrollIntoView(line.from, { y: 'center' }),
+    })
     v.focus()
   }, [jump, path])
 
@@ -254,8 +282,19 @@ export default function Editor({
         disabled: sel.empty,
         onSelect: () => navigator.clipboard.writeText(text).then(() => edit('', 'delete.cut')),
       },
-      { label: t('Copy'), icon: Copy, shortcut: `${mod}C`, disabled: sel.empty, onSelect: () => navigator.clipboard.writeText(text) },
-      { label: t('Paste'), icon: ClipboardPaste, shortcut: `${mod}V`, onSelect: () => navigator.clipboard.readText().then((s) => edit(s, 'input.paste')) },
+      {
+        label: t('Copy'),
+        icon: Copy,
+        shortcut: `${mod}C`,
+        disabled: sel.empty,
+        onSelect: () => navigator.clipboard.writeText(text),
+      },
+      {
+        label: t('Paste'),
+        icon: ClipboardPaste,
+        shortcut: `${mod}V`,
+        onSelect: () => navigator.clipboard.readText().then((s) => edit(s, 'input.paste')),
+      },
       {
         label: t('Select all'),
         icon: TextSelect,
@@ -292,7 +331,15 @@ export default function Editor({
       <WithContextMenu items={menu} className="h-full select-text">
         <div className="h-full" ref={host} />
       </WithContextMenu>
-      {quick && mounted && <QuickActions view={mounted} path={path} dragging={dragging} handle={quickRef} onCite={onCite ? () => cite(true) : undefined} />}
+      {quick && mounted && (
+        <QuickActions
+          view={mounted}
+          path={path}
+          dragging={dragging}
+          handle={quickRef}
+          onCite={onCite ? () => cite(true) : undefined}
+        />
+      )}
     </div>
   )
 }
