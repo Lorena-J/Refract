@@ -3,7 +3,6 @@ import { Check, ChevronsUpDown, ExternalLink, LogOut, Monitor, Moon, Settings, S
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuCheckboxItem,
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -11,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { api, type ChatGPTStatus } from '@/api'
-import { openSettings, setPref, usePrefs } from '@/lib/prefs'
+import { openSettings } from '@/lib/prefs'
 import { setTheme, useTheme, type Theme } from '@/lib/theme'
 import { cn } from '@/lib/utils'
 import { t } from '@/lib/i18n'
@@ -36,7 +35,6 @@ export function useMe() {
 
 export default function AccountMenu({ status, compact }: { status: ChatGPTStatus | null; compact?: boolean }) {
   const { theme } = useTheme()
-  const prefs = usePrefs()
   const me = useMe()
   // With several users, the chip shows who is signed in to Refract; alone, the ChatGPT account.
   const email = me && me.email !== 'local' ? me.email : status?.status.signed_in ? status.status.email : undefined
@@ -67,19 +65,6 @@ export default function AccountMenu({ status, compact }: { status: ChatGPTStatus
         )}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" side="top" className="w-60">
-        <DropdownMenuCheckboxItem
-          className="word-count-toggle justify-between gap-3 pr-2"
-          checked={prefs.wordCount}
-          onCheckedChange={(checked) => setPref('wordCount', checked)}
-          onMouseDown={(e) => e.preventDefault()}
-          closeOnClick={false}
-        >
-          {t('Word count')}
-          <span className="word-count-switch" aria-hidden="true">
-            <span className="word-count-switch-thumb" />
-          </span>
-        </DropdownMenuCheckboxItem>
-        <DropdownMenuSeparator />
         <DropdownMenuGroup>
           <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">{t('Theme')}</DropdownMenuLabel>
           {themes.map((opt) => (

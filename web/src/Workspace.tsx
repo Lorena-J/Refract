@@ -51,6 +51,7 @@ import { Autosaver, type SaveStatus } from './autosave'
 import { Link, navigate, pageReady, useBeforeLeave } from '@/lib/router'
 import CompileStatus, { type CompileResult, type Problem } from './CompileStatus'
 import Editor from './Editor'
+import { moveLimits } from '@/lib/wordlimits'
 import FileTree from './FileTree'
 import PdfViewer, { type Highlight } from './PdfViewer'
 import AccountMenu from '@/components/AccountMenu'
@@ -517,6 +518,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
         const affected = tabs.filter((p) => under(p, from))
         await Promise.all(affected.map((p) => autosave.flush(p))) // save under the old name first
         await move(id, from, to)
+        moveLimits(id, from, to)
         for (const p of affected) {
           const q = moved(p, from, to)
           autosave.rename(p, q)
@@ -1266,7 +1268,7 @@ function Segmented({
 }
 
 function EmptyEditor() {
-  const rows = editorShortcuts.slice(0, 4)
+  const rows = editorShortcuts.slice(0, 5)
   return (
     <div className="flex h-full enter flex-col items-center justify-center gap-5 pb-16 text-center">
       <div>

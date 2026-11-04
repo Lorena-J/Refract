@@ -89,3 +89,30 @@ test('right-click positions recognize headings, section bodies and the innermost
   assert.equal(sectionAt(source, source.indexOf('Next'))?.name, 'Next')
   assert.equal(sectionAt(source, source.length), undefined)
 })
+
+test('literal examples and command definitions do not split section budgets or create abstracts', () => {
+  const examples = [
+    String.raw`\begin{verbatim}\section{Fake}\begin{abstract}Fake\end{abstract}\end{verbatim}`,
+    String.raw`\begin{Verbatim}\section{Fake}\end{Verbatim}`,
+    String.raw`\begin{verbatim*}\section{Fake}\end{verbatim*}`,
+    String.raw`\begin{lstlisting}\section{Fake}\end{lstlisting}`,
+    String.raw`\begin{minted}{latex}\section{Fake}\end{minted}`,
+    String.raw`\begin{comment}\section{Fake}\end{comment}`,
+    String.raw`\verb|\section{Fake}|`,
+    String.raw`\verb*|\section{Fake}|`,
+    String.raw`\newcommand{\example}[1][default]{\section{Fake} {#1}}`,
+    String.raw`\renewcommand\example{\section{Fake}}`,
+    String.raw`\def\example#1{\section{Fake} {#1}}`,
+  ]
+  for (const example of examples) {
+    const source = String.raw`\section{Real}Before ${example} After\section{Next}Last`
+    const sections = findSections(source)
+    assert.deepEqual(
+      sections.map((s) => s.name),
+      ['Real', 'Next'],
+      example,
+    )
+    assert.equal(source.slice(sections[0].from, sections[0].to), `Before ${example} After`)
+    assert.equal(source.slice(sections[1].from, sections[1].to), 'Last')
+  }
+})

@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } f
 import { Input } from '@/components/ui/input'
 import { t } from '@/lib/i18n'
 import { latexWords, selectedWords } from '@/lib/wordcount'
-import { setLimits, wordLimits, type WordLimit } from '@/lib/wordlimits'
+import { limitAt, setLimits, wordLimits, type WordLimit } from '@/lib/wordlimits'
 import { getPrefs, openSettings } from '@/lib/prefs'
 import { accept, proposal, propose, reject } from '@/lib/proposal'
 
@@ -27,18 +27,25 @@ type Props = {
 export default function WordCounter({ view, path, ai, enabled, onCount, target, onClose }: Props) {
   const source = view.state.doc.toString()
   const limits = view.state.field(wordLimits)
-  const { from, to, empty, head } = view.state.selection.main
+  const { from, to, empty } = view.state.selection.main
   const words = useMemo(() => latexWords(source, limits.rules), [source, limits.rules])
   const count = empty ? null : selectedWords(words, from, to).length
   const [max, setMax] = useState('100')
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState<{ before: number; after: number; text: string } | null>(null)
   const abort = useRef<AbortController | null>(null)
+  const ownedProposal = useRef<ReturnType<typeof proposal>>(null)
   const pending = proposal(view.state)
   const existing =
     target && limits.ranges.find((r) => (target.section ? r.section === target.section : r.id === target.id))
 
-  useEffect(() => () => abort.current?.abort(), [])
+  useEffect(
+    () => () => {
+      abort.current?.abort()
+      if (ownedProposal.current && proposal(view.state) === ownedProposal.current) reject(view)
+    },
+    [],
+  )
   useEffect(() => {
     onCount(enabled ? count : null)
     return () => onCount(null)
@@ -88,6 +95,7 @@ export default function WordCounter({ view, path, ai, enabled, onCount, target, 
       if (!response.text.trim() || after === 0 || after > range.max)
         throw new Error(t('The suggestion does not meet the word limit. Try again.'))
       propose(view, range.from, range.to, response.text)
+      ownedProposal.current = proposal(view.state)
       setResult({ before, after, text: response.text })
       view.focus()
     } catch (error) {
@@ -98,14 +106,15 @@ export default function WordCounter({ view, path, ai, enabled, onCount, target, 
   }
 
   const exceeded = limits.ranges.filter((r) => selectedWords(words, r.from, r.to).length > r.max)
-  const active = exceeded.find((r) => head >= r.from && head <= r.to) ?? exceeded[0]
+  const contextual = limitAt(source, limits.ranges, from, to)
+  const active = exceeded.find((r) => r.id === contextual?.id)
   const reviewing = result && pending?.text === result.text
 
   return (
     <>
       {(running || reviewing || (active && !pending)) && (
         <div
-          className="absolute top-3 right-3 z-30 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-2 rounded-xl border bg-popover p-2 text-xs shadow-lg"
+          className="absolute top-3 right-3 z-40 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-2 rounded-xl border bg-popover p-2 text-xs shadow-lg"
           role="region"
           aria-label={t('Word limit assistant')}
         >
@@ -156,18 +165,20 @@ export default function WordCounter({ view, path, ai, enabled, onCount, target, 
               </Button>
             </>
           ) : (
-            active && (
-              <Button
-                size="sm"
-                variant="ghost"
-                title={ai ? active.name : t('Connect AI in Settings to adapt text.')}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => (ai ? shorten(active) : openSettings('assistant'))}
-              >
-                <Sparkles />
-                {t('Suggest a shorter version')}
-              </Button>
-            )
+            <>
+              {active && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  title={ai ? active.name : t('Connect AI in Settings to adapt text.')}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => (ai ? shorten(active) : openSettings('assistant'))}
+                >
+                  <Sparkles />
+                  {t('Suggest a shorter version: {name}', { name: active.name })}
+                </Button>
+              )}
+            </>
           )}
         </div>
       )}

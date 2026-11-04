@@ -1,6 +1,8 @@
 export default {
   'Count words': 'Contar palabras',
+  'Include titles': 'Incluir los títulos',
   'Word count': 'Contador de palabras',
+  'Toggle word count': 'Activar o desactivar el contador de palabras',
   'Selected fragment': 'Fragmento seleccionado',
   'The suggestion does not meet the word limit. Try again.':
     'La propuesta no cumple el límite de palabras. Vuelve a intentarlo.',
@@ -15,7 +17,7 @@ export default {
   'Counter: {n} words': 'Contador: {n} palabras',
   'Word limit assistant': 'Asistente del límite de palabras',
   'Preparing a shorter version…': 'Preparando una versión más breve…',
-  'Suggest a shorter version': 'Proponer versión más breve',
+  'Suggest a shorter version: {name}': 'Proponer versión más breve: {name}',
   'Counter: {n} word': 'Contador: {n} palabra',
   'Account menu': 'Menú de la cuenta',
 }

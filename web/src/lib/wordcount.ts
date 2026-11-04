@@ -283,9 +283,56 @@ export function selectedWords(words: Word[], from: number, to: number) {
   return words.filter((w) => w.to > from && w.from < to)
 }
 
+// Mask literal examples and definitions without moving any source positions.
+function sectionSource(source: string): string {
+  const chars = source.split('')
+  const tokens = /%[^\n]*|\\(?:[a-zA-Z@]+\*?|[^])/g
+  const skipGroup = (start: number, open = '{', close = '}') => {
+    let i = start
+    while (/\s/.test(source[i] ?? '') && i < source.length) i++
+    if (source[i] !== open) return i
+    let depth = 1
+    for (i++; i < source.length && depth; i++) {
+      if (source[i] === '\\') i++
+      else if (source[i] === '%') {
+        while (i < source.length && source[i] !== '\n') i++
+      } else if (source[i] === open) depth++
+      else if (source[i] === close) depth--
+    }
+    return i
+  }
+  for (let m; (m = tokens.exec(source));) {
+    let end = tokens.lastIndex
+    const command = m[0].replace(/\*$/, '')
+    if (command === '\\begin') {
+      const env = source.slice(end).match(/^\s*\{(verbatim\*?|Verbatim\*?|lstlisting|minted|comment)\}/)
+      if (!env) continue
+      const close = `\\end{${env[1]}}`
+      const at = source.indexOf(close, end + env[0].length)
+      end = at < 0 ? source.length : at + close.length
+    } else if (command === '\\verb') {
+      const at = source.indexOf(source[end], end + 1)
+      end = at < 0 ? source.length : at + 1
+    } else if (/^\\(?:newcommand|renewcommand|providecommand|DeclareRobustCommand)$/.test(command)) {
+      end = skipGroup(end)
+      // Also accept the unbraced form: \newcommand\example[1]{...}.
+      const name = source.slice(end).match(/^\\[a-zA-Z@]+/)
+      if (name) end += name[0].length
+      end = skipGroup(end, '[', ']')
+      end = skipGroup(end, '[', ']')
+      end = skipGroup(end)
+    } else if (/^\\(?:def|gdef|edef|xdef)$/.test(command)) {
+      const at = source.indexOf('{', end)
+      end = at < 0 ? source.length : skipGroup(at)
+    } else if (!command.startsWith('%')) continue
+    chars.fill(' ', m.index, end)
+    tokens.lastIndex = end
+  }
+  return chars.join('')
+}
+
 export function findSections(source: string): Section[] {
-  // Mask comments while preserving offsets.
-  const clean = source.replace(/\\%|%[^\n]*/g, (m) => (m.startsWith('%') ? ' '.repeat(m.length) : m))
+  const clean = sectionSource(source)
   const result: Section[] = []
   let abstractIndex = 0
   for (const m of clean.matchAll(/\\begin\{abstract\}([\s\S]*?)\\end\{abstract\}/g)) {

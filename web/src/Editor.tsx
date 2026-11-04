@@ -23,10 +23,11 @@ import { WithContextMenu, type MenuEntry } from '@/components/Menu'
 import { mod } from '@/lib/shortcuts'
 import WordCounter, { type LimitTarget } from './WordCounter'
 import { sectionAt } from '@/lib/wordcount'
-import { wordLimits, excessWords, loadLimits, saveLimits, setLimits } from '@/lib/wordlimits'
+import { wordLimits, wordCountEnabled, excessWords, loadLimits, saveLimits, setLimits } from '@/lib/wordlimits'
 import { t } from '@/lib/i18n'
 
 const wrapping = new Compartment()
+const counter = new Compartment()
 const wrapExt = (on: boolean) => (on ? EditorView.lineWrapping : [])
 
 type Props = {
@@ -158,13 +159,14 @@ export default function Editor({
     )
   }
 
-  const { wrap } = usePrefs()
+  const { wrap, wordCountTitles } = usePrefs()
   const extensions = useRef([
     basicSetup,
     latex,
     proposalField,
     wordLimits,
     excessWords,
+    counter.of(wordCountEnabled.of(countEnabled)),
     wrapping.of(wrapExt(getPrefs().wrap)),
     // Highest precedence: basicSetup binds Mod-Enter to "insert blank line".
     Prec.highest(
@@ -269,6 +271,18 @@ export default function Editor({
   }, [wrap, path])
 
   useEffect(() => {
+    view.current!.dispatch({ effects: counter.reconfigure(wordCountEnabled.of(countEnabled)) })
+    setLimitTarget(null)
+  }, [countEnabled, path])
+
+  useEffect(() => {
+    const v = view.current!
+    const limits = v.state.field(wordLimits)
+    if (limits.rules.titles !== wordCountTitles)
+      v.dispatch({ effects: setLimits.of({ ...limits, rules: { ...limits.rules, titles: wordCountTitles } }) })
+  }, [wordCountTitles, path])
+
+  useEffect(() => {
     const v = view.current!
     if (!jump || jump.path !== path) return
     const line = v.state.doc.line(Math.min(Math.max(jump.line, 1), v.state.doc.lines))
@@ -347,8 +361,10 @@ export default function Editor({
         },
       },
       '-',
-      { label: t('Word limit…'), disabled: !target, onSelect: () => target && setLimitTarget(target) },
-      ...(!sel.empty && section
+      ...(countEnabled
+        ? [{ label: t('Word limit…'), disabled: !target, onSelect: () => target && setLimitTarget(target) }]
+        : []),
+      ...(countEnabled && !sel.empty && section
         ? [
             {
               label: t('Word limit for selection…'),
@@ -397,7 +413,7 @@ export default function Editor({
         <WithContextMenu items={menu} className="h-full select-text">
           <div className="h-full" ref={host} />
         </WithContextMenu>
-        {mounted && (
+        {mounted && countEnabled && (
           <WordCounter
             key={path}
             view={mounted}
