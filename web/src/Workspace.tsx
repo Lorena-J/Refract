@@ -1276,6 +1276,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                       onDownload={(p) => run(() => download(fileURL(id, p), p.split('/').pop()!))}
                       mainFile={project?.main_file}
                       readOnly={locked}
+                      unavailable={(path) => locked && !loaded.current.has(path)}
                     />
                   </div>
                 </ResizablePanel>

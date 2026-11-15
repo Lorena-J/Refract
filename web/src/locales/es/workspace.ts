@@ -250,6 +250,7 @@ export default {
   // Trashed project (T3b)
   'This project is in the trash. Restore it to keep working.':
     'Este proyecto está en la papelera. Restáuralo para seguir trabajando.',
+  'Restore the project to open this file.': 'Restaura el proyecto para abrir este archivo.',
   'Restore the project to use the assistant.': 'Restaura el proyecto para usar el asistente.',
   'Your unsaved edits are kept here and saved when you restore it. Leaving this page discards them.':
     'Tus cambios sin guardar se conservan aquí y se guardan al restaurarlo. Si sales de esta página, se pierden.',

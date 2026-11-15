@@ -63,6 +63,7 @@ type Props = {
   onSetMain: (path: string) => void
   onDownload: (path: string) => void
   mainFile?: string
+  unavailable?: (path: string) => boolean // a file that cannot be opened now (not loaded, project in the trash)
   readOnly?: boolean // a project in the trash: only opening files and copying paths
 }
 
@@ -91,7 +92,9 @@ export default function FileTree(p: Props) {
   const menu = (n: Node): MenuEntry[] =>
     p.readOnly
       ? [
-          ...(n.dir ? [] : [{ label: t('Open'), icon: FileText, onSelect: () => p.onOpen(n.path) }]),
+          ...(n.dir || p.unavailable?.(n.path)
+            ? []
+            : [{ label: t('Open'), icon: FileText, onSelect: () => p.onOpen(n.path) }]),
           { label: t('Copy path'), icon: Copy, onSelect: () => navigator.clipboard.writeText(n.path) },
         ]
       : editMenu(n)
@@ -118,6 +121,7 @@ export default function FileTree(p: Props) {
     nodes.map((n) => {
       const Icon = n.dir ? (open.has(n.path) ? FolderOpen : Folder) : fileIcon(n.name)
       const isOpen = open.has(n.path)
+      const off = !n.dir && !!p.unavailable?.(n.path)
       return (
         <li key={n.path}>
           <WithContextMenu items={() => menu(n)}>
@@ -128,6 +132,7 @@ export default function FileTree(p: Props) {
                   ? 'bg-foreground/[0.07] text-foreground'
                   : 'text-foreground/80 hover:bg-foreground/[0.04] hover:text-foreground',
                 dropTarget === n.path && 'ring-1 ring-ring',
+                off && 'opacity-50',
               )}
               style={{ paddingLeft: 6 + depth * 14 }}
               onDragOver={(e) => n.dir && over(e, n.path)}
@@ -137,7 +142,9 @@ export default function FileTree(p: Props) {
               <button
                 className="flex min-w-0 flex-1 items-center gap-1.5 self-stretch text-left outline-none focus-visible:underline"
                 onClick={() => (n.dir ? toggle(n.path) : p.onOpen(n.path))}
-                title={n.path}
+                aria-disabled={off || undefined}
+                aria-description={off ? t('Restore the project to open this file.') : undefined}
+                title={off ? `${n.path}\n${t('Restore the project to open this file.')}` : n.path}
               >
                 {n.dir ? (
                   <ChevronRight
