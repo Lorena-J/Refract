@@ -140,13 +140,6 @@ func (s *Service) WriteFile(ctx context.Context, id, p string, r io.Reader) erro
 			return err
 		}
 	}
-	var old int64 // what the file being replaced already counts for
-	if fi, err := root.Stat(p); err == nil {
-		if fi.IsDir() {
-			return fmt.Errorf("%w: %q is a folder", ErrBadPath, p)
-		}
-		old = fi.Size()
-	}
 	suffix := make([]byte, 6)
 	rand.Read(suffix)
 	tmp := path.Join(path.Dir(p), ".refract-tmp-"+hex.EncodeToString(suffix))
@@ -165,10 +158,21 @@ func (s *Service) WriteFile(ctx context.Context, id, p string, r io.Reader) erro
 	if n > MaxFileSize {
 		return fmt.Errorf("%w: file larger than %d MB", ErrTooLarge, MaxFileSize>>20)
 	}
-	if err := root.Rename(tmp, p); err != nil {
+	// Admission and publishing happen together under the owner's lock, so
+	// concurrent saves cannot each pass the check against the same total.
+	var old int64 // what the file being replaced already counts for
+	err = s.admitGrowth(ctx, proj, func() (int64, error) {
+		if fi, err := root.Stat(p); err == nil {
+			if fi.IsDir() {
+				return 0, fmt.Errorf("%w: %q is a folder", ErrBadPath, p)
+			}
+			old = fi.Size()
+		}
+		return n - old, nil // a replaced file adds only the difference
+	}, func() error { return root.Rename(tmp, p) })
+	if err != nil {
 		return err
 	}
-	s.grew(ctx, id, n-old) // a replaced file adds only the difference
 	return s.touch(ctx, id)
 }
 

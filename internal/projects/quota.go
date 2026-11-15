@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -43,8 +44,10 @@ func megabytes(n int64) string {
 
 func (e *OverLimit) Is(target error) bool { return target == ErrOverLimit }
 
-// A project's real content is its working tree and .git. .refract (build
-// output, caches, turn worktrees) is derived, and bounded elsewhere.
+// A project's real content is its working tree, .git and the assistant's turn
+// worktrees (.refract/worktrees: full copies that stay until accepted or
+// rejected). The rest of .refract (build output, caches, compile staging) is
+// derived and bounded elsewhere, and so are the transient accept-* worktrees.
 const derivedDir = ".refract"
 
 var (
@@ -118,7 +121,7 @@ func (s *Service) checkQuotaFor(ctx context.Context, id string) error {
 	return s.CheckStorage(ctx, p)
 }
 
-// dirSize adds up the regular files under dir, skipping .refract at its top.
+// dirSize adds up the regular files under dir, counting .refract only for its turn worktrees.
 func dirSize(dir string) (int64, error) {
 	var total int64
 	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
@@ -128,8 +131,21 @@ func dirSize(dir string) (int64, error) {
 			}
 			return err
 		}
-		if d.IsDir() && d.Name() == derivedDir && filepath.Dir(p) == filepath.Clean(dir) {
-			return filepath.SkipDir
+		if rel, rerr := filepath.Rel(dir, p); rerr == nil {
+			if parts := strings.Split(filepath.ToSlash(rel), "/"); parts[0] == derivedDir && len(parts) > 1 {
+				switch {
+				case parts[1] != "worktrees":
+					if d.IsDir() {
+						return filepath.SkipDir
+					}
+					return nil
+				case len(parts) > 2 && strings.HasPrefix(parts[2], "accept-"):
+					if d.IsDir() {
+						return filepath.SkipDir
+					}
+					return nil
+				}
+			}
 		}
 		if !d.Type().IsRegular() {
 			return nil
@@ -201,5 +217,28 @@ func (s *Service) MeasureAll(ctx context.Context) error {
 	for _, id := range ids {
 		s.measure(ctx, id)
 	}
+	return nil
+}
+
+// admitGrowth is the one admission for a save: under the owner's lock it
+// refuses when n more bytes would pass the storage limit, and otherwise runs
+// publish (which makes the bytes visible) and records n before the next
+// admission looks at the total. So parallel saves admit exactly as the same
+// saves one after another would: the one that crosses the line is the last.
+func (s *Service) admitGrowth(ctx context.Context, p *Project, n func() (int64, error), publish func() error) error {
+	defer lockUser(p.Owner)()
+	delta, err := n()
+	if err != nil {
+		return err
+	}
+	if delta > 0 { // a save that starts under the limit may end over it, as the plan says; one that starts at or over is refused
+		if err := s.checkQuota(ctx, p.Owner, false, 0); err != nil {
+			return err
+		}
+	}
+	if err := publish(); err != nil {
+		return err
+	}
+	s.grew(ctx, p.ID, delta)
 	return nil
 }

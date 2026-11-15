@@ -52,6 +52,7 @@ func (s *Service) StartTurn(ctx context.Context, id, turn string) (base, dir str
 // FinishTurn commits the worktree's changes on the turn's branch and lists
 // what changed relative to base.
 func (s *Service) FinishTurn(ctx context.Context, id, turn, base, message string) ([]Change, error) {
+	defer s.measure(ctx, id) // the turn's files and new objects count, failed or not
 	defer lockRepo(id)()
 	dir := s.worktreeDir(id, turn)
 	if _, err := git(ctx, dir, "add", "-A"); err != nil {

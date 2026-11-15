@@ -136,16 +136,58 @@ func TestQuotaCountsHistoryNotRefractDir(t *testing.T) {
 	if imported < 300<<10 {
 		t.Fatalf("size after import = %d", imported)
 	}
-	if _, _, err := s.StartTurn(ownerCtx, id, "t1"); err != nil {
+	_, dir, err := s.StartTurn(ownerCtx, id, "t1")
+	if err != nil {
 		t.Fatal(err)
 	}
-	imported = sizeOf(t, s, id) // the turn's git bookkeeping is history
+	imported = sizeOf(t, s, id) // includes the turn's worktree copy
+	if imported < 600<<10 {
+		t.Fatalf("size with a pending-review worktree = %d, want its copy counted", imported)
+	}
 	if err := os.WriteFile(filepath.Join(s.Path(id), ".refract", "cache.bin"), make([]byte, 1<<20), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	s.measure(ownerCtx, id)
 	if n := sizeOf(t, s, id); n != imported {
-		t.Fatalf("size with a turn worktree and cache in .refract = %d, want %d", n, imported)
+		t.Fatalf("size with a cache in .refract = %d, want %d", n, imported)
+	}
+	// Agent writes in the worktree are counted once the turn finishes.
+	if err := os.WriteFile(filepath.Join(dir, "agent.bin"), []byte(randomString(200<<10)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.FinishTurn(ownerCtx, id, "t1", "HEAD", "ai: work"); err != nil {
+		t.Fatal(err)
+	}
+	if n := sizeOf(t, s, id); n < imported+200<<10 {
+		t.Fatalf("size after the turn = %d, want at least %d", n, imported+200<<10)
+	}
+}
+
+func TestQuotaParallelSavesCannotOvershoot(t *testing.T) {
+	s := newService(t)
+	s.QuotaFor = fixed(Quota{MaxBytes: 1 << 20})
+	p, err := s.Create(ownerCtx, "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := sizeOf(t, s, p.ID)
+	const n = 8
+	var ok atomic.Int32
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := write(t, s, p.ID, fmt.Sprintf("f%d.txt", i), 700<<10); err == nil {
+				ok.Add(1)
+			} else if !errors.Is(err, ErrOverLimit) {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	if want := int32(2); ok.Load() != want {
+		t.Fatalf("%d saves succeeded under a 1 MiB quota from %d bytes, want %d (as one after another)", ok.Load(), base, want)
 	}
 }
 
