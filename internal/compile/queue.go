@@ -164,10 +164,11 @@ func (q *Queue) remove(w *waiter) {
 	q.forget(w.key)
 }
 
-// forget drops an account that has nothing waiting.
+// forget drops an account that is idle and has nothing waiting. A busy
+// account keeps its state: its turn must count when it queues again.
 func (q *Queue) forget(key string) {
 	a := q.accounts[key]
-	if a == nil || len(a.interactive) > 0 || len(a.assistant) > 0 {
+	if a == nil || q.busy[key] || len(a.interactive) > 0 || len(a.assistant) > 0 {
 		return
 	}
 	delete(q.accounts, key)
@@ -182,6 +183,7 @@ func (q *Queue) forget(key string) {
 func (q *Queue) releaseLocked(w *waiter) {
 	q.running--
 	delete(q.busy, w.key)
+	q.forget(w.key)
 	q.dispatch()
 }
 

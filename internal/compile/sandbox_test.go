@@ -266,7 +266,7 @@ func TestSandboxRealTectonic(t *testing.T) {
 	sandboxOrSkip(t)
 	bundle, cache := os.Getenv("REFRACT_TECTONIC_BUNDLE"), os.Getenv("TECTONIC_CACHE_DIR")
 	if fi, err := os.Stat(bundle); err != nil || !fi.IsDir() || cache == "" {
-		t.Skip("needs REFRACT_TECTONIC_BUNDLE (a local folder) and TECTONIC_CACHE_DIR with the format file")
+		t.Skip("needs REFRACT_TECTONIC_BUNDLE set to a local folder (not a bundle URL, as CI uses) and TECTONIC_CACHE_DIR holding the format file: run packaging/server/prepare-bundle.sh")
 	}
 	if _, err := exec.LookPath("tectonic"); err != nil {
 		t.Skip("tectonic not installed")

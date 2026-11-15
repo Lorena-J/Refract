@@ -353,3 +353,72 @@ func TestQueueOwnBusy(t *testing.T) {
 	g.release <- struct{}{}
 	<-hold
 }
+
+// An account keeps its place in the rotation while its compile runs, even if
+// nothing of it waits: arriving then must not jump ahead of the others.
+func TestQueueBusyAccountKeepsItsTurn(t *testing.T) {
+	g := newGate()
+	q := &Queue{Next: g, Workers: 1, MaxWait: 10 * time.Second}
+	hold := start(q, as("hold"), "hold")
+	waitStarted(t, g)
+	outs := []<-chan outcome{hold}
+	for _, n := range []struct{ user, dir string }{{"b", "b1"}, {"a", "a1"}, {"b", "b2"}} {
+		outs = append(outs, start(q, as(n.user), n.dir))
+		settle()
+	}
+	g.release <- struct{}{} // hold finishes: b1 runs
+	if d := waitStarted(t, g); d != "b1" {
+		t.Fatalf("started %s; want b1", d)
+	}
+	g.release <- struct{}{} // a1 runs, with nothing of a waiting
+	if d := waitStarted(t, g); d != "a1" {
+		t.Fatalf("started %s; want a1", d)
+	}
+	outs = append(outs, start(q, as("a"), "a2")) // arrives during a1's compile
+	settle()
+	g.release <- struct{}{}
+	if d := waitStarted(t, g); d != "b2" {
+		t.Fatalf("started %s; want b2 before a2", d)
+	}
+	g.release <- struct{}{}
+	if d := waitStarted(t, g); d != "a2" {
+		t.Fatalf("started %s; want a2", d)
+	}
+	g.release <- struct{}{}
+	for _, o := range outs {
+		<-o
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if len(q.accounts) != 0 || len(q.order) != 0 || len(q.busy) != 0 {
+		t.Errorf("state left over: %d accounts, %d in order, %d busy", len(q.accounts), len(q.order), len(q.busy))
+	}
+}
+
+// An account that always has a compile arriving as its last one ends can't
+// starve another waiting account.
+func TestQueueNoStarvation(t *testing.T) {
+	g := newGate()
+	q := &Queue{Next: g, Workers: 1, MaxWait: 10 * time.Second}
+	first := start(q, as("a"), "a0")
+	waitStarted(t, g)
+	b := start(q, as("b"), "b")
+	settle()
+	outs := []<-chan outcome{first}
+	for i := range 3 {
+		outs = append(outs, start(q, as("a"), "a"+string(rune('1'+i))))
+		settle()
+		g.release <- struct{}{} // the running compile finishes
+		d := waitStarted(t, g)
+		if d == "b" {
+			g.release <- struct{}{}
+			<-b
+			g.release <- struct{}{}
+			for _, o := range outs {
+				<-o
+			}
+			return
+		}
+	}
+	t.Fatal("b never ran while a kept queueing")
+}

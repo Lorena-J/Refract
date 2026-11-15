@@ -2,7 +2,9 @@
 # Prepares the TeX bundle and the format file for the compile sandbox
 # (REFRACT_SANDBOX=bwrap): the sandbox has no network, so the whole bundle
 # must be on disk, and the cache must hold the format file before the first
-# compile. Run it once per server, and again when Tectonic or the bundle changes.
+# compile. Run it once per server. To prepare again (Tectonic or the bundle
+# changed), remove both folders first: chmod -R u+w <folder>/bundle <folder>/cache;
+# rm -rf <folder>/bundle <folder>/cache. It refuses to run if either exists.
 #
 # Usage: prepare-bundle.sh <folder>     (needs curl, tar and tectonic on the PATH)
 #   <folder>/bundle   REFRACT_TECTONIC_BUNDLE=<folder>/bundle  (about 2.9 GB)
@@ -18,7 +20,9 @@ BUNDLE_DIGEST=6ffe055852f8faf66c0acbe1a7fb27f87b869a90bad1204f3bf4d9683f597c7c
 
 [ $# -eq 1 ] || { echo "usage: $0 <folder>" >&2; exit 1; }
 DEST=$(mkdir -p "$1" && cd "$1" && pwd)
-[ ! -e "$DEST/bundle" ] || { echo "$DEST/bundle exists: remove it first to prepare again" >&2; exit 1; }
+for d in bundle cache; do
+  [ ! -e "$DEST/$d" ] || { echo "$DEST/$d exists: to prepare again, remove both (chmod -R u+w $DEST/bundle $DEST/cache; rm -rf $DEST/bundle $DEST/cache) and rerun" >&2; exit 1; }
+done
 command -v tectonic >/dev/null || { echo "tectonic is not on the PATH" >&2; exit 1; }
 WORK=$(mktemp -d "$DEST/.work.XXXXXX")
 trap 'chmod -R u+w "$WORK" 2>/dev/null; rm -rf "$WORK"' EXIT
