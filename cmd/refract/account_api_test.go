@@ -635,3 +635,20 @@ func TestOIDCStartClearsThenCookie(t *testing.T) {
 		}
 	}
 }
+
+// Redeeming reset links is limited per network address.
+func TestResetEndpointIsLimited(t *testing.T) {
+	e := newAccountEnv(t, envOpts{})
+	b := e.browser()
+	var last answer
+	for i := 0; i < 25; i++ {
+		last = b.post("/api/auth/reset", map[string]string{"token": "made-up", "password": "new password"})
+		if last.Status == 429 {
+			break
+		}
+		if last.Status != 400 {
+			t.Fatalf("#%d: status %d", i+1, last.Status)
+		}
+	}
+	b.expect(last, 429, "too_many_attempts")
+}

@@ -293,3 +293,22 @@ func TestOutbox(t *testing.T) {
 		t.Errorf("sent %d, want %d or %d", n, queueSize, queueSize+1)
 	}
 }
+
+// A job and the message it makes are one unit: draining waits for both.
+func TestOutboxDrainWaitsForJobsDelivery(t *testing.T) {
+	fake := &Fake{}
+	o := NewOutbox(fake)
+	started := make(chan struct{})
+	o.Run(func(ctx context.Context) {
+		close(started)
+		time.Sleep(100 * time.Millisecond) // the account work
+		o.Deliver(ctx, Message{To: "a@example.com", Subject: "s", Body: "b"})
+	})
+	<-started
+	if !o.Drain(5 * time.Second) {
+		t.Fatal("Drain timed out")
+	}
+	if n := len(fake.Sent()); n != 1 {
+		t.Errorf("delivered %d messages after Drain, want 1", n)
+	}
+}

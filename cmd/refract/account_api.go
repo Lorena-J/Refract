@@ -69,17 +69,20 @@ func (a *loginAPI) later(r *http.Request, job func(ctx context.Context, lang str
 	a.mail.Run(func(ctx context.Context) { job(ctx, lang) })
 }
 
-// send composes the email for a link and queues it. lang is the interface
-// language of the request, for an account with none of its own.
-func (a *loginAPI) send(lang string, l users.Link) {
+// send composes the email for a link and delivers it from inside a job on the
+// outbox's worker (so draining waits for it). lang is the interface language
+// of the request, for an account with none of its own.
+func (a *loginAPI) send(ctx context.Context, lang string, l users.Link) {
 	kind, path := mail.Verify, "/verify#token="
 	if l.Purpose == users.Reset {
 		kind, path = mail.Reset, "/reset#token="
 	}
-	a.compose(lang, kind, l.To, mail.Data{Link: a.public + path + l.Token, SignUp: l.SignUp})
+	if m, ok := a.compose(lang, kind, l.To, mail.Data{Link: a.public + path + l.Token, SignUp: l.SignUp}); ok {
+		a.mail.Deliver(ctx, m)
+	}
 }
 
-func (a *loginAPI) compose(lang string, kind mail.Kind, to users.Account, d mail.Data) {
+func (a *loginAPI) compose(lang string, kind mail.Kind, to users.Account, d mail.Data) (mail.Message, bool) {
 	d.Email = to.Email
 	if u, err := url.Parse(a.public); err == nil {
 		d.Site = u.Host
@@ -87,9 +90,9 @@ func (a *loginAPI) compose(lang string, kind mail.Kind, to users.Account, d mail
 	m, err := mail.Compose(kind, cmp.Or(to.Lang, lang, "en"), to.Email, d)
 	if err != nil {
 		slog.Error("composing an email", "kind", kind, "err", err)
-		return
+		return mail.Message{}, false
 	}
-	a.mail.Send(m)
+	return m, true
 }
 
 func (a *loginAPI) signUp(w http.ResponseWriter, r *http.Request) {
@@ -114,7 +117,7 @@ func (a *loginAPI) signUp(w http.ResponseWriter, r *http.Request) {
 				slog.Error("sign-up", "err", err)
 				return
 			}
-			a.send(lang, l)
+			a.send(ctx, lang, l)
 		})
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -137,7 +140,7 @@ func (a *loginAPI) forgot(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				slog.Error("reset request", "err", err)
 			} else if ok {
-				a.send(lang, l)
+				a.send(ctx, lang, l)
 			}
 		})
 	}
@@ -147,6 +150,14 @@ func (a *loginAPI) forgot(w http.ResponseWriter, r *http.Request) {
 func (a *loginAPI) resetPassword(w http.ResponseWriter, r *http.Request) {
 	var in struct{ Token, Password string }
 	if !decode(w, r, &in) {
+		return
+	}
+	if err := a.users.AllowReset(r.Context(), users.ClientIP(r)); err != nil {
+		if errors.Is(err, users.ErrTooManyResets) {
+			kindError(w, http.StatusTooManyRequests, "too_many_attempts", err)
+		} else {
+			httpError(w, err, http.StatusInternalServerError)
+		}
 		return
 	}
 	u, err := a.users.ResetPassword(r.Context(), in.Token, in.Password)
@@ -245,7 +256,7 @@ func (a *loginAPI) resendVerification(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				slog.Error("resending a verification link", "err", err)
 			} else if ok {
-				a.send(lang, l)
+				a.send(ctx, lang, l)
 			}
 		})
 	}
@@ -303,7 +314,9 @@ func (a *loginAPI) deleteAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if a.mailReady() {
-		a.compose(users.RequestLang(r), mail.Deleted, acct, mail.Data{})
+		if m, ok := a.compose(users.RequestLang(r), mail.Deleted, acct, mail.Data{}); ok {
+			a.mail.Send(m)
+		}
 	}
 	users.ClearSessionCookie(w, r)
 	w.WriteHeader(http.StatusNoContent)

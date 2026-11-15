@@ -3,6 +3,9 @@ package users
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -339,5 +342,59 @@ func TestNewLinkKeepsEarlierOnes(t *testing.T) {
 	}
 	if _, ok, _ := s.ResendVerification(ctx, u.ID); ok {
 		t.Error("verified account was sent a verify link")
+	}
+}
+
+func TestAllowMailConcurrent(t *testing.T) {
+	ctx := context.Background()
+	admitted := func(s *Service, email func(i int) string, ip func(i int) string) (n int64) {
+		var wg sync.WaitGroup
+		for i := 0; i < 80; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if send, err := s.AllowMail(ctx, email(i), ip(i)); err == nil && send {
+					atomic.AddInt64(&n, 1)
+				}
+			}()
+		}
+		wg.Wait()
+		return n
+	}
+	s := newService(t)
+	if n := admitted(s, func(int) string { return "ana@example.com" }, func(i int) string { return fmt.Sprint("10.0.0.", i) }); n != maxMailsPerEmail {
+		t.Errorf("%d admitted for one address, want %d", n, maxMailsPerEmail)
+	}
+	s = newService(t)
+	if n := admitted(s, func(i int) string { return fmt.Sprint("u", i, "@example.com") }, func(int) string { return "10.0.0.1" }); n != maxMailsPerIP {
+		t.Errorf("%d admitted for one network address, want %d", n, maxMailsPerIP)
+	}
+}
+
+func TestAllowReset(t *testing.T) {
+	s, ctx := newService(t), context.Background()
+	for i := 0; i < maxResetsPerIP; i++ {
+		if err := s.AllowReset(ctx, "10.0.0.1"); err != nil {
+			t.Fatalf("#%d: %v", i+1, err)
+		}
+	}
+	if err := s.AllowReset(ctx, "10.0.0.1"); !errors.Is(err, ErrTooManyResets) {
+		t.Errorf("past the limit: %v", err)
+	}
+	if err := s.AllowReset(ctx, "10.0.0.2"); err != nil {
+		t.Errorf("another address: %v", err)
+	}
+}
+
+// A reset with a token that isn't valid costs no password hashing.
+func TestResetWithBadTokenDoesNotHash(t *testing.T) {
+	s, ctx := newService(t), context.Background()
+	s.SetPassword(ctx, "ana@example.com", "old password")
+	before := hashRuns.Load()
+	if _, err := s.ResetPassword(ctx, "made-up", "new password"); !errors.Is(err, ErrBadToken) {
+		t.Fatalf("err = %v", err)
+	}
+	if n := hashRuns.Load() - before; n != 0 {
+		t.Errorf("%d hashes for an invalid token", n)
 	}
 }

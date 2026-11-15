@@ -14,9 +14,11 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ponytojas/Refract/internal/auth"
@@ -43,6 +45,7 @@ const (
 
 	maxMailsPerEmail = 3  // emails asked for to one address per window
 	maxMailsPerIP    = 20 // and from one network address
+	maxResetsPerIP   = 20 // password resets tried per window from one network address
 )
 
 var (
@@ -54,7 +57,18 @@ var (
 // that sign people in: the real count makes each hash take about 0.3 s.
 func LowerHashCostForTests() { pbkdf2Iter = 1000 }
 
+// hashSlots bounds how many password hashes run at once, server-wide, so a
+// flood of sign-ups, resets or password changes can't take every CPU.
+var hashSlots = make(chan struct{}, max(1, runtime.NumCPU()))
+
+// hashRuns counts hashes made, for tests that check no work is done for a
+// request that is refused first.
+var hashRuns atomic.Int64
+
 func hashPassword(pw string) (string, error) {
+	hashSlots <- struct{}{}
+	defer func() { <-hashSlots }()
+	hashRuns.Add(1)
 	salt := make([]byte, 16)
 	rand.Read(salt)
 	k, err := pbkdf2.Key(sha256.New, pw, salt, pbkdf2Iter, 32)
@@ -66,6 +80,8 @@ func hashPassword(pw string) (string, error) {
 }
 
 func checkPassword(stored, pw string) bool {
+	hashSlots <- struct{}{}
+	defer func() { <-hashSlots }()
 	parts := strings.Split(stored, "$")
 	if len(parts) != 4 || parts[0] != "pbkdf2-sha256" {
 		return false
@@ -166,7 +182,7 @@ func (s *Service) Login(ctx context.Context, email, pw, ip string) (auth.User, e
 }
 
 // limits: failures allowed per window, by kind of key.
-var limits = map[string]int{"email": maxFailures, "ip": maxFailuresPerIP, "mail": maxMailsPerEmail, "mailip": maxMailsPerIP}
+var limits = map[string]int{"email": maxFailures, "ip": maxFailuresPerIP, "mail": maxMailsPerEmail, "mailip": maxMailsPerIP, "reset": maxResetsPerIP}
 
 // ErrTooManyMails is AllowMail's refusal.
 var ErrTooManyMails = errors.New("too many emails requested from this network address: try again in a few minutes")
@@ -178,6 +194,10 @@ var ErrTooManyMails = errors.New("too many emails requested from this network ad
 // whether the address has an account nor tells whoever is flooding it. It runs
 // before any account lookup.
 func (s *Service) AllowMail(ctx context.Context, email, ip string) (send bool, err error) {
+	// Check and count are one step: concurrent requests can't all pass a
+	// check made before any of them counted.
+	limitMu.Lock()
+	defer limitMu.Unlock()
 	var keys []string
 	if ip != "" {
 		keys = append(keys, "mailip:"+ip)
@@ -194,6 +214,29 @@ func (s *Service) AllowMail(ctx context.Context, email, ip string) (send bool, e
 		keys = append(keys, mailKey)
 	}
 	return ok, s.count(ctx, keys)
+}
+
+// limitMu makes "check the limit, then count" one step for the limits that
+// admit work (emails, resets). Counters live in the database, but this
+// process is the only one that adds to them.
+var limitMu sync.Mutex
+
+// ErrTooManyResets is AllowReset's refusal.
+var ErrTooManyResets = errors.New("too many attempts from this network address: try again in a few minutes")
+
+// AllowReset counts one attempt to redeem a reset link from ip, refusing with
+// ErrTooManyResets past the limit. An empty ip is not limited.
+func (s *Service) AllowReset(ctx context.Context, ip string) error {
+	if ip == "" {
+		return nil
+	}
+	limitMu.Lock()
+	defer limitMu.Unlock()
+	keys := []string{"reset:" + ip}
+	if ok, err := s.allowAttempt(ctx, keys); err != nil || !ok {
+		return cmp.Or(err, ErrTooManyResets)
+	}
+	return s.count(ctx, keys)
 }
 
 func (s *Service) allowAttempt(ctx context.Context, keys []string) (bool, error) {

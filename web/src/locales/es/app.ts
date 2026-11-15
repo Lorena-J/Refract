@@ -279,11 +279,11 @@ export default {
   'Create an account': 'Crear una cuenta',
   'Your account and everything in it were deleted.': 'Tu cuenta y todo lo que contenía se han eliminado.',
   'Check your email': 'Revisa tu correo',
-  "If it doesn't arrive in a few minutes, check your spam folder.":
-    'Si no llega en unos minutos, mira en la carpeta de spam.',
+  "If you don't receive it, check your spam folder, wait a few minutes and try again.":
+    'Si no lo recibes, mira en la carpeta de spam, espera unos minutos y vuelve a intentarlo.',
   'Back to sign in': 'Volver a iniciar sesión',
-  'We sent a message to {email}. Open the link in it to continue.':
-    'Enviamos un mensaje a {email}. Abre el enlace que contiene para continuar.',
+  "If {email} can be used, we've sent an email. Open the link in it to continue.":
+    'Si {email} se puede usar, te hemos enviado un correo. Abre el enlace que contiene para continuar.',
   'Create your account': 'Crea tu cuenta',
   '8 or more characters': '8 o más caracteres',
   'Language for emails': 'Idioma de los correos',
@@ -291,8 +291,8 @@ export default {
   'Already have an account?': '¿Ya tienes una cuenta?',
   'Reset your password': 'Restablece tu contraseña',
   'Send reset link': 'Enviar enlace de restablecimiento',
-  'If {email} has an account, we sent it a link to choose a new password. The link works for 1 hour.':
-    'Si {email} tiene una cuenta, le enviamos un enlace para elegir una contraseña nueva. El enlace funciona durante 1 hora.',
+  "If an account exists for {email}, we've sent an email with a link to choose a new password. The link works for 1 hour.":
+    'Si existe una cuenta para {email}, hemos enviado un correo con un enlace para elegir una contraseña nueva. El enlace funciona durante 1 hora.',
   'Confirm your email': 'Confirma tu correo',
   'Confirm my email': 'Confirmar mi correo',
   'Enter your password to confirm your email and sign in.':
@@ -302,8 +302,8 @@ export default {
   'Sign in and send a new link from Settings → Account.': 'Inicia sesión y pide un enlace nuevo en Ajustes → Cuenta.',
   'Choose a new password': 'Elige una contraseña nueva',
   'Save and sign in': 'Guardar e iniciar sesión',
-  'Confirm your email address to create or import projects. We sent a link to {email}.':
-    'Confirma tu correo electrónico para crear o importar proyectos. Enviamos un enlace a {email}.',
+  'Confirm your email address to create or import projects. Use the link sent to {email}, or send a new one.':
+    'Confirma tu correo electrónico para crear o importar proyectos. Usa el enlace enviado a {email}, o pide uno nuevo.',
   'Send it again': 'Enviarlo de nuevo',
   'Sent. The link works for 24 hours.': 'Enviado. El enlace funciona durante 24 horas.',
   Confirmed: 'Confirmado',

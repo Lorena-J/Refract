@@ -13,10 +13,13 @@ export default function VerifyEmailNotice() {
       className="mx-5 mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm"
     >
       <MailWarning className="size-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
-      <span className="mr-auto">
-        {t('Confirm your email address to create or import projects. We sent a link to {email}.', {
-          email: account.email,
-        })}
+      <span className="mr-auto min-w-0 [overflow-wrap:anywhere] break-words">
+        {t(
+          'Confirm your email address to create or import projects. Use the link sent to {email}, or send a new one.',
+          {
+            email: account.email,
+          },
+        )}
       </span>
       {account.mail && (
         <Button type="button" size="sm" variant="outline" disabled={sending} onClick={resend}>

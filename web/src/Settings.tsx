@@ -347,7 +347,9 @@ function AccountPane() {
           description={account?.email_verified === false ? t('Not confirmed') : t('Confirmed')}
         >
           <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">{me?.email}</span>
+            <span className="min-w-0 text-sm [overflow-wrap:anywhere] break-words text-muted-foreground">
+              {me?.email}
+            </span>
             {account && !account.email_verified && account.mail && (
               <Button type="button" size="sm" variant="outline" disabled={sending} onClick={() => resend()}>
                 {sending && <Loader2 className="animate-spin" />} {t('Send the link again')}
@@ -480,7 +482,7 @@ function DeleteGroup({
           <form onSubmit={remove} className="grid gap-4">
             <AlertDialogHeader>
               <AlertDialogTitle>{t('Delete your account?')}</AlertDialogTitle>
-              <AlertDialogDescription>
+              <AlertDialogDescription className="[overflow-wrap:anywhere] break-words">
                 {tn(
                   account.projects,
                   "This deletes {email} and its {n} project for good. It can't be undone.",

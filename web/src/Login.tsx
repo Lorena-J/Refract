@@ -199,9 +199,9 @@ function CheckEmail({ message }: { message: string }) {
   return (
     <Screen title={t('Check your email')}>
       <div className={cardClass} aria-live="polite">
-        <p className="text-sm">{message}</p>
+        <p className="text-sm [overflow-wrap:anywhere] break-words">{message}</p>
         <p className="text-sm text-muted-foreground">
-          {t("If it doesn't arrive in a few minutes, check your spam folder.")}
+          {t("If you don't receive it, check your spam folder, wait a few minutes and try again.")}
         </p>
         <Link to="/" className={linkClass}>
           {t('Back to sign in')}
@@ -218,7 +218,11 @@ function SignUp() {
   const [sent, setSent] = useState(false)
   const { busy, error, run } = useAction()
   if (sent)
-    return <CheckEmail message={t('We sent a message to {email}. Open the link in it to continue.', { email })} />
+    return (
+      <CheckEmail
+        message={t("If {email} can be used, we've sent an email. Open the link in it to continue.", { email })}
+      />
+    )
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -292,7 +296,7 @@ function Forgot() {
     return (
       <CheckEmail
         message={t(
-          'If {email} has an account, we sent it a link to choose a new password. The link works for 1 hour.',
+          "If an account exists for {email}, we've sent an email with a link to choose a new password. The link works for 1 hour.",
           {
             email,
           },
@@ -345,7 +349,7 @@ function Done({ title, message }: { title: string; message: string }) {
   return (
     <Screen title={title}>
       <div className={cardClass} aria-live="polite">
-        <p className="text-sm">{message}</p>
+        <p className="text-sm [overflow-wrap:anywhere] break-words">{message}</p>
         <Button className="w-full" onClick={() => reloadTo('/')}>
           {t('Open Refract')}
         </Button>

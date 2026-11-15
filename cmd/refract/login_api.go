@@ -180,11 +180,14 @@ func (a *loginAPI) oidcCallback(w http.ResponseWriter, r *http.Request) {
 // provider's claim being false never gets here, oidc.Finish refuses it.
 //
 // Signing in by address alone is only safe when the account can't be someone
-// else's. An account Refract has verified (made by the operator, by a provider
-// or confirmed by its owner) can't be a stranger's, so a provider that doesn't
-// send the claim (Microsoft Entra) may sign in to it. An account never
-// confirmed started as a sign-up: it needs the provider's word, and then the
-// provider takes it over, wiping what the sign-up attached (ConfirmByProvider).
+// else's. An account with a password may have been made by anyone who knew the
+// address, so it needs the provider's word (email_verified true): a provider
+// that omits the claim can't sign in to it (identities bound to issuer and
+// subject, hardening backlog item 1, would lift that). An account without a
+// password, made by the operator or a provider, may sign in without the claim.
+// An account never confirmed started as a sign-up: the provider's word is
+// required, and then the provider takes it over, wiping what the sign-up
+// attached (ConfirmByProvider).
 func (a *loginAPI) admitOIDC(ctx context.Context, email string, verified bool) (u auth.User, refusal string, err error) {
 	acct, err := a.users.Lookup(ctx, email)
 	switch {
@@ -196,6 +199,9 @@ func (a *loginAPI) admitOIDC(ctx context.Context, email string, verified bool) (
 		return u, "", err
 	case err != nil:
 		return auth.User{}, "", err
+	}
+	if acct.HasPassword && !verified {
+		return auth.User{}, "unverified_email", nil
 	}
 	if !acct.Verified {
 		if !verified {

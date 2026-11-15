@@ -38,11 +38,16 @@ func (o *Outbox) run() {
 // Send queues a message and never blocks: when the queue is full or the outbox
 // is closed, the message is dropped with a warning.
 func (o *Outbox) Send(m Message) {
-	o.Run(func(ctx context.Context) {
-		if err := o.sender.Send(ctx, m); err != nil {
-			slog.Warn("email not sent", "subject", m.Subject, "err", err)
-		}
-	})
+	o.Run(func(ctx context.Context) { o.Deliver(ctx, m) })
+}
+
+// Deliver sends a message now, with the worker's sender, logging a failure.
+// Jobs given to Run use it to send what they made, so draining waits for the
+// work and its message together instead of the job queueing a second one.
+func (o *Outbox) Deliver(ctx context.Context, m Message) {
+	if err := o.sender.Send(ctx, m); err != nil {
+		slog.Warn("email not sent", "subject", m.Subject, "err", err)
+	}
 }
 
 // Run queues a job for the worker, in order with the messages, and never

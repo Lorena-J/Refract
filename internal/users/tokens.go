@@ -188,11 +188,15 @@ func (s *Service) link(ctx context.Context, a Account, p Purpose) (Link, bool, e
 	return Link{To: a, Purpose: p, Token: tok}, true, tx.Commit()
 }
 
-// ResetPassword validates pw, hashes it, then in one transaction: redeems the
-// token, sets the password, marks the account verified, ends every session and
+// ResetPassword validates pw and the token (without using it), hashes pw, then
+// in one transaction: redeems the token (checking again that it is unused), sets the password, marks the account verified, ends every session and
 // deletes the account's remaining links.
 func (s *Service) ResetPassword(ctx context.Context, token, pw string) (auth.User, error) {
 	if err := validPassword(pw); err != nil {
+		return auth.User{}, err
+	}
+	// A cheap look at the token first: a made-up one costs no hashing.
+	if _, err := s.tokenAccount(ctx, token, Reset); err != nil {
 		return auth.User{}, err
 	}
 	h, err := hashPassword(pw)
