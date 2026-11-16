@@ -270,12 +270,12 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
   }
   const autosave = saver.current
   // Leaving for another page: everything typed is on the server first.
-  // Locked, nothing can be saved: leaving would drop what is still pending, so ask first.
+  // What is still unsaved after trying would be dropped, so ask first: the
+  // project is locked, or this very save found it trashed or failed.
   useBeforeLeave(
     useCallback(async () => {
-      if (goneRef.current && autosave.unsaved().length > 0)
-        return window.confirm(t('Leave this page? Your unsaved text will be lost.'))
-      await autosave.flushAll()
+      if (!goneRef.current) await autosave.flushAll()
+      if (autosave.unsaved().length > 0) return window.confirm(t('Leave this page? Your unsaved text will be lost.'))
     }, [autosave]),
   )
 

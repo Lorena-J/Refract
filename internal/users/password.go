@@ -155,30 +155,63 @@ func validPassword(pw string) error {
 // counts live in the database, so a restart doesn't reset them and
 // `refract users unlock` (another process) can.
 func (s *Service) Login(ctx context.Context, email, pw, ip string) (auth.User, error) {
+	u, _, err := s.login(ctx, email, pw, ip)
+	return u, err
+}
+
+// SignIn is Login followed by a new session, whose token it returns. The
+// session is only created if the password that was checked is still the
+// account's: checking takes a while, and meanwhile the address's real owner
+// may have taken over an unverified account (ConfirmByProvider, a reset) or
+// the password may have changed. Then it is ErrBadLogin.
+func (s *Service) SignIn(ctx context.Context, email, pw, ip string) (auth.User, string, error) {
+	u, stored, err := s.login(ctx, email, pw, ip)
+	if err != nil {
+		return auth.User{}, "", err
+	}
+	if testHookPasswordChecked != nil {
+		testHookPasswordChecked(u.ID)
+	}
+	token, ok, err := s.newSession(ctx, u.ID, stored)
+	if err != nil {
+		return auth.User{}, "", err
+	}
+	if !ok {
+		return auth.User{}, "", ErrBadLogin
+	}
+	return u, token, nil
+}
+
+// testHookPasswordChecked, when set, runs in SignIn between the password check
+// and the session: tests use it to change the account in that window.
+var testHookPasswordChecked func(userID string)
+
+// login is Login, also returning the stored hash that the password matched.
+func (s *Service) login(ctx context.Context, email, pw, ip string) (auth.User, string, error) {
 	email = normEmail(email)
 	keys := []string{"email:" + email}
 	if ip != "" {
 		keys = append(keys, "ip:"+ip)
 	}
 	if ok, err := s.allowAttempt(ctx, keys); err != nil || !ok {
-		return auth.User{}, cmp.Or(err, ErrTooMany)
+		return auth.User{}, "", cmp.Or(err, ErrTooMany)
 	}
 	u := auth.User{Email: email}
 	var stored string
 	err := s.DB.QueryRowContext(ctx, `SELECT id, password FROM users WHERE email = ?`, email).Scan(&u.ID, &stored)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return auth.User{}, err
+		return auth.User{}, "", err
 	}
 	if stored == "" {
 		checkPassword(dummyHash(), pw)
-		return auth.User{}, cmp.Or(s.count(ctx, keys), ErrBadLogin)
+		return auth.User{}, "", cmp.Or(s.count(ctx, keys), ErrBadLogin)
 	}
 	if !checkPassword(stored, pw) {
-		return auth.User{}, cmp.Or(s.count(ctx, keys), ErrBadLogin)
+		return auth.User{}, "", cmp.Or(s.count(ctx, keys), ErrBadLogin)
 	}
 	// The address keeps its count: it may be trying several accounts.
 	_, err = s.DB.ExecContext(ctx, `DELETE FROM login_failures WHERE key = ?`, keys[0])
-	return u, err
+	return u, stored, err
 }
 
 // limits: failures allowed per window, by kind of key.
@@ -513,13 +546,27 @@ func digest(token string) string {
 
 // NewSession signs a user in and returns the cookie's token.
 func (s *Service) NewSession(ctx context.Context, userID string) (string, error) {
+	token, _, err := s.newSession(ctx, userID, "")
+	return token, err
+}
+
+// newSession creates a session for userID. With a non-empty password hash it
+// does so only if that is still the account's password, in the same
+// statement, and reports ok=false otherwise.
+func (s *Service) newSession(ctx context.Context, userID, password string) (token string, ok bool, err error) {
 	b := make([]byte, 32)
 	rand.Read(b)
-	token := base64.RawURLEncoding.EncodeToString(b)
+	token = base64.RawURLEncoding.EncodeToString(b)
 	now := s.now()
 	s.DB.ExecContext(ctx, `DELETE FROM sessions WHERE expires_at < ?`, now.Unix())
-	_, err := s.DB.ExecContext(ctx, `INSERT INTO sessions (id, user_id, expires_at, authenticated_at) VALUES (?, ?, ?, ?)`, sessionID(token), userID, now.Add(SessionTTL).Unix(), now.Unix())
-	return token, err
+	res, err := s.DB.ExecContext(ctx, `INSERT INTO sessions (id, user_id, expires_at, authenticated_at)
+		SELECT ?, ?, ?, ? WHERE ? = '' OR EXISTS (SELECT 1 FROM users WHERE id = ? AND password = ?)`,
+		sessionID(token), userID, now.Add(SessionTTL).Unix(), now.Unix(), password, userID, password)
+	if err != nil {
+		return "", false, err
+	}
+	n, err := res.RowsAffected()
+	return token, n == 1, err
 }
 
 // Session returns the user a session token belongs to.
