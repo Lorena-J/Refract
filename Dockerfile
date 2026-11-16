@@ -2,7 +2,7 @@
 # Build for one platform with `docker build .`, or both with `make docker`.
 
 # --- frontend (platform-independent output, built natively) ---
-FROM --platform=$BUILDPLATFORM node:24.22.2-alpine3.24 AS web
+FROM --platform=$BUILDPLATFORM node:24.22.3-alpine3.24 AS web
 WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
@@ -24,7 +24,7 @@ COPY --from=web /src/web/dist web/dist
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/refract ./cmd/refract
 
 # --- synctex CLI from the official parser sources (Tectonic ships none) ---
-FROM alpine:3.24.3 AS synctex
+FROM alpine:3.24.4 AS synctex
 # Tag 2023.4(TeXLive); the commit hash pins the content.
 ARG SYNCTEX_COMMIT=c3641da45b41cd61f9e625fe722d0a8d54cedaa9
 RUN apk add --no-cache build-base git zlib-dev zlib-static
@@ -39,7 +39,7 @@ RUN mkdir -p w2c /out \
  && cc -O2 -static -I. synctex_main.c synctex_parser.c synctex_parser_utils.c -lz -o /out/synctex
 
 # --- Tectonic, pinned official static build, checksum verified ---
-FROM --platform=$BUILDPLATFORM alpine:3.24.3 AS tectonic
+FROM --platform=$BUILDPLATFORM alpine:3.24.4 AS tectonic
 ARG TARGETARCH
 ARG TECTONIC_VERSION=0.17.0
 RUN case "$TARGETARCH" in \
@@ -52,7 +52,7 @@ RUN case "$TARGETARCH" in \
  && tar -xzf /tmp/t.tgz -C /usr/local/bin tectonic
 
 # --- runtime ---
-FROM alpine:3.24.3
+FROM alpine:3.24.4
 RUN apk add --no-cache ca-certificates git ripgrep \
  && adduser -D -u 10001 refract \
  && mkdir /data && chown refract:refract /data

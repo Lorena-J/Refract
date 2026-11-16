@@ -2,6 +2,7 @@
 
 import hashlib
 import io
+import os
 from pathlib import Path
 import runpy
 import shutil
@@ -21,6 +22,7 @@ class PackagingTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
+        self.addCleanup(subprocess.call, ["chmod", "-R", "u+w", self.temp.name])
         self.archives = self.root / "dist"
         self.archives.mkdir()
         self.output = self.root / "metadata"
@@ -100,6 +102,54 @@ class PackagingTests(unittest.TestCase):
             scripts = subprocess.check_output(["dpkg-deb", "--ctrl-tarfile", str(package)])
             with tarfile.open(fileobj=io.BytesIO(scripts)) as archive:
                 self.assertEqual([m.name for m in archive.getmembers() if m.isfile()], ["./control"])
+
+    def prepare_bundle(self, dest):
+        """Runs prepare-bundle.sh with a fake curl (serves a tiny bundle) and tectonic."""
+        fake = self.root / "fakebin"
+        if not fake.exists():
+            fake.mkdir()
+            digest = "6ffe055852f8faf66c0acbe1a7fb27f87b869a90bad1204f3bf4d9683f597c7c"
+            tar = self.root / "bundle.tar"
+            with tarfile.open(tar, "w") as archive:
+                data = digest.encode()
+                member = tarfile.TarInfo("SHA256SUM")
+                member.size = len(data)
+                archive.addfile(member, io.BytesIO(data))
+            (fake / "curl").write_text(
+                '#!/bin/sh\nwhile [ $# -gt 0 ]; do [ "$1" = -o ] && out=$2; shift; done\ncp "%s" "$out"\n' % tar
+            )
+            (fake / "tectonic").write_text(
+                '#!/bin/sh\nmkdir -p "$TECTONIC_CACHE_DIR/formats" && echo fmt > "$TECTONIC_CACHE_DIR/formats/new.fmt"\n'
+            )
+            for name in ("curl", "tectonic"):
+                (fake / name).chmod(0o755)
+        env = {**os.environ, "PATH": f"{fake}:{os.environ['PATH']}"}
+        return subprocess.run(
+            ["sh", str(ROOT / "packaging/server/prepare-bundle.sh"), str(dest)],
+            env=env, capture_output=True, text=True,
+        )
+
+    def test_prepare_bundle_replaces_both_or_refuses(self):
+        dest = self.root / "server"
+        first = self.prepare_bundle(dest)
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertTrue((dest / "cache/formats/new.fmt").exists())
+        # Rerunning with either folder left over refuses and changes nothing.
+        for keep in ("bundle", "cache"):
+            subprocess.check_call(["chmod", "-R", "u+w", str(dest)])
+            shutil.rmtree(dest)
+            (dest / keep).mkdir(parents=True)
+            again = self.prepare_bundle(dest)
+            self.assertNotEqual(again.returncode, 0)
+            self.assertIn("remove both", again.stderr)
+            self.assertEqual(sorted(p.name for p in dest.iterdir()), [keep])
+            self.assertEqual(list((dest / keep).iterdir()), [])
+        # Following the printed instructions works, and nothing nests.
+        subprocess.check_call(["chmod", "-R", "u+w", str(dest)])
+        shutil.rmtree(dest)
+        self.assertEqual(self.prepare_bundle(dest).returncode, 0)
+        self.assertTrue((dest / "cache/formats/new.fmt").exists())
+        self.assertFalse((dest / "cache/cache").exists())
 
 
 if __name__ == "__main__":
