@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/zlib"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"os/exec"
@@ -11,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -258,4 +260,105 @@ func maxInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func TestOpenOutDirRefusesSymlinks(t *testing.T) {
+	outside := t.TempDir()
+	for _, link := range []string{".refract", ".refract/build"} {
+		proj := t.TempDir()
+		if link == ".refract/build" {
+			if err := os.Mkdir(filepath.Join(proj, ".refract"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := os.Symlink(outside, filepath.Join(proj, filepath.FromSlash(link))); err != nil {
+			t.Fatal(err)
+		}
+		_, err := openOutDir(proj)
+		if !errors.Is(err, ErrUnsafeBuildDir) || !strings.Contains(err.Error(), "symbolic link") {
+			t.Errorf("%s as a symlink: err = %v; want a refusal", link, err)
+		}
+		tc := &Tectonic{Bin: "/bin/true", Timeout: time.Second}
+		if _, err := tc.Compile(context.Background(), proj, "main.tex"); err == nil {
+			t.Errorf("%s as a symlink: Compile ran", link)
+		}
+	}
+	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
+		t.Errorf("something was written outside the project: %v", entries)
+	}
+	proj := t.TempDir()
+	out, err := openOutDir(proj)
+	if err != nil {
+		t.Fatalf("clean project: %v", err)
+	}
+	out.Close()
+	if fi, err := os.Stat(filepath.Join(proj, ".refract", "build")); err != nil || !fi.IsDir() {
+		t.Errorf("build folder not created: %v", err)
+	}
+}
+
+// swapAfterCheck replaces rel, a folder of the project, with a symlink to
+// outside once Compile has checked and opened the build folder, as a
+// concurrent git pull could. The checked folder is moved to rel+".checked".
+func swapAfterCheck(t *testing.T, rel, outside string) {
+	t.Helper()
+	testHookOutDirOpened = func(projectDir string) {
+		p := filepath.Join(projectDir, filepath.FromSlash(rel))
+		if err := os.Rename(p, p+".checked"); err != nil {
+			t.Error(err)
+		}
+		if err := os.Symlink(outside, p); err != nil {
+			t.Error(err)
+		}
+	}
+	t.Cleanup(func() { testHookOutDirOpened = nil })
+}
+
+// The build folder Compile checked is the one it uses, even if the path is
+// swapped for a symlink before tectonic runs.
+func TestCompileKeepsCheckedBuildDir(t *testing.T) {
+	proj, outside := t.TempDir(), t.TempDir()
+	build := filepath.Join(proj, filepath.FromSlash(BuildDir))
+	if err := os.MkdirAll(build, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range []string{build, outside} {
+		if err := os.WriteFile(filepath.Join(d, "main.log"), []byte("stale"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	swapAfterCheck(t, BuildDir, outside)
+	tc := &Tectonic{Bin: "true", Timeout: 5 * time.Second}
+	if _, err := tc.Compile(context.Background(), proj, "main.tex"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "main.log")); err != nil {
+		t.Errorf("the stale log was removed outside the project: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(build+".checked", "main.log")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the checked folder's stale log is still there: %v", err)
+	}
+}
+
+// A FIFO left in the build folder (the document is untrusted) is not read: it would block.
+func TestReadInRefusesFIFO(t *testing.T) {
+	dir := t.TempDir()
+	if err := syscall.Mkfifo(filepath.Join(dir, "main.log"), 0o644); err != nil {
+		t.Skip(err)
+	}
+	d, err := os.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if _, err := readIn(d, "main.log"); err == nil {
+		t.Error("read a FIFO")
+	}
+}
+
+func TestDropFontconfigNoise(t *testing.T) {
+	in := "a\nFontconfig error: Cannot load default config file: No such file: (null)\nb"
+	if got := dropFontconfigNoise(in); got != "a\nb" {
+		t.Errorf("got %q", got)
+	}
 }

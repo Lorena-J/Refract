@@ -17,6 +17,13 @@ Notable changes to Refract. The format follows [Keep a Changelog](https://keepac
 - Deleting a project moves it to the trash for 30 days instead of removing it at once. Undo from the notification, or restore or delete forever from the new Trash page; projects older than 30 days in the trash are deleted for good.
 - A project open in the workspace when it goes to the trash (from another tab or device) becomes read-only with a banner and a Restore button: unsaved edits are kept and saved on restore, and if the project was deleted for good meanwhile, you can copy the unsaved text.
 
+- `REFRACT_SANDBOX=bwrap` runs every compile in a [bubblewrap](https://github.com/containers/bubblewrap) sandbox: no network, a read-only view of the system and of the project being built, and limits on CPU, memory, processes and file size. It needs the TeX bundle as a local folder: `packaging/server/prepare-bundle.sh` prepares it, and `packaging/server/refract.service` is a systemd unit for the hosted service. Refract checks it at startup by compiling a small document.
+- `REFRACT_COMPILE_WORKERS` and `REFRACT_COMPILE_MAX_WAIT` set how many compiles run at once and how long one waits for its turn.
+
+### Changed
+
+- Each account compiles one project at a time, in every mode: with `REFRACT_AUTH=none` everyone is the same account, so compiles of different projects now run one after another. When the server is busy, a compile waits up to `REFRACT_COMPILE_MAX_WAIT` and then answers "the server is busy, try again in a moment" (the assistant is told to try again).
+
 ### Fixed
 
 - Citations added from Refract go to the bibliography next to the main file when it is in a subfolder, so they reach the PDF (#13).
@@ -29,6 +36,7 @@ Notable changes to Refract. The format follows [Keep a Changelog](https://keepac
 
 ### Security
 
+- With `REFRACT_MODE=saas`, Refract refuses to start without `REFRACT_SANDBOX=bwrap`, or if `REFRACT_COMPILE_MAX_WAIT` plus `REFRACT_COMPILE_TIMEOUT` is over 95 s.
 - Every API route that touches a project, chat, turn or file goes through one authorization check, declared with the route; without a signed-in user nothing is reachable. Auto-push and assistant turns check again, as the user who started them, before they write. Projects left without an owner after the first account was created stay unreachable.
 - A failed request to OpenAlex no longer includes the server's OpenAlex key in the error shown to the user or sent to the assistant's model.
 - Built with Go 1.27.4, which fixes a crash of the HTTP server in Go's `net/http` (GO-2026-6859).
