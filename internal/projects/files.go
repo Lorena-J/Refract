@@ -123,18 +123,21 @@ func (s *Service) WriteFile(ctx context.Context, id, p string, r io.Reader) erro
 	if err != nil {
 		return err
 	}
-	root, err := s.root(ctx, id)
+	proj, err := s.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	root, err := os.OpenRoot(s.Path(id))
 	if err != nil {
 		return err
 	}
 	defer root.Close()
+	// No early storage check: at the limit, a save that doesn't grow the file
+	// is still allowed, and only admitGrowth knows the size difference.
 	if d := path.Dir(p); d != "." {
 		if err := root.MkdirAll(d, 0o755); err != nil {
 			return err
 		}
-	}
-	if fi, err := root.Stat(p); err == nil && fi.IsDir() {
-		return fmt.Errorf("%w: %q is a folder", ErrBadPath, p)
 	}
 	suffix := make([]byte, 6)
 	rand.Read(suffix)
@@ -154,7 +157,19 @@ func (s *Service) WriteFile(ctx context.Context, id, p string, r io.Reader) erro
 	if n > MaxFileSize {
 		return fmt.Errorf("%w: file larger than %d MB", ErrTooLarge, MaxFileSize>>20)
 	}
-	if err := root.Rename(tmp, p); err != nil {
+	// Admission and publishing happen together under the owner's lock, so
+	// concurrent saves cannot each pass the check against the same total.
+	var old int64 // what the file being replaced already counts for
+	err = s.admitGrowth(ctx, proj, func() (int64, error) {
+		if fi, err := root.Stat(p); err == nil {
+			if fi.IsDir() {
+				return 0, fmt.Errorf("%w: %q is a folder", ErrBadPath, p)
+			}
+			old = fi.Size()
+		}
+		return n - old, nil // a replaced file adds only the difference
+	}, func() error { return root.Rename(tmp, p) })
+	if err != nil {
 		return err
 	}
 	return s.touch(ctx, id)

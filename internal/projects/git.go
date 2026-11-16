@@ -3,6 +3,7 @@ package projects
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -67,6 +68,7 @@ func initRepo(ctx context.Context, dir, message string) error {
 
 // Checkpoint commits the working tree if anything changed, and reports whether it did.
 func (s *Service) Checkpoint(ctx context.Context, id, message string) (bool, error) {
+	defer s.measure(ctx, id) // after the unlock: the walk must not hold the repository
 	defer lockRepo(id)()
 	return s.checkpoint(ctx, id, message, true)
 }
@@ -83,6 +85,23 @@ func lockRepo(id string) func() {
 	m.(*sync.Mutex).Lock()
 	return m.(*sync.Mutex).Unlock
 }
+
+// hasStaged reports whether the index differs from HEAD: what a commit would
+// record. Not `git status`, which also sees files written after `git add`
+// (an autosave arriving meanwhile); committing then finds nothing staged
+// and fails. Those edits go into the next checkpoint.
+func hasStaged(ctx context.Context, dir string) (bool, error) {
+	_, err := git(ctx, dir, "diff", "--cached", "--quiet")
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && exit.ExitCode() == 1 {
+		return true, nil
+	}
+	return false, err
+}
+
+// testHookAfterAdd, when set, runs in checkpoint right after `git add`: tests
+// use it to write a file in that window, as a concurrent save could.
+var testHookAfterAdd func(dir string)
 
 // committed tells OnCommit (auto-push) that the project's history grew. It
 // gets the context of whoever committed, so it acts as them: their user, not
@@ -134,7 +153,10 @@ func (s *Service) checkpoint(ctx context.Context, id, message string, notify boo
 	if _, err := git(ctx, dir, "add", "-A"); err != nil {
 		return false, err
 	}
-	if out, err := git(ctx, dir, "status", "--porcelain"); err != nil || out == "" {
+	if testHookAfterAdd != nil {
+		testHookAfterAdd(dir)
+	}
+	if ok, err := hasStaged(ctx, dir); err != nil || !ok {
 		return false, err
 	}
 	if _, err := git(ctx, dir, "commit", "-q", "-m", message); err != nil {
