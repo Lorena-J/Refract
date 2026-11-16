@@ -52,8 +52,9 @@ type sandboxJob struct {
 	Args     []string
 	Bundle   string // local folder
 	Cache    string
-	Project  string // the project folder, or an assistant turn's worktree: read-only
-	OutDir   string // inside Project: the only writable place
+	Project  string   // the project folder, or an assistant turn's worktree: read-only
+	OutDir   string   // inside Project: the only writable place, mounted from Out
+	Out      *os.File // OutDir, opened and checked: the handle is mounted, not the path, so a symlink swapped in later changes nothing
 	WorkDir  string
 	Timeout  time.Duration // the compile's wall-clock limit; sets the CPU limit
 }
@@ -133,7 +134,7 @@ func (s *Sandbox) command(ctx context.Context, j sandboxJob) (*exec.Cmd, error) 
 		"--ro-bind", j.Bundle, j.Bundle,
 		"--ro-bind", j.Cache, j.Cache,
 		"--ro-bind", j.Project, j.Project,
-		"--bind", j.OutDir, j.OutDir,
+		"--bind-fd", "3", j.OutDir, // cmd.ExtraFiles[0]; bwrap closes it once mounted
 		"--setenv", "PATH", "/usr/bin:/bin", "--setenv", "HOME", "/tmp", "--setenv", "TECTONIC_CACHE_DIR", j.Cache,
 		"--chdir", j.WorkDir,
 		// The limits are applied inside: RLIMIT_NPROC counts every thread of the
@@ -148,6 +149,7 @@ func (s *Sandbox) command(ctx context.Context, j sandboxJob) (*exec.Cmd, error) 
 
 	cmd := exec.CommandContext(ctx, s.bwrapPath, args...)
 	cmd.Env = []string{} // bwrap sets the sandbox's own
+	cmd.ExtraFiles = []*os.File{j.Out}
 	return cmd, nil
 }
 

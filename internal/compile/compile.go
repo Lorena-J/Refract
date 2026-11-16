@@ -7,7 +7,7 @@ import (
 	"cmp"
 	"context"
 	"errors"
-	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path"
@@ -58,8 +58,13 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 		return nil, err
 	}
 	outDir := filepath.Join(projectDir, filepath.FromSlash(BuildDir))
-	if err := prepareOutDir(projectDir); err != nil { // tectonic requires it to exist
+	out, err := openOutDir(projectDir) // tectonic requires it to exist
+	if err != nil {
 		return nil, err
+	}
+	defer out.Close()
+	if testHookOutDirOpened != nil {
+		testHookOutDirOpened(projectDir)
 	}
 	base := path.Base(mainFile)
 	stem := strings.TrimSuffix(base, path.Ext(base))
@@ -87,7 +92,7 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 		}
 	}
 	// A log left by the previous build would report stale problems if this one dies early.
-	os.Remove(filepath.Join(outDir, stem+".log"))
+	removeIn(out, stem+".log")
 	// continue-on-errors: like Prism and Overleaf, produce a PDF despite errors;
 	// the errors are still reported and the build does not count as OK.
 	args := []string{base, "--outdir", outDir, "--synctex", "--keep-logs", "--untrusted", "-Z", "continue-on-errors"}
@@ -100,7 +105,7 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 	if t.Sandbox != nil {
 		cmd, err = t.Sandbox.command(runCtx, sandboxJob{
 			Tectonic: cmp.Or(t.Bin, "tectonic"), Args: args, Bundle: t.Bundle, Cache: t.CacheDir,
-			Project: projectDir, OutDir: outDir, WorkDir: workDir, Timeout: t.Timeout,
+			Project: projectDir, OutDir: outDir, Out: out, WorkDir: workDir, Timeout: t.Timeout,
 		})
 		if err != nil {
 			return nil, err
@@ -123,7 +128,7 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 	start := time.Now()
 	runErr := cmd.Run()
 	if setup != "" {
-		if err := restoreSyncPaths(filepath.Join(outDir, stem+".synctex.gz"), sourceDir, projectDir); err != nil {
+		if err := restoreSyncPaths(out, stem+".synctex.gz", sourceDir, projectDir); err != nil {
 			return nil, err
 		}
 	}
@@ -144,13 +149,13 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 
 	res.Output = dropFontconfigNoise(res.Output)
 	res.Problems = parseStderr(res.Output)
-	if log, err := os.ReadFile(filepath.Join(outDir, stem+".log")); err == nil {
+	if log, err := readIn(out, stem+".log"); err == nil {
 		res.Problems = append(res.Problems, parseLog(string(log))...)
 	}
 	locate(res.Problems, projectDir, mainFile)
 
 	res.OK = runErr == nil && !hasError(res.Problems)
-	if fi, err := os.Stat(filepath.Join(outDir, stem+".pdf")); err == nil && !fi.ModTime().Before(start.Truncate(time.Second)) && // coarse-mtime filesystems
+	if fi, err := statIn(out, stem+".pdf"); err == nil && !fi.ModTime().Before(start.Truncate(time.Second)) && // coarse-mtime filesystems
 		!res.TimedOut && !res.Superseded {
 		res.PDF = path.Join(BuildDir, stem+".pdf") // produced by this run, possibly with errors
 	}
@@ -172,39 +177,28 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 // link or not a folder: the project has to be fixed before it can compile.
 var ErrUnsafeBuildDir = errors.New("refusing to compile")
 
-// prepareOutDir creates .refract/build without following symlinks and refuses
-// a project where any part of it is one: a pulled repository could otherwise
-// point it at a folder outside the project, which the sandbox mounts writable.
-func prepareOutDir(projectDir string) error {
-	cur := projectDir
-	for _, part := range strings.Split(BuildDir, "/") {
-		cur = filepath.Join(cur, part)
-		fi, err := os.Lstat(cur)
-		switch {
-		case errors.Is(err, os.ErrNotExist):
-			if err := os.Mkdir(cur, 0o755); err != nil {
-				return err
-			}
-		case err != nil:
-			return err
-		case fi.Mode()&os.ModeSymlink != 0:
-			return fmt.Errorf("%w: %s is a symbolic link; delete it and compile again", ErrUnsafeBuildDir, filepath.ToSlash(strings.TrimPrefix(cur, projectDir+string(filepath.Separator))))
-		case !fi.IsDir():
-			return fmt.Errorf("%w: %s is not a folder", ErrUnsafeBuildDir, filepath.ToSlash(strings.TrimPrefix(cur, projectDir+string(filepath.Separator))))
-		}
-	}
-	real, err := filepath.EvalSymlinks(filepath.Join(projectDir, filepath.FromSlash(BuildDir)))
+// testHookOutDirOpened, when set, runs once the build folder is open: tests
+// use it to swap the folder for a symlink, as a concurrent git pull could.
+var testHookOutDirOpened func(projectDir string)
+
+// readIn reads name, a file directly in dir; a symlink is refused.
+func readIn(dir *os.File, name string) ([]byte, error) {
+	f, err := openIn(dir, name)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	root, err := filepath.EvalSymlinks(projectDir)
+	defer f.Close()
+	return io.ReadAll(f)
+}
+
+// statIn describes name, a file directly in dir; a symlink is refused.
+func statIn(dir *os.File, name string) (os.FileInfo, error) {
+	f, err := openIn(dir, name)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if rel, err := filepath.Rel(root, real); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return fmt.Errorf("%w: %s resolves outside the project", ErrUnsafeBuildDir, BuildDir)
-	}
-	return nil
+	defer f.Close()
+	return f.Stat()
 }
 
 // dropFontconfigNoise removes the warning Tectonic prints when the system has

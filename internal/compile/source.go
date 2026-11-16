@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -110,10 +112,11 @@ func linkSource(source, dest string) error {
 	return closeErr
 }
 
-// Restore original source paths before deleting the temporary snapshot.
-func restoreSyncPaths(file, stage, projectDir string) error {
-	in, err := os.Open(file)
-	if os.IsNotExist(err) {
+// Restore original source paths before deleting the temporary snapshot. name
+// is a file directly in dir, the build folder, and is rewritten through it.
+func restoreSyncPaths(dir *os.File, name, stage, projectDir string) error {
+	in, err := openIn(dir, name)
+	if errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
 	if err != nil {
@@ -133,11 +136,12 @@ func restoreSyncPaths(file, stage, projectDir string) error {
 	if err != nil {
 		return err
 	}
-	out, err := os.CreateTemp(filepath.Dir(file), ".synctex-")
+	tmp := ".synctex-" + rand.Text()
+	out, err := createIn(dir, tmp)
 	if err != nil {
 		return err
 	}
-	defer os.Remove(out.Name())
+	defer removeIn(dir, tmp)
 	defer out.Close()
 	zw := gzip.NewWriter(out)
 	defer zw.Close()
@@ -172,5 +176,5 @@ func restoreSyncPaths(file, stage, projectDir string) error {
 	}
 	zr.Close()
 	in.Close()
-	return os.Rename(out.Name(), file)
+	return renameIn(dir, tmp, name)
 }

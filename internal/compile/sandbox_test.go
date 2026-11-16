@@ -319,6 +319,44 @@ func TestSandboxRefusesSymlinkedBuildDir(t *testing.T) {
 	}
 }
 
+// The sandbox mounts the build folder Compile checked, through a handle that
+// doesn't reach tectonic, not whatever the path leads to by then: a git pull
+// during font preparation could make .refract a symlink to another folder.
+func TestSandboxMountsCheckedBuildDir(t *testing.T) {
+	e := newSandboxEnv(t, `
+while [ $# -gt 0 ]; do case "$1" in --outdir) out=$2;; esac; shift; done
+touch "$out/ok"
+if [ -e /proc/self/fd/3 ]; then touch "$out/fd3"; fi
+`)
+	build := filepath.Join(e.project, filepath.FromSlash(BuildDir))
+	if res, err := e.tect.Compile(context.Background(), e.project, "main.tex"); err != nil || !res.OK {
+		t.Fatalf("Compile = %+v, %v", res, err)
+	}
+	if _, err := os.Stat(filepath.Join(build, "ok")); err != nil {
+		t.Errorf("the build folder was not writable: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(build, "fd3")); err == nil {
+		t.Error("the build folder's handle reached tectonic")
+	}
+
+	// The target is a folder the sandbox also mounts (read-only), so the old
+	// path-based mount found its mount point there and made it writable.
+	target := filepath.Join(e.tect.CacheDir, "build")
+	if err := os.Mkdir(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	swapAfterCheck(t, ".refract", e.tect.CacheDir)
+	if res, err := e.tect.Compile(context.Background(), e.project, "main.tex"); err != nil || !res.OK {
+		t.Fatalf("Compile after the swap = %+v, %v", res, err)
+	}
+	if entries, _ := os.ReadDir(target); len(entries) != 0 {
+		t.Errorf("the sandbox wrote through the swapped-in symlink: %v", entries)
+	}
+	if _, err := os.Stat(filepath.Join(e.project, ".refract.checked", "build", "ok")); err != nil {
+		t.Errorf("the checked build folder was not the one mounted: %v", err)
+	}
+}
+
 // The CPU limit follows the compile timeout, and hitting it reads as a timeout.
 func TestSandboxCPULimitFollowsTimeout(t *testing.T) {
 	e := newSandboxEnv(t, `
