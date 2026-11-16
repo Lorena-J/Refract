@@ -243,6 +243,35 @@ test('a trashed project locks the workspace, and restoring saves the pending edi
     .toContain('% typed while trashed')
 })
 
+// Leaving right after typing in a project trashed elsewhere: the save made on the way out finds it
+// gone and keeps the text, so leaving asks first instead of dropping it.
+test('leaving a project trashed elsewhere asks before dropping what was just typed', async ({ page, request }) => {
+  const project = await (
+    await request.post('/api/projects', { headers: api, data: { name: 'Trashed elsewhere' } })
+  ).json()
+  expect(
+    (await request.put(`/api/projects/${project.id}/file?path=main.tex`, { headers: api, data: doc })).ok(),
+  ).toBeTruthy()
+
+  await page.goto(`/p/${project.id}`)
+  await page.getByRole('button', { name: 'main.tex' }).first().click()
+  const editor = page.locator('.cm-content')
+  await editor.click()
+  await page.keyboard.press('ControlOrMeta+End')
+  expect((await request.delete(`/api/projects/${project.id}`, { headers: api })).ok()).toBeTruthy()
+
+  // Typed and left before the autosave fires: the leave handler's save is the first to learn.
+  await page.keyboard.type('% typed after the trash')
+  const asked = page.waitForEvent('dialog')
+  const leave = page.getByRole('link', { name: 'All projects' }).click()
+  const dialog = await asked
+  expect(dialog.message()).toContain('Your unsaved text will be lost')
+  await dialog.dismiss()
+  await leave
+  await expect(page).toHaveURL(new RegExp(`/p/${project.id}`))
+  await expect(editor).toContainText('% typed after the trash')
+})
+
 // Opening a trashed project lands in the banner, not in an error; once it is deleted for good, restoring says so.
 test('opening a trashed project shows the banner, and a purged one says it was deleted', async ({ page, request }) => {
   const project = await (await request.post('/api/projects', { headers: api, data: { name: 'Gone' } })).json()
