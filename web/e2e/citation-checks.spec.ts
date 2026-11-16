@@ -11,6 +11,28 @@ async function openChecks(page: Page) {
   await expect(page.getByRole('dialog', { name: 'Citation checks', exact: true })).toBeVisible()
 }
 
+test('citation checks close when the project goes to the trash', async ({ page, request }) => {
+  const project = await (
+    await request.post('/api/projects', { headers, data: { name: 'Citation checks fixture' } })
+  ).json()
+  await request.put(`/api/projects/${project.id}/file?path=main.tex`, {
+    headers,
+    data: '\\bibliography{refs}\n',
+  })
+  await request.put(`/api/projects/${project.id}/file?path=refs.bib`, { headers, data: bib })
+  await request.patch(`/api/projects/${project.id}`, { headers, data: { main_file: 'main.tex' } })
+  await page.goto(`/p/${project.id}`)
+  await openChecks(page)
+  const dialog = page.getByRole('dialog', { name: 'Citation checks', exact: true })
+  await expect(dialog.getByRole('button', { name: 'Check again', exact: true })).toBeEnabled()
+  expect((await request.delete(`/api/projects/${project.id}`, { headers })).ok()).toBeTruthy()
+  await dialog.getByRole('button', { name: 'Check again', exact: true }).click()
+  await expect(dialog).toBeHidden()
+  await expect(page.getByRole('status').filter({ hasText: 'This project is in the trash' })).toBeVisible()
+  await page.getByRole('button', { name: 'Citation checks fixture' }).click()
+  await expect(page.getByRole('menuitem', { name: 'Citation checks', exact: true })).toHaveCount(0)
+})
+
 test('citation checks locate problems and keep metadata changes reviewable', async ({ page, request }) => {
   const project = await (
     await request.post('/api/projects', { headers, data: { name: 'Citation checks fixture' } })
