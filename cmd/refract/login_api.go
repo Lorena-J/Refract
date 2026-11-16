@@ -71,7 +71,7 @@ func (a *loginAPI) login(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err, http.StatusBadRequest)
 		return
 	}
-	u, err := a.users.Login(r.Context(), in.Email, in.Password, users.ClientIP(r))
+	_, token, err := a.users.SignIn(r.Context(), in.Email, in.Password, users.ClientIP(r))
 	switch {
 	case errors.Is(err, users.ErrTooMany):
 		kindError(w, http.StatusTooManyRequests, "too_many_attempts", err)
@@ -83,7 +83,8 @@ func (a *loginAPI) login(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err, http.StatusInternalServerError)
 		return
 	}
-	a.signIn(w, r, u.ID)
+	users.SetSessionCookie(w, r, token)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a *loginAPI) signIn(w http.ResponseWriter, r *http.Request, userID string) bool {

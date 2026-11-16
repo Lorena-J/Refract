@@ -253,6 +253,53 @@ func TestAllowMail(t *testing.T) {
 	}
 }
 
+// A sign-in that checked the squatter's password before the owner took the
+// account over through the provider doesn't get a session afterwards; nor
+// does one whose password changed meanwhile. One left alone does.
+func TestSignInAfterTakeoverGetsNoSession(t *testing.T) {
+	s, ctx := newService(t), context.Background()
+	l, err := s.SignUp(ctx, "ana@example.com", "attacker pass", "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessions := func(id string) (n int) {
+		s.DB.QueryRow(`SELECT count(*) FROM sessions WHERE user_id = ?`, id).Scan(&n)
+		return n
+	}
+
+	t.Cleanup(func() { testHookPasswordChecked = nil })
+	testHookPasswordChecked = func(id string) {
+		if err := s.ConfirmByProvider(ctx, id); err != nil {
+			t.Error(err)
+		}
+	}
+	if _, tok, err := s.SignIn(ctx, "ana@example.com", "attacker pass", ""); !errors.Is(err, ErrBadLogin) || tok != "" {
+		t.Fatalf("sign-in resumed after the takeover: token %q, %v; want ErrBadLogin", tok, err)
+	}
+	if n := sessions(l.To.ID); n != 0 {
+		t.Fatalf("%d sessions on the taken-over account", n)
+	}
+
+	u, _ := s.SetPassword(ctx, "ben@example.com", "correct horse")
+	testHookPasswordChecked = func(string) {
+		if _, err := s.SetPassword(ctx, "ben@example.com", "a new password"); err != nil {
+			t.Error(err)
+		}
+	}
+	if _, _, err := s.SignIn(ctx, "ben@example.com", "correct horse", ""); !errors.Is(err, ErrBadLogin) {
+		t.Fatalf("sign-in with the old password after a change: %v; want ErrBadLogin", err)
+	}
+
+	testHookPasswordChecked = nil
+	got, tok, err := s.SignIn(ctx, "ben@example.com", "a new password", "")
+	if err != nil || got.ID != u.ID {
+		t.Fatalf("sign-in: %+v, %v", got, err)
+	}
+	if su, err := s.Session(ctx, tok); err != nil || su.ID != u.ID {
+		t.Fatalf("session: %+v, %v", su, err)
+	}
+}
+
 func TestConfirmByProviderWipesWhatTheSquatterAttached(t *testing.T) {
 	for _, how := range []string{"provider", "reset"} {
 		t.Run(how, func(t *testing.T) {
