@@ -345,7 +345,13 @@ if [ -e /proc/self/fd/3 ]; then touch "$out/fd3"; fi
 	if err := os.Mkdir(target, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	swapAfterCheck(t, ".refract", e.tect.CacheDir)
+	// Relative, so that it leads to the same folder inside the sandbox as
+	// outside whatever bwrap's version does with absolute ones.
+	rel, err := filepath.Rel(e.project, e.tect.CacheDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	swapAfterCheck(t, ".refract", rel)
 	if res, err := e.tect.Compile(context.Background(), e.project, "main.tex"); err != nil || !res.OK {
 		t.Fatalf("Compile after the swap = %+v, %v", res, err)
 	}
