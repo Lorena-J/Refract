@@ -53,6 +53,7 @@ import Review from './Review'
 import History from './History'
 import GitDialog, { pulledMessage, type PullResult } from './GitDialog'
 import CiteDialog, { type Citation, type CiteTarget } from './CiteDialog'
+import CitationChecks, { type CitationFix } from './CitationChecks'
 import { Autosaver, type SaveStatus } from './autosave'
 import { noSymbols, type ProjectSymbols } from '@/lib/completion'
 import { Link, navigate, pageReady, useBeforeLeave } from '@/lib/router'
@@ -180,6 +181,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
   const prefs = usePrefs()
   const countEnabled = prefs.wordCount
   const [citing, setCiting] = useState<{ target: CiteTarget | null; suggest: boolean } | null>(null)
+  const [citationChecks, setCitationChecks] = useState(false)
   const [proposal, setProposal] = useState<
     { path: string; from: number; to: number; original: string; text: string } | undefined
   >()
@@ -586,6 +588,15 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
     setActive(path)
   }
 
+  async function reviewCitationFix(fix: CitationFix) {
+    await open(fix.path)
+    const file = loaded.current.get(fix.path)
+    const current = states.current.get(fix.path)?.doc.toString() ?? (file?.text ? file.content : undefined)
+    if (current !== fix.before) throw new Error(t('The bibliography changed. Run the citation checks again.'))
+    if (fix.before === fix.after) throw new Error(t('The source metadata matches this entry.'))
+    setProposal({ path: fix.path, from: 0, to: fix.before.length, original: fix.before, text: fix.after })
+  }
+
   // Closing never cancels a pending save: the autosaver finishes it on its own.
   function forget(paths: string[]) {
     for (const p of paths) {
@@ -971,6 +982,9 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setCiting({ target: null, suggest: false })}>
                     <BookMarked /> {t('Add a reference…')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setCitationChecks(true)}>
+                    <BookMarked /> {t('Citation checks')}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuGroup>
@@ -1447,6 +1461,18 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
         onClose={() => setCiting(null)}
         onCited={cited}
       />
+      {citationChecks && (
+        <CitationChecks
+          projectId={id}
+          onClose={() => setCitationChecks(false)}
+          beforeCheck={() => autosave.flushAll()}
+          onLocate={(file, line) => {
+            setCitationChecks(false)
+            void jumpTo(file, line)
+          }}
+          onProposal={reviewCitationFix}
+        />
+      )}
 
       <AlertDialog open={!!confirm} onOpenChange={(o) => !o && setConfirm(null)}>
         <AlertDialogContent>

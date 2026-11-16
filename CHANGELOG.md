@@ -6,6 +6,7 @@ Notable changes to Refract. The format follows [Keep a Changelog](https://keepac
 
 ### Added
 
+- Citation checks scoped to the selected main document, its included sources and loaded bibliographies, for missing keys, duplicate or incomplete bibliography entries, unused entries and optional online DOI verification; source metadata corrections from doi.org/arXiv are shown as editor proposals, with Spanish translations.
 - Document and hierarchical section word counts in the outline, following included files and the existing counter/title preferences.
 - PDF search with highlighted matches, previous/next navigation, keyboard controls and parallel page indexing. Reading and zooming preserve your position, recompiling keeps the selected match number, and search buttons work with the keyboard.
 - LaTeX completion in the editor: common commands and environments (`\begin{…}` closes itself), `\ref` and friends from the project's labels, `\cite` from its `.bib` files, and file paths in `\input`, `\include` and `\includegraphics`. Commands and environments show their arguments and a short description, the arguments stay in view while filling them in, and citations show the author, year and title of each work.

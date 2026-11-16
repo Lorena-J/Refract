@@ -228,6 +228,9 @@ func (c *Client) bibtex(ctx context.Context, doi string) (string, error) {
 		return "", err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone {
+		return "", ErrDOINotFound
+	}
 	b, err := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 	if err != nil || resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("doi.org answered HTTP %d", resp.StatusCode)
@@ -237,6 +240,19 @@ func (c *Client) bibtex(ctx context.Context, doi string) (string, error) {
 		return "", errors.New("doi.org did not return BibTeX")
 	}
 	return pretty(s), nil
+}
+
+// ErrDOINotFound distinguishes a missing DOI from a timeout or rate limit.
+var ErrDOINotFound = errors.New("DOI does not resolve")
+
+// DOIBibTeX fetches authoritative metadata directly from doi.org, without an
+// OpenAlex lookup or a model. HTTP failures other than 404/410 are inconclusive.
+func (c *Client) DOIBibTeX(ctx context.Context, doi string) (string, error) {
+	doi = NormalizeDOI(doi)
+	if doi == "" {
+		return "", errors.New("invalid DOI")
+	}
+	return c.bibtex(ctx, doi)
 }
 
 var entryStart = regexp.MustCompile(`^@\w+\s*\{\s*[^,\s]*\s*,`)
