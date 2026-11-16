@@ -58,9 +58,9 @@ func (s *Service) FinishTurn(ctx context.Context, id, turn, base, message string
 	if _, err := git(ctx, dir, "add", "-A"); err != nil {
 		return nil, err
 	}
-	if out, err := git(ctx, dir, "status", "--porcelain"); err != nil {
+	if ok, err := hasStaged(ctx, dir); err != nil {
 		return nil, err
-	} else if out != "" {
+	} else if ok {
 		if _, err := git(ctx, dir, "commit", "-q", "-m", message); err != nil {
 			return nil, err
 		}

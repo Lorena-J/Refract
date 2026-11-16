@@ -139,7 +139,7 @@ func (s *Service) RestoreProject(ctx context.Context, id, hash string) (string, 
 
 func (s *Service) commitIfChanged(ctx context.Context, id, message string) (string, error) {
 	dir := s.Path(id)
-	if out, err := git(ctx, dir, "status", "--porcelain"); err != nil || out == "" {
+	if ok, err := hasStaged(ctx, dir); err != nil || !ok {
 		return "", err
 	}
 	if _, err := git(ctx, dir, "commit", "-q", "-m", message); err != nil {
