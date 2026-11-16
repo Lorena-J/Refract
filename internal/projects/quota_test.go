@@ -338,6 +338,40 @@ func TestQuotaOverCountIsCorrected(t *testing.T) {
 	}
 }
 
+// At the storage limit, saving a file again at the same size or smaller still
+// works; only growing it is refused.
+func TestQuotaAtLimitAllowsSavesThatDontGrow(t *testing.T) {
+	s := newService(t)
+	s.QuotaFor = fixed(Quota{})
+	p, err := s.Create(ownerCtx, "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := write(t, s, p.ID, "a.txt", 1000); err != nil {
+		t.Fatal(err)
+	}
+	s.QuotaFor = fixed(Quota{MaxBytes: sizeOf(t, s, p.ID)})
+	if err := write(t, s, p.ID, "a.txt", 1000); err != nil {
+		t.Fatalf("same size at the limit: %v", err)
+	}
+	if err := write(t, s, p.ID, "a.txt", 100); err != nil {
+		t.Fatalf("smaller at the limit: %v", err)
+	}
+	if b, _, err := s.ReadFile(ownerCtx, p.ID, "a.txt"); err != nil || len(b) != 100 {
+		t.Fatalf("after shrinking: %d bytes, %v", len(b), err)
+	}
+	s.grew(ownerCtx, p.ID, 1<<20) // over the limit now
+	if err := write(t, s, p.ID, "a.txt", 50); err != nil {
+		t.Fatalf("smaller over the limit: %v", err)
+	}
+	if err := write(t, s, p.ID, "a.txt", 60); !errors.Is(err, ErrOverLimit) {
+		t.Fatalf("growing over the limit: %v; want refused", err)
+	}
+	if err := write(t, s, p.ID, "b.txt", 1); !errors.Is(err, ErrOverLimit) {
+		t.Fatalf("new file over the limit: %v; want refused", err)
+	}
+}
+
 func TestQuotaNeverBlocksShrinking(t *testing.T) {
 	s := newService(t)
 	s.QuotaFor = fixed(Quota{})

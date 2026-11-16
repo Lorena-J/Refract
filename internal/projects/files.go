@@ -132,9 +132,8 @@ func (s *Service) WriteFile(ctx context.Context, id, p string, r io.Reader) erro
 		return err
 	}
 	defer root.Close()
-	if err := s.CheckStorage(ctx, proj); err != nil {
-		return err
-	}
+	// No early storage check: at the limit, a save that doesn't grow the file
+	// is still allowed, and only admitGrowth knows the size difference.
 	if d := path.Dir(p); d != "." {
 		if err := root.MkdirAll(d, 0o755); err != nil {
 			return err
