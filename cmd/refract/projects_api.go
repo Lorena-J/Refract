@@ -25,11 +25,14 @@ type projectsAPI struct {
 
 func (a *projectsAPI) routes(rt *router) {
 	rt.user("GET /api/projects", a.list)
-	rt.user("POST /api/projects", a.create)
+	rt.user("POST /api/projects", a.create, access.VerifiedEmail)
+	rt.user("POST /api/projects/import", a.importZip, access.VerifiedEmail)
+	rt.user("POST /api/projects/import-folder", a.importFolder, access.VerifiedEmail)
+	rt.user("GET /api/trash", a.trash)
+	rt.trashed("POST /api/projects/{id}/restore", access.Owner, a.untrash)
+	rt.trashed("DELETE /api/projects/{id}/purge", access.Owner, a.purge)
 	rt.user("GET /api/templates", a.templates)
-	rt.project("POST /api/projects/{id}/template", access.Owner, a.saveTemplate)
-	rt.user("POST /api/projects/import", a.importZip)
-	rt.user("POST /api/projects/import-folder", a.importFolder)
+	rt.project("POST /api/projects/{id}/template", access.Owner, a.saveTemplate, access.VerifiedEmail)
 	rt.project("GET /api/projects/{id}", access.Owner, a.get)
 	rt.project("PATCH /api/projects/{id}", access.Owner, a.update)
 	rt.project("DELETE /api/projects/{id}", access.Owner, a.delete)
@@ -324,8 +327,40 @@ func (a *projectsAPI) update(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, p)
 }
 
+// delete moves the project to the trash; purge deletes it for good from there.
 func (a *projectsAPI) delete(w http.ResponseWriter, r *http.Request) {
-	if err := a.svc.Delete(r.Context(), r.PathValue("id")); err != nil {
+	if err := a.svc.Trash(r.Context(), r.PathValue("id")); err != nil {
+		projectError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *projectsAPI) trash(w http.ResponseWriter, r *http.Request) {
+	ps, err := a.svc.ListTrash(r.Context())
+	if err != nil {
+		projectError(w, err)
+		return
+	}
+	writeJSON(w, map[string]any{"days": projects.TrashDays, "projects": ps})
+}
+
+func (a *projectsAPI) untrash(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := a.svc.Restore(r.Context(), id); err != nil {
+		projectError(w, err)
+		return
+	}
+	p, err := a.svc.Get(r.Context(), id)
+	if err != nil {
+		projectError(w, err)
+		return
+	}
+	writeJSON(w, p)
+}
+
+func (a *projectsAPI) purge(w http.ResponseWriter, r *http.Request) {
+	if err := a.svc.Purge(r.Context(), r.PathValue("id")); err != nil {
 		projectError(w, err)
 		return
 	}
@@ -355,14 +390,27 @@ func (a *projectsAPI) checks(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, ws)
 }
 
+// overLimitKind names a refused limit for the web: "over_projects" or "over_storage".
+func overLimitKind(err error) string {
+	var ol *projects.OverLimit
+	if errors.As(err, &ol) {
+		return "over_" + ol.Kind
+	}
+	return "other"
+}
+
 func projectError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, projects.ErrNotFound), errors.Is(err, fs.ErrNotExist), errors.Is(err, access.ErrNotFound):
 		httpError(w, err, http.StatusNotFound)
+	case errors.Is(err, projects.ErrOverLimit):
+		kindError(w, http.StatusForbidden, overLimitKind(err), err)
 	case errors.Is(err, access.ErrForbidden), errors.Is(err, access.ErrNoUser):
 		httpError(w, err, http.StatusForbidden)
 	case errors.Is(err, projects.ErrNoRemote):
 		httpError(w, err, http.StatusNotFound)
+	case errors.Is(err, projects.ErrTurnRunning):
+		kindError(w, http.StatusConflict, "project_busy", err)
 	case errors.Is(err, projects.ErrBehind):
 		httpError(w, err, http.StatusConflict)
 	case errors.Is(err, projects.ErrBadRemote), errors.Is(err, projects.ErrPrivateRemote):

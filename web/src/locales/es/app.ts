@@ -143,6 +143,11 @@ export default {
   'The current password is wrong.': 'La contraseña actual no es correcta.',
   'Too many failed attempts. Try again in a few minutes.':
     'Demasiados intentos fallidos. Vuelve a intentarlo dentro de unos minutos.',
+  'The server is busy. Try again in a moment.': 'El servidor está ocupado. Inténtalo de nuevo en un momento.',
+  'Another of your compiles is still running. Try again when it finishes.':
+    'Otra de tus compilaciones sigue en curso. Inténtalo de nuevo cuando termine.',
+  "This project can't compile: its .refract folder is a link or not a folder. Delete .refract and compile again.":
+    'Este proyecto no puede compilarse: su carpeta .refract es un enlace o no es una carpeta. Borra .refract y vuelve a compilar.',
   'Your session ended. Reload the page to sign in again.':
     'Tu sesión ha terminado. Recarga la página para volver a entrar.',
   'ChatGPT not connected': 'ChatGPT no conectado',
@@ -160,7 +165,6 @@ export default {
   'Drop .zip files to import them.': 'Suelta archivos .zip para importarlos.',
   'Imported {name}': 'Importado {name}',
   'Imported {n} projects': '{n} proyectos importados',
-  'Deleted {name}': 'Eliminado {name}',
   Search: 'Buscar',
   'Search projects': 'Buscar proyectos',
   'Importing…': 'Importando…',
@@ -185,9 +189,6 @@ export default {
   Cancel: 'Cancelar',
   Create: 'Crear',
   Save: 'Guardar',
-  'Delete {name}?': '¿Eliminar {name}?',
-  'The project and its whole history are removed from this server. Export it first if you may need it.':
-    'El proyecto y todo su historial se eliminan de este servidor. Expórtalo antes si puedes necesitarlo.',
   'Imported, with notes': 'Importado, con notas',
   "These won't stop you from working, but they may affect compiling on another machine.":
     'No te impiden trabajar, pero pueden afectar a la compilación en otro equipo.',
@@ -242,4 +243,92 @@ export default {
   'Renews {date}': 'Se renueva el {date}',
   'Included AI left this month': 'IA incluida restante este mes',
   'Add your own API key': 'Añadir tu propia clave de API',
+  // Trash (T3)
+  Trash: 'Papelera',
+  'Move to trash': 'Mover a la papelera',
+  'Moved {name} to the trash': 'Se movió {name} a la papelera',
+  Undo: 'Deshacer',
+  'Restored {name}': 'Se restauró {name}',
+  'Deleted {name} for good': 'Se eliminó {name} para siempre',
+  'Delete forever': 'Eliminar para siempre',
+  'Delete {name} forever?': '¿Eliminar {name} para siempre?',
+  "Its files, history and chats are removed from this server. This can't be undone.":
+    'Sus archivos, historial y chats se eliminan de este servidor. No se puede deshacer.',
+  'Deleted projects stay here for {n} day, then they are deleted for good.':
+    'Los proyectos eliminados se quedan aquí {n} día y después se eliminan para siempre.',
+  'Deleted projects stay here for {n} days, then they are deleted for good.':
+    'Los proyectos eliminados se quedan aquí {n} días y después se eliminan para siempre.',
+  'Deleted for good in {n} day': 'Se elimina para siempre en {n} día',
+  'Deleted for good in {n} days': 'Se elimina para siempre en {n} días',
+  'Deleted on {date}': 'Eliminado el {date}',
+  'The trash is empty': 'La papelera está vacía',
+  'The assistant is working on this project. Stop it or wait until it finishes, then try again.':
+    'El asistente está trabajando en este proyecto. Deténlo o espera a que termine y vuelve a intentarlo.',
+  'Your plan has reached its project limit, including projects in the trash. Delete one forever from the trash to add another.':
+    'Tu plan ha alcanzado su límite de proyectos, contando los de la papelera. Elimina uno para siempre desde la papelera para añadir otro.',
+  "Your plan's storage is full, counting projects in the trash. Delete projects forever from the trash to free space; deleted files stay in a project's history.":
+    'El almacenamiento de tu plan está lleno, contando los proyectos de la papelera. Elimina proyectos para siempre desde la papelera para liberar espacio; los archivos borrados siguen en el historial de un proyecto.',
+  // Account lifecycle (A3)
+  'Confirm your email address to create or import projects. Open the link we sent you, or send a new one from Settings → Account.':
+    'Confirma tu correo electrónico para crear o importar proyectos. Abre el enlace que te enviamos, o pide uno nuevo en Ajustes → Cuenta.',
+  'Too many emails to this address. Try again in a few minutes.':
+    'Demasiados correos a esta dirección. Inténtalo de nuevo en unos minutos.',
+  "This server can't send emails, so this isn't available. Ask the person who runs it.":
+    'Este servidor no puede enviar correos, así que esto no está disponible. Pregunta a quien lo administra.',
+  "This server doesn't take new accounts. Ask the person who runs it to add you.":
+    'Este servidor no admite cuentas nuevas. Pide a quien lo administra que te añada.',
+  'This link has expired or was already used.': 'Este enlace ha caducado o ya se usó.',
+  'Enter your password to continue.': 'Introduce tu contraseña para continuar.',
+  'For your security, sign in again, then delete your account within 10 minutes.':
+    'Por seguridad, vuelve a iniciar sesión y elimina tu cuenta en los 10 minutos siguientes.',
+  "Your provider didn't confirm this email address, and this account has a password: sign in with it instead.":
+    'Tu proveedor no confirmó esta dirección de correo y la cuenta tiene contraseña: inicia sesión con ella.',
+  'Forgot your password?': '¿Olvidaste tu contraseña?',
+  'New to Refract?': '¿Nuevo en Refract?',
+  'Create an account': 'Crear una cuenta',
+  'Your account and everything in it were deleted.': 'Tu cuenta y todo lo que contenía se han eliminado.',
+  'Check your email': 'Revisa tu correo',
+  "If you don't receive it, check your spam folder, wait a few minutes and try again.":
+    'Si no lo recibes, mira en la carpeta de spam, espera unos minutos y vuelve a intentarlo.',
+  'Back to sign in': 'Volver a iniciar sesión',
+  "If {email} can be used, we've sent an email. Open the link in it to continue.":
+    'Si {email} se puede usar, te hemos enviado un correo. Abre el enlace que contiene para continuar.',
+  'Create your account': 'Crea tu cuenta',
+  '8 or more characters': '8 o más caracteres',
+  'Language for emails': 'Idioma de los correos',
+  'Create account': 'Crear cuenta',
+  'Already have an account?': '¿Ya tienes una cuenta?',
+  'Reset your password': 'Restablece tu contraseña',
+  'Send reset link': 'Enviar enlace de restablecimiento',
+  "If an account exists for {email}, we've sent an email with a link to choose a new password. The link works for 1 hour.":
+    'Si existe una cuenta para {email}, hemos enviado un correo con un enlace para elegir una contraseña nueva. El enlace funciona durante 1 hora.',
+  'Confirm your email': 'Confirma tu correo',
+  'Confirm my email': 'Confirmar mi correo',
+  'Enter your password to confirm your email and sign in.':
+    'Introduce tu contraseña para confirmar tu correo e iniciar sesión.',
+  'Email confirmed.': 'Correo confirmado.',
+  'Open Refract': 'Abrir Refract',
+  'Sign in and send a new link from Settings → Account.': 'Inicia sesión y pide un enlace nuevo en Ajustes → Cuenta.',
+  'Choose a new password': 'Elige una contraseña nueva',
+  'Save and sign in': 'Guardar e iniciar sesión',
+  'Confirm your email address to create or import projects. Use the link sent to {email}, or send a new one.':
+    'Confirma tu correo electrónico para crear o importar proyectos. Usa el enlace enviado a {email}, o pide uno nuevo.',
+  'Send it again': 'Enviarlo de nuevo',
+  'Sent. The link works for 24 hours.': 'Enviado. El enlace funciona durante 24 horas.',
+  Confirmed: 'Confirmado',
+  'Not confirmed': 'Sin confirmar',
+  'Send the link again': 'Enviar el enlace de nuevo',
+  'The language of the messages Refract sends you.': 'El idioma de los mensajes que te envía Refract.',
+  'You sign in with {oidc}.': 'Inicias sesión con {oidc}.',
+  'Delete account': 'Eliminar cuenta',
+  'Deletes your account and everything in it: projects (including those in the trash), their history and chats, and your AI and GitHub connections. Export the projects you want to keep first.':
+    'Elimina tu cuenta y todo lo que contiene: proyectos (también los de la papelera), su historial y chats, y tus conexiones de IA y GitHub. Exporta antes los proyectos que quieras conservar.',
+  'Delete your account?': '¿Eliminar tu cuenta?',
+  "This deletes {email} and its {n} project for good. It can't be undone.":
+    'Esto elimina {email} y su {n} proyecto para siempre. No se puede deshacer.',
+  "This deletes {email} and its {n} projects for good. It can't be undone.":
+    'Esto elimina {email} y sus {n} proyectos para siempre. No se puede deshacer.',
+  "To confirm, sign in again with {oidc}. You'll come back here.":
+    'Para confirmar, vuelve a iniciar sesión con {oidc}. Volverás aquí.',
+  'Sign in again': 'Iniciar sesión de nuevo',
 } as Record<string, string>

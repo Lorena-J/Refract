@@ -25,10 +25,20 @@ import (
 
 var (
 	ErrNotFound  = errors.New("not found")
+	ErrTrashed   = errors.New("the project is in the trash")
 	ErrBusy      = errors.New("the assistant is already working on this project")
 	ErrState     = errors.New("this turn is not waiting for review")
 	ErrReviewing = errors.New("this turn is already being accepted or rejected")
+
+	ErrTooManyTurns  = errors.New("the assistant is already working on other projects of yours; wait for one to finish")
+	ErrReviewPending = errors.New("review or reject the changes waiting in this project before asking for more")
 )
+
+// TurnLimits caps one account's use of the assistant. A zero field means no limit.
+type TurnLimits struct {
+	Running       int // turns running at once, across the account's projects
+	PendingReview int // turns waiting for review, per project
+}
 
 // Chat is a conversation within a project.
 type Chat struct {
@@ -80,9 +90,42 @@ type Service struct {
 	Provider func(context.Context) ai.Provider             // the request user's provider; nil keeps Agent.Provider
 	Access   *access.Checker                               // rechecks the user after a long turn, before writing
 
+	// LimitsFor returns the caps of one account (by user id); nil: no caps.
+	LimitsFor func(ctx context.Context, userID string) (TurnLimits, error)
+
 	mu        sync.Mutex
-	running   map[string]bool // project id → a turn is running
+	turnsBy   map[string]int  // user id → running turns
+	running   map[string]bool // project id → a turn is running, or the project is held
 	reviewing map[string]bool // turn id → an accept or reject is in progress
+}
+
+// reserve marks a project as busy; false when a turn runs or it is held.
+func (s *Service) reserve(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.running == nil {
+		s.running = map[string]bool{}
+	}
+	if s.running[id] {
+		return false
+	}
+	s.running[id] = true
+	return true
+}
+
+func (s *Service) free(id string) {
+	s.mu.Lock()
+	delete(s.running, id)
+	s.mu.Unlock()
+}
+
+// Hold keeps new turns off a project until release is called, for work that
+// takes it away from its user (trash, purge). It fails while a turn runs.
+func (s *Service) Hold(projectID string) (release func(), ok bool) {
+	if !s.reserve(projectID) {
+		return nil, false
+	}
+	return func() { s.free(projectID) }, true
 }
 
 // review reserves a turn for one accept or reject at a time: both read the
@@ -269,25 +312,68 @@ func (s *Service) Ask(ctx context.Context, chatID, text string, ec Context, want
 	if err != nil {
 		return nil, err
 	}
-	p, err := s.Projects.Get(ctx, c.ProjectID)
-	if err != nil {
-		return nil, err
+	var lim TurnLimits
+	var uid string
+	if s.LimitsFor != nil {
+		u, err := access.UserFrom(ctx)
+		if err != nil {
+			return nil, err
+		}
+		uid = u.ID
+		if lim, err = s.LimitsFor(ctx, uid); err != nil {
+			return nil, err
+		}
 	}
-	s.mu.Lock()
-	if s.running == nil {
-		s.running = map[string]bool{}
-	}
-	if s.running[p.ID] {
-		s.mu.Unlock()
+	// Reserve the project before reading it: a trash holds the reservation
+	// while it changes the project, so a turn either starts first (and the
+	// trash is refused) or reads the project after it and finds nothing.
+	if !s.reserve(c.ProjectID) {
 		return nil, ErrBusy
 	}
-	s.running[p.ID] = true
-	s.mu.Unlock()
-	defer func() {
+	defer s.free(c.ProjectID)
+	// Counted after the reservation: two asks at once can't both pass a count taken before it.
+	if lim.PendingReview > 0 {
+		var n int
+		if err := s.DB.QueryRowContext(ctx, `SELECT count(*) FROM turns t JOIN chats c ON c.id = t.chat_id WHERE c.project_id = ? AND t.status = 'review'`, c.ProjectID).Scan(&n); err != nil {
+			return nil, err
+		}
+		if n >= lim.PendingReview {
+			return nil, ErrReviewPending
+		}
+	}
+	if lim.Running > 0 {
 		s.mu.Lock()
-		delete(s.running, p.ID)
+		if s.turnsBy[uid] >= lim.Running {
+			s.mu.Unlock()
+			return nil, ErrTooManyTurns
+		}
+		if s.turnsBy == nil {
+			s.turnsBy = map[string]int{}
+		}
+		s.turnsBy[uid]++
 		s.mu.Unlock()
-	}()
+		defer func() {
+			s.mu.Lock()
+			if s.turnsBy[uid]--; s.turnsBy[uid] <= 0 {
+				delete(s.turnsBy, uid)
+			}
+			s.mu.Unlock()
+		}()
+	}
+	p, err := s.Projects.Get(ctx, c.ProjectID)
+	if err != nil {
+		if errors.Is(err, projects.ErrNotFound) {
+			// A trash between the route's check and the reservation: say so, so the workspace can lock.
+			var deleted int64
+			if s.DB.QueryRowContext(ctx, `SELECT deleted_at FROM projects WHERE id = ?`, c.ProjectID).Scan(&deleted) == nil && deleted > 0 {
+				return nil, ErrTrashed
+			}
+		}
+		return nil, err
+	}
+	if err := s.Projects.CheckStorage(ctx, p); err != nil {
+		return nil, err // before a title or a turn is recorded
+	}
 
 	history, err := s.history(ctx, chatID)
 	if err != nil {
@@ -359,7 +445,8 @@ func (s *Service) Ask(ctx context.Context, chatID, text string, ec Context, want
 
 	// A turn runs for minutes: write its changes only if the user still owns
 	// the project. Nothing changes owners today; a feature that does must not
-	// do it while a turn runs (s.running), or this check and the write race.
+	// do it while a turn runs or holds the project (s.running, Hold), or this
+	// check and the write race. Trashing and purging do hold it.
 	if err := s.Access.Require(bg, p.ID, access.Owner); err != nil {
 		return s.lost(bg, p.ID, t)
 	}

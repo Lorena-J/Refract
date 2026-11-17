@@ -27,6 +27,9 @@ func (a *papersAPI) routes(rt *router) {
 	rt.user("GET /api/papers/search", a.search)
 	rt.project("POST /api/projects/{id}/papers/suggest", access.Owner, a.suggest)
 	rt.project("POST /api/projects/{id}/cite", access.Owner, a.cite)
+	rt.project("GET /api/projects/{id}/citation-checks", access.Owner, a.citationChecks)
+	rt.project("POST /api/projects/{id}/citation-checks/doi", access.Owner, a.checkDOI)
+	rt.project("POST /api/projects/{id}/citation-checks/fix", access.Owner, a.citationFix)
 }
 
 const maxPassage = 8000

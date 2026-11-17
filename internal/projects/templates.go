@@ -35,7 +35,7 @@ func (s *Service) Templates(ctx context.Context) ([]Template, error) {
 		return nil, err
 	}
 	out := append([]Template{}, starters...)
-	rows, err := s.DB.QueryContext(ctx, `SELECT id, name FROM projects WHERE owner = ? AND is_template = 1 ORDER BY name, id`, u.ID)
+	rows, err := s.DB.QueryContext(ctx, `SELECT id, name FROM projects WHERE owner = ? AND is_template = 1 AND deleted_at = 0 ORDER BY name, id`, u.ID)
 	if err != nil {
 		return nil, err
 	}

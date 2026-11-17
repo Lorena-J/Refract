@@ -22,6 +22,11 @@ func TestTemplateAPIOwnershipAndCreation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	for _, user := range []string{"ana", "ben"} {
+		if _, err := db.Exec(`INSERT INTO users (id, email, created_at, email_verified_at) VALUES (?, ?, 1, 1)`, user, user+"@example.com"); err != nil {
+			t.Fatal(err)
+		}
+	}
 	svc := &projects.Service{DB: db, Dir: filepath.Join(dir, "projects"), Limits: projects.DefaultLimits}
 	mux := http.NewServeMux()
 	(&projectsAPI{svc: svc}).routes(&router{mux: mux, acc: &access.Checker{DB: db}})

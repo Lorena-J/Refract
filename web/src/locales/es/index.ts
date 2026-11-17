@@ -6,5 +6,16 @@ import assistant from './assistant'
 import ui from './ui'
 import workspace from './workspace'
 import templates from './templates'
+import citations from './citations'
 
-export default { ...ui, ...app, ...workspace, ...assistant, ...wordcounter, ...pdf, ...completion, ...templates }
+export default {
+  ...ui,
+  ...app,
+  ...workspace,
+  ...assistant,
+  ...wordcounter,
+  ...pdf,
+  ...completion,
+  ...citations,
+  ...templates,
+}

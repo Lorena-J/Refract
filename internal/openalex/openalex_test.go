@@ -89,6 +89,26 @@ func TestRefUsesDOIBibTeX(t *testing.T) {
 	}
 }
 
+func TestDOIBibTeXPreservesReservedCharacters(t *testing.T) {
+	for _, doi := range []string{"10.1000/work#part", "10.1000/work?part=yes", "10.1000/work%2fpart", "10.1000/a/b?#%"} {
+		t.Run(doi, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/doi/"+doi || r.URL.RawQuery != "" {
+					t.Errorf("DOI changed in transit: path=%q query=%q", r.URL.Path, r.URL.RawQuery)
+					http.NotFound(w, r)
+					return
+				}
+				w.Write([]byte("@misc{work, title={Verified}}"))
+			}))
+			defer srv.Close()
+			c := &Client{HTTP: srv.Client(), DOIURL: srv.URL + "/doi"}
+			if bib, err := c.DOIBibTeX(context.Background(), doi); err != nil || !strings.Contains(bib, "Verified") {
+				t.Fatalf("metadata = %q, %v", bib, err)
+			}
+		})
+	}
+}
+
 // The key travels in the query string, and transport errors quote the URL:
 // none of that may reach the error text shown to users and models.
 func TestErrorsNeverCarryTheKey(t *testing.T) {

@@ -24,12 +24,13 @@ const usersUsage = `usage:
   refract users signout <email>           end all of an account's sessions
   refract users unlock <email> | --all    let an account (or everyone) sign in again after too many failed attempts
   refract users remove <email> [--yes]    delete an account and everything it owns
+  refract users plan <email> <plan>       set an account's plan (free, plus or ai)
   refract users list                      list accounts`
 
 // runUsers manages accounts on the server's own database (same
 // REFRACT_DATA_DIR and REFRACT_SECRET_KEY as the server).
 func runUsers(args []string, out io.Writer) error {
-	arity := map[string][]int{"list": {1}, "add": {2}, "rename": {3}, "signout": {2}, "unlock": {2}, "remove": {2, 3}}
+	arity := map[string][]int{"list": {1}, "add": {2}, "rename": {3}, "signout": {2}, "unlock": {2}, "remove": {2, 3}, "plan": {3}}
 	if len(args) == 0 || !slices.Contains(arity[args[0]], len(args)) || args[0] == "remove" && len(args) == 3 && args[2] != "--yes" {
 		return errors.New(usersUsage)
 	}
@@ -62,6 +63,14 @@ func runUsers(args []string, out io.Writer) error {
 			}
 			fmt.Fprintf(out, "%s\t%s\n", email, state)
 		}
+	case "plan":
+		if _, ok := plans[args[2]]; !ok {
+			return fmt.Errorf("unknown plan %q: want one of %s", args[2], strings.Join(slices.Sorted(maps.Keys(plans)), ", "))
+		}
+		if err := svc.SetPlan(ctx, args[1], args[2]); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "%s is now on the %s plan\n", args[1], args[2])
 	case "rename":
 		if err := svc.Rename(ctx, args[1], args[2]); err != nil {
 			return err
@@ -104,48 +113,54 @@ func runUsers(args []string, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "%s can sign in with this password (change it in Settings → General):\n\n  %s\n\n", u.Email, pw)
+		if err := svc.MarkVerified(ctx, u.ID); err != nil { // the operator vouches for the address
+			return err
+		}
+		fmt.Fprintf(out, "%s can sign in with this password (change it in Settings → Account):\n\n  %s\n\n", u.Email, pw)
 	}
 	return nil
 }
 
-// removeUser deletes an account with its projects (chats go with them),
+// removeUser deletes an account with its projects, those in the trash too (chats go with them),
 // settings and sessions. Without confirm it only says what would go.
 func removeUser(ctx context.Context, svc *users.Service, projectsDir, email string, confirm bool, out io.Writer) error {
-	email = strings.ToLower(strings.TrimSpace(email))
-	rows, err := svc.DB.QueryContext(ctx, `SELECT p.id, p.name FROM projects p JOIN users u ON u.id = p.owner WHERE u.email = ? ORDER BY p.name`, email)
+	acct, err := svc.Lookup(ctx, email)
+	if errors.Is(err, users.ErrNoAccount) {
+		return fmt.Errorf("there is no account %q", email)
+	}
 	if err != nil {
 		return err
 	}
-	var ids, names []string
-	for rows.Next() {
-		var id, name string
-		if err := rows.Scan(&id, &name); err != nil {
-			rows.Close()
-			return err
-		}
-		ids, names = append(ids, id), append(names, name)
-	}
-	rows.Close()
-	if exists, err := svc.Exists(ctx, email); err != nil || !exists {
-		return cmp.Or(err, fmt.Errorf("there is no account %q", email))
+	owned, err := svc.OwnedProjects(ctx, acct.ID)
+	if err != nil {
+		return err
 	}
 	if !confirm {
-		fmt.Fprintf(out, "This deletes %s and everything it owns: %d projects, their chats and history,\nits AI connections and its GitHub account.\n", email, len(ids))
-		for _, n := range names {
-			fmt.Fprintf(out, "  - %s\n", n)
+		fmt.Fprintf(out, "This deletes %s and everything it owns: %d projects, their chats and history,\nits AI connections and its GitHub account.\n", acct.Email, len(owned))
+		for _, p := range owned {
+			name := p.Name
+			if p.Trashed {
+				name += " (in the trash)"
+			}
+			fmt.Fprintf(out, "  - %s\n", name)
 		}
 		return fmt.Errorf("nothing was deleted: run again with --yes to confirm")
 	}
-	ps := &projects.Service{DB: svc.DB, Dir: projectsDir}
-	for _, id := range ids {
-		if err := ps.Delete(ctx, id); err != nil { // no user in ctx: any project
-			return fmt.Errorf("deleting project %s: %w", id, err)
-		}
-	}
-	if err := svc.Delete(ctx, email); err != nil {
+	n, err := svc.Remove(ctx, acct.ID, destroyer(&projects.Service{DB: svc.DB, Dir: projectsDir}))
+	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "Deleted %s and %d projects.\n", email, len(ids))
+	fmt.Fprintf(out, "Deleted %s and %d projects.\n", acct.Email, n)
 	return nil
+}
+
+// destroyer deletes a project for good, live or trashed; a project already
+// gone (the daily purge) counts as deleted. No user in the context: any project.
+func destroyer(ps *projects.Service) func(context.Context, string) error {
+	return func(ctx context.Context, id string) error {
+		if err := ps.Destroy(ctx, id); err != nil && !errors.Is(err, projects.ErrNotFound) {
+			return err
+		}
+		return nil
+	}
 }

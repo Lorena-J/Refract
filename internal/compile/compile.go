@@ -4,8 +4,10 @@ package compile
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path"
@@ -26,6 +28,7 @@ type Result struct {
 	Problems   []Problem `json:"problems"`
 	Output     string    `json:"output"` // Tectonic's stderr summary
 	TimedOut   bool      `json:"timed_out"`
+	CPULimit   bool      `json:"-"`          // TimedOut because the sandbox's CPU limit stopped it
 	Superseded bool      `json:"superseded"` // cancelled: a newer compile of the same project, or the caller went away
 	DurationMS int64     `json:"duration_ms"`
 	PDF        string    `json:"pdf,omitempty"` // project-relative path of the PDF, when produced
@@ -43,6 +46,7 @@ type Tectonic struct {
 	CacheDir string // TECTONIC_CACHE_DIR; empty = Tectonic's default
 	Timeout  time.Duration
 	Fonts    *fonts.Resolver // optional automatic family resolution; shared across builds
+	Sandbox  *Sandbox        // run tectonic inside it; nil = run it directly
 }
 
 const maxOutput = 1 << 20
@@ -54,8 +58,13 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 		return nil, err
 	}
 	outDir := filepath.Join(projectDir, filepath.FromSlash(BuildDir))
-	if err := os.MkdirAll(outDir, 0o755); err != nil { // tectonic requires it to exist
+	out, err := openOutDir(projectDir) // tectonic requires it to exist
+	if err != nil {
 		return nil, err
+	}
+	defer out.Close()
+	if testHookOutDirOpened != nil {
+		testHookOutDirOpened(projectDir)
 	}
 	base := path.Base(mainFile)
 	stem := strings.TrimSuffix(base, path.Ext(base))
@@ -83,7 +92,7 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 		}
 	}
 	// A log left by the previous build would report stale problems if this one dies early.
-	os.Remove(filepath.Join(outDir, stem+".log"))
+	removeIn(out, stem+".log")
 	// continue-on-errors: like Prism and Overleaf, produce a PDF despite errors;
 	// the errors are still reported and the build does not count as OK.
 	args := []string{base, "--outdir", outDir, "--synctex", "--keep-logs", "--untrusted", "-Z", "continue-on-errors"}
@@ -91,13 +100,25 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 		args = append(args, "--bundle", t.Bundle)
 	}
 
-	cmd := exec.CommandContext(runCtx, cmpOr(t.Bin, "tectonic"), args...)
-	cmd.Dir = filepath.Join(sourceDir, filepath.FromSlash(path.Dir(mainFile)))
-	// A minimal environment: the document must not be able to \input
-	// /proc/self/environ and read secrets like REFRACT_SECRET_KEY.
-	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + os.Getenv("HOME")}
-	if t.CacheDir != "" {
-		cmd.Env = append(cmd.Env, "TECTONIC_CACHE_DIR="+t.CacheDir)
+	workDir := filepath.Join(sourceDir, filepath.FromSlash(path.Dir(mainFile)))
+	var cmd *exec.Cmd
+	if t.Sandbox != nil {
+		cmd, err = t.Sandbox.command(runCtx, sandboxJob{
+			Tectonic: cmp.Or(t.Bin, "tectonic"), Args: args, Bundle: t.Bundle, Cache: t.CacheDir,
+			Project: projectDir, OutDir: outDir, Out: out, WorkDir: workDir, Timeout: t.Timeout,
+		})
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		cmd = exec.CommandContext(runCtx, cmp.Or(t.Bin, "tectonic"), args...)
+		cmd.Dir = workDir
+		// A minimal environment: the document must not be able to \input
+		// /proc/self/environ and read secrets like REFRACT_SECRET_KEY.
+		cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + os.Getenv("HOME")}
+		if t.CacheDir != "" {
+			cmd.Env = append(cmd.Env, "TECTONIC_CACHE_DIR="+t.CacheDir)
+		}
 	}
 	ownProcessGroup(cmd) // a timeout kills everything tectonic started
 	cmd.WaitDelay = 2 * time.Second
@@ -107,7 +128,7 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 	start := time.Now()
 	runErr := cmd.Run()
 	if setup != "" {
-		if err := restoreSyncPaths(filepath.Join(outDir, stem+".synctex.gz"), sourceDir, projectDir); err != nil {
+		if err := restoreSyncPaths(out, stem+".synctex.gz", sourceDir, projectDir); err != nil {
 			return nil, err
 		}
 	}
@@ -119,24 +140,30 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 		res.TimedOut = true
 	}
 	var exitErr *exec.ExitError
+	if errors.As(runErr, &exitErr) && t.Sandbox != nil && cpuLimited(exitErr) && !res.Superseded && !res.TimedOut {
+		res.TimedOut, res.CPULimit = true, true
+	}
 	if runErr != nil && !errors.As(runErr, &exitErr) && !res.TimedOut && !res.Superseded {
 		return nil, runErr // tectonic missing, not a document problem
 	}
 
+	res.Output = dropFontconfigNoise(res.Output)
 	res.Problems = parseStderr(res.Output)
-	if log, err := os.ReadFile(filepath.Join(outDir, stem+".log")); err == nil {
+	if log, err := readIn(out, stem+".log"); err == nil {
 		res.Problems = append(res.Problems, parseLog(string(log))...)
 	}
 	locate(res.Problems, projectDir, mainFile)
 
 	res.OK = runErr == nil && !hasError(res.Problems)
-	if fi, err := os.Stat(filepath.Join(outDir, stem+".pdf")); err == nil && !fi.ModTime().Before(start.Truncate(time.Second)) && // coarse-mtime filesystems
+	if fi, err := statIn(out, stem+".pdf"); err == nil && !fi.ModTime().Before(start.Truncate(time.Second)) && // coarse-mtime filesystems
 		!res.TimedOut && !res.Superseded {
 		res.PDF = path.Join(BuildDir, stem+".pdf") // produced by this run, possibly with errors
 	}
 	if !res.OK && !hasError(res.Problems) {
 		msg := "Compilation failed."
-		if res.TimedOut {
+		if res.CPULimit {
+			msg = "Compilation used too much CPU time and was stopped. Look for an infinite loop."
+		} else if res.TimedOut {
 			msg = "Compilation timed out after " + t.Timeout.String() + " and was stopped. Look for an infinite loop."
 		} else if res.Superseded {
 			msg = "Cancelled by a newer compile."
@@ -146,6 +173,50 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 	return res, nil
 }
 
+// ErrUnsafeBuildDir is returned when the project's build folder is a symbolic
+// link or not a folder: the project has to be fixed before it can compile.
+var ErrUnsafeBuildDir = errors.New("refusing to compile")
+
+// testHookOutDirOpened, when set, runs once the build folder is open: tests
+// use it to swap the folder for a symlink, as a concurrent git pull could.
+var testHookOutDirOpened func(projectDir string)
+
+// readIn reads name, a file directly in dir; a symlink is refused.
+func readIn(dir *os.File, name string) ([]byte, error) {
+	f, err := openIn(dir, name)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return io.ReadAll(f)
+}
+
+// statIn describes name, a file directly in dir; a symlink is refused.
+func statIn(dir *os.File, name string) (os.FileInfo, error) {
+	f, err := openIn(dir, name)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return f.Stat()
+}
+
+// dropFontconfigNoise removes the warning Tectonic prints when the system has
+// no fontconfig configuration: it is harmless and means nothing to the user.
+func dropFontconfigNoise(out string) string {
+	if !strings.Contains(out, "Fontconfig error: Cannot load default config file") {
+		return out
+	}
+	lines := strings.Split(out, "\n")
+	kept := lines[:0]
+	for _, l := range lines {
+		if !strings.Contains(l, "Fontconfig error: Cannot load default config file") {
+			kept = append(kept, l)
+		}
+	}
+	return strings.Join(kept, "\n")
+}
+
 func hasError(ps []Problem) bool {
 	for _, p := range ps {
 		if p.Severity == "error" {
@@ -153,13 +224,6 @@ func hasError(ps []Problem) bool {
 		}
 	}
 	return false
-}
-
-func cmpOr(a, b string) string {
-	if a != "" {
-		return a
-	}
-	return b
 }
 
 // limitedBuffer keeps the first maxOutput bytes and discards the rest.

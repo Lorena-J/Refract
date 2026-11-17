@@ -53,6 +53,13 @@ func TestUsersRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	trashed, err := ps.Create(auth.WithUser(ctx, ana), "Old draft")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ps.Trash(auth.WithUser(ctx, ana), trashed.ID); err != nil {
+		t.Fatal(err)
+	}
 	db.Exec(`INSERT INTO chats (id, project_id, title, created_at, updated_at) VALUES ('c1', ?, 'chat', 0, 0)`, mine.ID)
 	token, _ := people.NewSession(ctx, ana.ID)
 
@@ -64,7 +71,7 @@ func TestUsersRemove(t *testing.T) {
 	}
 
 	out, err := run("remove", "ana@example.com")
-	if err == nil || !strings.Contains(out, "Thesis") {
+	if err == nil || !strings.Contains(out, "Thesis") || !strings.Contains(out, "Old draft (in the trash)") {
 		t.Fatalf("remove without --yes: %q, %v", out, err)
 	}
 	if _, err := os.Stat(ps.Path(mine.ID)); err != nil {
@@ -77,6 +84,11 @@ func TestUsersRemove(t *testing.T) {
 	var chats, rows int
 	db.QueryRow(`SELECT count(*) FROM chats`).Scan(&chats)
 	db.QueryRow(`SELECT count(*) FROM projects WHERE id = ?`, mine.ID).Scan(&rows)
+	var trashedRows int
+	db.QueryRow(`SELECT count(*) FROM projects WHERE id = ?`, trashed.ID).Scan(&trashedRows)
+	if _, err := os.Stat(ps.Path(trashed.ID)); !os.IsNotExist(err) || trashedRows != 0 {
+		t.Fatalf("the trashed project was left behind: dir err %v, rows %d", err, trashedRows)
+	}
 	if _, err := os.Stat(ps.Path(mine.ID)); !os.IsNotExist(err) || chats != 0 || rows != 0 {
 		t.Fatalf("left behind: dir err %v, chats %d, rows %d", err, chats, rows)
 	}
@@ -126,5 +138,38 @@ func TestUsersUnlock(t *testing.T) {
 	}
 	if out := run("unlock", "--all"); !strings.Contains(out, "Cleared 0") {
 		t.Fatalf("unlock --all: %q", out)
+	}
+}
+
+// An account the operator adds is one they vouch for, even if someone had
+// signed up with that address before.
+func TestUsersAddVerifies(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("REFRACT_DATA_DIR", dir)
+	t.Setenv("REFRACT_SECRET_KEY", base64.StdEncoding.EncodeToString(make([]byte, 32)))
+	db, err := store.Open(filepath.Join(dir, "refract.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	people := &users.Service{DB: db, Key: make([]byte, 32)}
+	ctx := context.Background()
+	if _, err := people.SignUp(ctx, "ana@example.com", "correct horse", "en"); err != nil {
+		t.Fatal(err)
+	}
+	if a, _ := people.Lookup(ctx, "ana@example.com"); a.Verified {
+		t.Fatal("a sign-up starts verified")
+	}
+	db.Close()
+	var out bytes.Buffer
+	if err := runUsers([]string{"add", "ana@example.com"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	db, err = store.Open(filepath.Join(dir, "refract.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if a, err := (&users.Service{DB: db}).Lookup(ctx, "ana@example.com"); err != nil || !a.Verified {
+		t.Errorf("account = %+v, %v; want verified", a, err)
 	}
 }

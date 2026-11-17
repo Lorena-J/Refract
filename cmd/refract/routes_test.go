@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -21,11 +22,13 @@ import (
 )
 
 // ids of what each user owns in the walk's database.
-type owned struct{ project, chat, turn string }
+// trashed, trashedChat and trashedTurn are the user's project in the trash,
+// with a chat and a turn.
+type owned struct{ project, chat, turn, trashed, trashedChat, trashedTurn string }
 
 var (
-	ana = owned{"p-ana", "c-ana", "t-ana"}
-	ben = owned{"p-ben", "c-ben", "t-ben"}
+	ana = owned{"p-ana", "c-ana", "t-ana", "p-ana-trashed", "c-ana-trashed", "t-ana-trashed"}
+	ben = owned{"p-ben", "c-ben", "t-ben", "p-ben-trashed", "c-ben-trashed", "t-ben-trashed"}
 )
 
 func accessDB(t *testing.T) *access.Checker {
@@ -35,6 +38,12 @@ func accessDB(t *testing.T) *access.Checker {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
+	// ana and ben have verified emails, una has not.
+	for id, verified := range map[string]int{"ana": 1, "ben": 1, "una": 0} {
+		if _, err := db.Exec(`INSERT INTO users (id, email, created_at, email_verified_at) VALUES (?, ?, 1, ?)`, id, id+"@example.com", verified); err != nil {
+			t.Fatal(err)
+		}
+	}
 	for user, o := range map[string]owned{"ana": ana, "ben": ben} {
 		for _, q := range []struct {
 			sql  string
@@ -43,6 +52,18 @@ func accessDB(t *testing.T) *access.Checker {
 			{`INSERT INTO projects (id, name, created_at, updated_at, owner) VALUES (?, 'P', 0, 0, ?)`, []any{o.project, user}},
 			{`INSERT INTO chats (id, project_id, title, created_at, updated_at) VALUES (?, ?, 'C', 0, 0)`, []any{o.chat, o.project}},
 			{`INSERT INTO turns (id, chat_id, message, status, created_at, updated_at) VALUES (?, ?, 'M', 'review', 0, 0)`, []any{o.turn, o.chat}},
+		} {
+			if _, err := db.Exec(q.sql, q.args...); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for _, q := range []struct {
+			sql  string
+			args []any
+		}{
+			{`INSERT INTO projects (id, name, created_at, updated_at, owner, deleted_at) VALUES (?, 'T', 0, 0, ?, 1)`, []any{o.trashed, user}},
+			{`INSERT INTO chats (id, project_id, title, created_at, updated_at) VALUES (?, ?, 'C', 0, 0)`, []any{o.trashedChat, o.trashed}},
+			{`INSERT INTO turns (id, chat_id, message, status, created_at, updated_at) VALUES (?, ?, 'M', 'review', 0, 0)`, []any{o.trashedTurn, o.trashedChat}},
 		} {
 			if _, err := db.Exec(q.sql, q.args...); err != nil {
 				t.Fatal(err)
@@ -69,8 +90,11 @@ func table(acc *access.Checker) *router {
 func request(r route, o owned) *http.Request {
 	method, path, _ := strings.Cut(r.Pattern, " ")
 	path = strings.NewReplacer("{chat}", o.chat, "{turn}", o.turn, "{hash}", "abc").Replace(path)
-	if r.Scope == scopeProject {
+	switch r.Scope {
+	case scopeProject:
 		path = strings.Replace(path, "{id}", o.project, 1)
+	case scopeTrash:
+		path = strings.Replace(path, "{id}", o.trashed, 1)
 	}
 	path = strings.ReplaceAll(path, "{id}", "x") // other ids, e.g. a provider's
 	return httptest.NewRequest(method, path, nil)
@@ -80,7 +104,7 @@ func request(r route, o owned) *http.Request {
 // the owner gets through to anything that addresses a project, chat or turn.
 func TestRouteTableAccess(t *testing.T) {
 	rt := table(accessDB(t))
-	if len(rt.routes) < 40 {
+	if len(rt.routes) < 43 {
 		t.Fatalf("only %d routes in the table", len(rt.routes))
 	}
 	as := func(user string) context.Context {
@@ -121,7 +145,7 @@ func TestRouteTableAccess(t *testing.T) {
 func TestMissingResourcesMatchInaccessibleResources(t *testing.T) {
 	rt := table(accessDB(t))
 	ctx := auth.WithUser(context.Background(), auth.User{ID: "ana"})
-	missing := owned{"missing-project", "missing-chat", "missing-turn"}
+	missing := owned{"missing-project", "missing-chat", "missing-turn", "missing-trashed", "missing-tc", "missing-tt"}
 
 	for _, r := range rt.routes {
 		if r.Scope == scopeUser {
@@ -151,6 +175,81 @@ func TestMissingResourcesMatchInaccessibleResources(t *testing.T) {
 	}
 }
 
+// Every route that addresses a project, chat or turn answers 404 for what is
+// in the trash, even to its owner; the trash routes answer 404 for a live
+// project.
+func TestTrashedProjectsAreInvisible(t *testing.T) {
+	rt := table(accessDB(t))
+	ctx := auth.WithUser(context.Background(), auth.User{ID: "ana"})
+	trashed := owned{project: ana.trashed, chat: ana.trashedChat, turn: ana.trashedTurn}
+	checked := 0
+	for _, r := range rt.routes {
+		var ids owned
+		switch r.Scope {
+		case scopeUser:
+			continue
+		case scopeTrash:
+			ids = owned{trashed: ana.project} // the live project
+		default:
+			ids = trashed
+		}
+		w := httptest.NewRecorder()
+		rt.mux.ServeHTTP(w, request(r, ids).WithContext(ctx))
+		if w.Code != http.StatusNotFound {
+			t.Errorf("%s = %d, want 404", r.Pattern, w.Code)
+		}
+		checked++
+	}
+	if checked < 30 {
+		t.Errorf("only %d routes checked", checked)
+	}
+}
+
+// The owner of a trashed project is told so on every project, chat and turn
+// route; everyone else, and every other 404, gets the plain body.
+func TestOwnerIsToldTheProjectIsTrashed(t *testing.T) {
+	acc := accessDB(t)
+	rt := table(acc)
+	as := func(user string) context.Context { return auth.WithUser(context.Background(), auth.User{ID: user}) }
+	trashed := owned{project: ana.trashed, chat: ana.trashedChat, turn: ana.trashedTurn}
+	missing := owned{"missing-project", "missing-chat", "missing-turn", "missing-trashed", "missing-tc", "missing-tt"}
+	call := func(r route, ctx context.Context, ids owned) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		rt.mux.ServeHTTP(w, request(r, ids).WithContext(ctx))
+		return w
+	}
+	for _, r := range rt.routes {
+		if r.Scope == scopeUser {
+			continue
+		}
+		if r.Scope == scopeTrash {
+			// The trash routes keep the plain 404 for a live project.
+			if w := call(r, as("ana"), owned{trashed: ana.project}); w.Code != 404 || strings.Contains(w.Body.String(), "project_trashed") {
+				t.Errorf("%s on a live project: %d %s", r.Pattern, w.Code, w.Body)
+			}
+			continue
+		}
+		w := call(r, as("ana"), trashed)
+		if w.Code != 404 || !strings.Contains(w.Body.String(), `"kind":"project_trashed"`) {
+			t.Errorf("%s as the owner: %d %s", r.Pattern, w.Code, w.Body)
+		}
+		stranger, unknown := call(r, as("ben"), trashed), call(r, as("ben"), missing)
+		if stranger.Code != 404 || stranger.Body.String() != unknown.Body.String() {
+			t.Errorf("%s as a stranger: %d %q, unknown id: %q", r.Pattern, stranger.Code, stranger.Body, unknown.Body)
+		}
+	}
+	// After a purge the kind is "other" again.
+	acc.DB.Exec(`DELETE FROM projects WHERE id = ?`, ana.trashed)
+	for _, r := range rt.routes {
+		if r.Scope != scopeProject {
+			continue
+		}
+		if w := call(r, as("ana"), trashed); strings.Contains(w.Body.String(), "project_trashed") {
+			t.Errorf("%s after a purge: %s", r.Pattern, w.Body)
+		}
+	}
+}
+
 func TestRouteScopeIsValidated(t *testing.T) {
 	for _, r := range []route{
 		{Pattern: "GET /api/projects/{id}/files", Scope: scopeUser},
@@ -165,7 +264,10 @@ func TestRouteScopeIsValidated(t *testing.T) {
 		{Pattern: "GET /api/chats/{c}/turns", Scope: scopeUser},
 		{Pattern: "GET /api/turns/latest", Scope: scopeUser},
 		{Pattern: "GET /api/projects/import/{x}", Scope: scopeUser},
-		{Pattern: "GET /api/documents/{project}", Scope: scopeUser}, // any wildcard in a user route
+		{Pattern: "GET /api/documents/{project}", Scope: scopeUser},                       // any wildcard in a user route
+		{Pattern: "GET /api/projects/{id}/files", Scope: scopeTrash, Min: access.Owner},   // not in trashRoutes
+		{Pattern: "POST /api/projects/{id}/restore", Scope: scopeTrash},                   // no role
+		{Pattern: "POST /api/chats/{chat}/restore", Scope: scopeTrash, Min: access.Owner}, // not under a project
 	} {
 		if r.validate() == nil {
 			t.Errorf("%+v: accepted", r)
@@ -176,6 +278,8 @@ func TestRouteScopeIsValidated(t *testing.T) {
 		{Pattern: "POST /api/projects/import", Scope: scopeUser},
 		{Pattern: "GET /api/projects/{id}", Scope: scopeProject, Min: access.Owner},
 		{Pattern: "PUT /api/providers/{id}", Scope: scopeUser},
+		{Pattern: "POST /api/projects/{id}/restore", Scope: scopeTrash, Min: access.Owner},
+		{Pattern: "DELETE /api/projects/{id}/purge", Scope: scopeTrash, Min: access.Owner},
 	} {
 		if err := r.validate(); err != nil {
 			t.Errorf("%+v: %v", r, err)
@@ -192,6 +296,8 @@ var allowedRegistrations = map[string][]string{
 	"main.go:run":        {`"/api/"`, `"/"`, `"GET /healthz"`, `"/api/auth/"`},
 	"login_api.go:handler": {
 		`"GET /api/auth/config"`, `"POST /api/auth/login"`, `"POST /api/auth/logout"`,
+		// Served to people who aren't signed in yet: they ask for sign-up, a new password or to confirm an address.
+		`"POST /api/auth/signup"`, `"POST /api/auth/forgot"`, `"POST /api/auth/reset"`, `"POST /api/auth/verify"`,
 		`"GET /api/auth/oidc/start"`, `"GET /api/auth/oidc/callback"`,
 		`"/api/auth/oidc/"`, `"/api/auth/"`,
 	},
@@ -267,10 +373,17 @@ func TestHandlersKeepUsersApart(t *testing.T) {
 		{"GET", "/api/chats/" + ana.chat + "/turns"},
 		{"POST", "/api/turns/" + ana.turn + "/reject"},
 		{"DELETE", "/api/projects/" + ana.project},
+		{"POST", "/api/projects/" + ana.trashed + "/restore"},
+		{"DELETE", "/api/projects/" + ana.trashed + "/purge"},
 	} {
 		if got := call("ben", tc.method, tc.path); got != http.StatusNotFound {
 			t.Errorf("ben: %s %s = %d, want 404", tc.method, tc.path, got)
 		}
+	}
+	var trashedAt int
+	acc.DB.QueryRow(`SELECT deleted_at FROM projects WHERE id = ?`, ana.trashed).Scan(&trashedAt)
+	if trashedAt != 1 {
+		t.Errorf("ben changed ana's trashed project: deleted_at = %d", trashedAt)
 	}
 	var status string
 	acc.DB.QueryRow(`SELECT status FROM turns WHERE id = ?`, ana.turn).Scan(&status)
@@ -286,5 +399,83 @@ func TestHandlersKeepUsersApart(t *testing.T) {
 	}
 	if ps, _ := ps.List(auth.WithUser(context.Background(), auth.User{ID: "ben"})); len(ps) != 1 || ps[0].ID != ben.project {
 		t.Errorf("ben lists %+v", ps)
+	}
+}
+
+// Creating or importing a project, including a saved template, needs a verified email.
+func TestRouteNeeds(t *testing.T) {
+	rt := table(accessDB(t))
+	want := []string{"POST /api/projects", "POST /api/projects/import", "POST /api/projects/import-folder", "POST /api/projects/{id}/template"}
+	var got []string
+	for _, r := range rt.routes {
+		if slices.Contains(r.Needs, access.VerifiedEmail) {
+			got = append(got, r.Pattern)
+		}
+	}
+	slices.Sort(got)
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Fatalf("routes needing a verified email = %v, want %v", got, want)
+	}
+	as := func(user string) context.Context {
+		return auth.WithUser(context.Background(), auth.User{ID: user})
+	}
+	for _, r := range rt.routes {
+		if r.Pattern == "POST /api/projects/{id}/template" {
+			for _, at := range []int{0, 1} {
+				if _, err := rt.acc.DB.Exec(`UPDATE users SET email_verified_at = ? WHERE id = 'ana'`, at); err != nil {
+					t.Fatal(err)
+				}
+				w := httptest.NewRecorder()
+				rt.mux.ServeHTTP(w, request(r, ana).WithContext(as("ana")))
+				if at == 0 && (w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), `"email_unverified"`)) {
+					t.Fatalf("unverified template save: %d %s", w.Code, w.Body.String())
+				}
+				if at == 1 && w.Code != reached {
+					t.Fatalf("verified template save: %d", w.Code)
+				}
+			}
+		}
+		if r.Scope != scopeUser {
+			continue
+		}
+		needs := slices.Contains(want, r.Pattern)
+		for _, who := range []string{"una", "nobody"} {
+			w := httptest.NewRecorder()
+			rt.mux.ServeHTTP(w, request(r, ana).WithContext(as(who)))
+			switch {
+			case !needs && w.Code != reached:
+				t.Errorf("%s as %s = %d, want it reached", r.Pattern, who, w.Code)
+			case needs && (w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), `"email_unverified"`)):
+				t.Errorf("%s as %s = %d %s, want 403 email_unverified", r.Pattern, who, w.Code, w.Body.String())
+			}
+		}
+		if needs {
+			w := httptest.NewRecorder()
+			rt.mux.ServeHTTP(w, request(r, ana).WithContext(as("ana")))
+			if w.Code != reached {
+				t.Errorf("%s as a verified user = %d", r.Pattern, w.Code)
+			}
+		}
+	}
+}
+
+// Only REFRACT_AUTH=builtin can verify an address, so elsewhere the need is waived.
+func TestRouteNeedsWaivedOutsideBuiltin(t *testing.T) {
+	acc := accessDB(t)
+	acc.SkipVerified = true
+	if _, err := acc.DB.Exec(`UPDATE projects SET owner = 'una' WHERE id = ?`, ana.project); err != nil {
+		t.Fatal(err)
+	}
+	rt := table(acc)
+	for _, r := range rt.routes {
+		if !slices.Contains(r.Needs, access.VerifiedEmail) {
+			continue
+		}
+		w := httptest.NewRecorder()
+		rt.mux.ServeHTTP(w, request(r, ana).WithContext(auth.WithUser(context.Background(), auth.User{ID: "una"})))
+		if w.Code != reached {
+			t.Errorf("%s as an unverified user outside builtin = %d, want it reached", r.Pattern, w.Code)
+		}
 	}
 }

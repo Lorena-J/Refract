@@ -38,6 +38,28 @@ func TestConcurrentCheckpoints(t *testing.T) {
 	}
 }
 
+// A file written between `git add` and the commit (an autosave arriving
+// meanwhile) is not an error: it goes into the next checkpoint.
+func TestCheckpointWithAWriteAfterAdd(t *testing.T) {
+	s, id := newTurnProject(t)
+	if _, err := s.Checkpoint(ownerCtx, id, "c"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { testHookAfterAdd = nil })
+	testHookAfterAdd = func(dir string) {
+		if err := os.WriteFile(filepath.Join(dir, "late.tex"), []byte("late\n"), 0o644); err != nil {
+			t.Error(err)
+		}
+	}
+	if committed, err := s.Checkpoint(ownerCtx, id, "c"); err != nil || committed {
+		t.Fatalf("Checkpoint = %v, %v; want nothing to commit and no error", committed, err)
+	}
+	testHookAfterAdd = nil
+	if committed, err := s.Checkpoint(ownerCtx, id, "c"); err != nil || !committed {
+		t.Fatalf("next Checkpoint = %v, %v; want the late file committed", committed, err)
+	}
+}
+
 // Auto-push after every commit doesn't collide with the next commit.
 func TestAutoPushDoesNotCollide(t *testing.T) {
 	s, id, _ := remoteProject(t)

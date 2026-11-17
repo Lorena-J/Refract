@@ -342,7 +342,10 @@ function SettingsRow({
             {label}
           </span>
           {description ? (
-            <span id={descriptionId} className="chatcn-text-13 text-pretty text-chatcn-fg-muted">
+            <span
+              id={descriptionId}
+              className="chatcn-text-13 text-pretty [overflow-wrap:anywhere] break-words text-chatcn-fg-muted"
+            >
               {description}
             </span>
           ) : null}

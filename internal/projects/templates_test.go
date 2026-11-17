@@ -100,7 +100,7 @@ func TestSavedTemplatesArePrivateIndependentCopies(t *testing.T) {
 	if b, _, _ := s.ReadFile(ownerCtx, saved.ID, "REFRACT.md"); string(b) != files["REFRACT.md"] {
 		t.Fatal("editing the copy changed the template")
 	}
-	if err := s.Delete(ownerCtx, saved.ID); err != nil {
+	if err := s.Trash(ownerCtx, saved.ID); err != nil {
 		t.Fatal(err)
 	}
 	if b, _, err := s.ReadFile(ownerCtx, copy.ID, "paper/selected.tex"); err != nil || string(b) != files["paper/selected.tex"] {
@@ -282,6 +282,84 @@ func TestTemplateCopyLimitsLeaveNoPartialProject(t *testing.T) {
 		list, _ := s.Templates(ownerCtx)
 		if len(list) != 5 {
 			t.Fatal("failed copy registered a template")
+		}
+	}
+}
+
+func TestTemplateTrashAndRestore(t *testing.T) {
+	s := newService(t)
+	p, err := s.CreateFromTemplate(ownerCtx, "Article", "article")
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := s.SaveTemplate(ownerCtx, p.ID, "Starter")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Trash(ownerCtx, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if list, err := s.List(ownerCtx); err != nil || len(list) != 0 {
+		t.Fatalf("live list includes trash or templates: %+v, %v", list, err)
+	}
+	if err := s.Trash(ownerCtx, saved.ID); err != nil {
+		t.Fatal(err)
+	}
+	if list, err := s.Templates(ownerCtx); err != nil || len(list) != len(starters) {
+		t.Fatalf("template list includes trash: %+v, %v", list, err)
+	}
+	if _, err := s.CreateFromTemplate(ownerCtx, "Copy", saved.ID); !errors.Is(err, access.ErrNotFound) {
+		t.Fatalf("copy trashed template: %v", err)
+	}
+	trash, err := s.ListTrash(ownerCtx)
+	if err != nil || len(trash) != 2 {
+		t.Fatalf("trash: %+v, %v", trash, err)
+	}
+	var found bool
+	for _, p := range trash {
+		if p.ID == saved.ID {
+			found = p.IsTemplate
+		}
+	}
+	if !found {
+		t.Fatal("trashed template lost its type")
+	}
+	if err := s.Restore(ownerCtx, saved.ID); err != nil {
+		t.Fatal(err)
+	}
+	if list, err := s.List(ownerCtx); err != nil || len(list) != 0 {
+		t.Fatalf("restored template appears as a project: %+v, %v", list, err)
+	}
+	if _, err := s.CreateFromTemplate(ownerCtx, "Copy", saved.ID); err != nil {
+		t.Fatalf("copy restored template: %v", err)
+	}
+}
+
+func TestTemplatesRespectQuota(t *testing.T) {
+	s := newService(t)
+	s.QuotaFor = func(context.Context, string) (Quota, error) {
+		return Quota{MaxProjects: 2}, nil
+	}
+	p, err := s.CreateFromTemplate(ownerCtx, "Article", "article")
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := s.SaveTemplate(ownerCtx, p.ID, "Starter")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{p.ID, saved.ID} {
+		var size, measured int64
+		if err := s.DB.QueryRow(`SELECT size_bytes, size_measured_at FROM projects WHERE id = ?`, id).Scan(&size, &measured); err != nil || size <= 0 || measured <= 0 {
+			t.Fatalf("size for %s: %d, %d, %v", id, size, measured, err)
+		}
+	}
+	if _, err := s.SaveTemplate(ownerCtx, p.ID, "Extra"); !errors.Is(err, ErrOverLimit) {
+		t.Fatalf("save over quota: %v", err)
+	}
+	for _, id := range []string{"article", saved.ID} {
+		if _, err := s.CreateFromTemplate(ownerCtx, "Extra", id); !errors.Is(err, ErrOverLimit) {
+			t.Fatalf("copy %s over quota: %v", id, err)
 		}
 	}
 }

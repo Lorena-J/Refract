@@ -24,18 +24,21 @@ const (
 	scopeProject              // /api/projects/{id}…
 	scopeChat                 // /api/chats/{chat}…
 	scopeTurn                 // /api/turns/{turn}…
+	scopeTrash                // /api/projects/{id}… of a project in the trash: its owner only, trashRoutes only
 )
 
 var scopePrefix = map[scope]string{
 	scopeProject: "/api/projects/{id}",
 	scopeChat:    "/api/chats/{chat}",
 	scopeTurn:    "/api/turns/{turn}",
+	scopeTrash:   "/api/projects/{id}",
 }
 
 type route struct {
 	Pattern string // "METHOD /path"
 	Scope   scope
 	Min     access.Role
+	Needs   []access.Need // what the account must have; checked after the role
 }
 
 type router struct {
@@ -47,20 +50,25 @@ type router struct {
 	stub func(route) http.HandlerFunc
 }
 
-func (rt *router) user(pattern string, h http.HandlerFunc) {
-	rt.register(route{Pattern: pattern, Scope: scopeUser}, h)
+func (rt *router) user(pattern string, h http.HandlerFunc, needs ...access.Need) {
+	rt.register(route{Pattern: pattern, Scope: scopeUser, Needs: needs}, h)
 }
 
-func (rt *router) project(pattern string, min access.Role, h http.HandlerFunc) {
-	rt.register(route{Pattern: pattern, Scope: scopeProject, Min: min}, h)
+func (rt *router) project(pattern string, min access.Role, h http.HandlerFunc, needs ...access.Need) {
+	rt.register(route{Pattern: pattern, Scope: scopeProject, Min: min, Needs: needs}, h)
 }
 
-func (rt *router) chat(pattern string, min access.Role, h http.HandlerFunc) {
-	rt.register(route{Pattern: pattern, Scope: scopeChat, Min: min}, h)
+func (rt *router) chat(pattern string, min access.Role, h http.HandlerFunc, needs ...access.Need) {
+	rt.register(route{Pattern: pattern, Scope: scopeChat, Min: min, Needs: needs}, h)
 }
 
-func (rt *router) turn(pattern string, min access.Role, h http.HandlerFunc) {
-	rt.register(route{Pattern: pattern, Scope: scopeTurn, Min: min}, h)
+func (rt *router) turn(pattern string, min access.Role, h http.HandlerFunc, needs ...access.Need) {
+	rt.register(route{Pattern: pattern, Scope: scopeTurn, Min: min, Needs: needs}, h)
+}
+
+// trashed registers a route that reaches a project in the trash.
+func (rt *router) trashed(pattern string, min access.Role, h http.HandlerFunc, needs ...access.Need) {
+	rt.register(route{Pattern: pattern, Scope: scopeTrash, Min: min, Needs: needs}, h)
 }
 
 func (rt *router) register(r route, h http.HandlerFunc) {
@@ -91,6 +99,9 @@ var members = map[string]struct {
 // them a project, chat or turn. Adding one is a decision to review.
 var userWildcards = []string{"/api/providers/{id}"}
 
+// trashRoutes are the only routes that reach a project in the trash. Adding one is a decision to review.
+var trashRoutes = []string{"POST /api/projects/{id}/restore", "DELETE /api/projects/{id}/purge"}
+
 // validate ties the scope to the path: anything addressing a project, chat or
 // turn must be registered with that scope and a role, whatever its wildcard
 // is called.
@@ -104,7 +115,7 @@ func (r route) validate() error {
 	if len(segs) >= 3 && segs[0] == "api" {
 		if m, ok := members[segs[1]]; ok && (wildcard(segs[2]) || m.scope != scopeProject) {
 			// Under /api/projects only literal names (import, import-folder) are not members.
-			if segs[2] != m.wildcard || r.Scope != m.scope {
+			if segs[2] != m.wildcard || (r.Scope != m.scope && !(m.scope == scopeProject && r.Scope == scopeTrash)) {
 				return fmt.Errorf("route %q addresses a member of /api/%s: register it with that scope, as %s", r.Pattern, segs[1], m.wildcard)
 			}
 		}
@@ -120,6 +131,9 @@ func (r route) validate() error {
 	}
 	if r.Min == access.None {
 		return fmt.Errorf("route %q needs a minimum role", r.Pattern)
+	}
+	if r.Scope == scopeTrash && !slices.Contains(trashRoutes, r.Pattern) {
+		return fmt.Errorf("route %q reaches projects in the trash: list it in trashRoutes if it should", r.Pattern)
 	}
 	return nil
 }
@@ -139,26 +153,50 @@ func (rt *router) guard(r route, h http.Handler) http.Handler {
 		}
 		var project string
 		var err error
+		check := rt.acc.Require
 		switch r.Scope {
 		case scopeUser:
-			h.ServeHTTP(w, req)
-			return
 		case scopeProject:
 			project = req.PathValue("id")
+		case scopeTrash:
+			project = req.PathValue("id")
+			check = rt.acc.RequireTrashed
 		case scopeChat:
 			project, err = rt.acc.ChatProject(ctx, req.PathValue("chat"))
 		case scopeTurn:
 			project, err = rt.acc.TurnProject(ctx, req.PathValue("turn"))
 		}
-		if err == nil {
-			err = rt.acc.Require(ctx, project, r.Min)
+		if err == nil && r.Scope != scopeUser {
+			err = check(ctx, project, r.Min)
 		}
 		if err != nil {
+			// The owner of a project in the trash is told so, so the workspace
+			// they have open can say it. Anyone else gets the plain not-found,
+			// the same as for an unknown id; if the lookup fails, so do they.
+			if r.Scope != scopeTrash && project != "" && errors.Is(err, access.ErrNotFound) {
+				if role, rerr := rt.acc.TrashedRole(ctx, project); rerr == nil && role == access.Owner {
+					kindError(w, http.StatusNotFound, "project_trashed", errors.New("not found"))
+					return
+				}
+			}
 			accessError(w, err)
+			return
+		}
+		// Last, so a stranger still gets the not-found of a missing project.
+		if err := rt.acc.Meets(ctx, r.Needs...); err != nil {
+			needError(w, err)
 			return
 		}
 		h.ServeHTTP(w, req)
 	})
+}
+
+func needError(w http.ResponseWriter, err error) {
+	if errors.Is(err, access.ErrUnverified) {
+		kindError(w, http.StatusForbidden, "email_unverified", err)
+		return
+	}
+	accessError(w, err)
 }
 
 func accessError(w http.ResponseWriter, err error) {

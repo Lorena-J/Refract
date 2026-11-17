@@ -13,7 +13,7 @@ let index = (history.state as { i?: number } | null)?.i ?? 0
 if (history.state?.i === undefined) history.replaceState({ ...history.state, i: index }, '')
 
 const listeners = new Set<() => void>()
-const leaving = new Set<() => Promise<void>>()
+const leaving = new Set<() => Promise<void | boolean>>()
 let ready: (() => void) | null = null
 
 const subscribe = (l: () => void) => {
@@ -29,8 +29,8 @@ export function usePath(): string {
 /** The page shown before this one ("" on first load). */
 export const previousPath = () => previous
 
-/** Runs fn (and waits for it) before the page changes. */
-export function useBeforeLeave(fn: () => Promise<void>) {
+/** Runs fn (and waits for it) before the page changes. Resolving to false cancels the navigation. */
+export function useBeforeLeave(fn: () => Promise<void | boolean>) {
   useEffect(() => {
     leaving.add(fn)
     return () => void leaving.delete(fn)
@@ -46,9 +46,17 @@ export function pageReady() {
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches
 
-async function show(to: string, back: boolean, animate: boolean) {
-  // Saving edits must not be skipped, but a hung request must not trap the user.
-  await Promise.race([Promise.all([...leaving].map((f) => f().catch(() => {}))), wait(5000)])
+// Saving edits must not be skipped, but a hung request must not trap the user.
+// False when a page asked to stay.
+async function leave(): Promise<boolean> {
+  const results: (void | boolean)[] = await Promise.race([
+    Promise.all([...leaving].map((f) => f().catch(() => undefined))),
+    wait(5000).then(() => []),
+  ])
+  return !results.includes(false)
+}
+
+function show(to: string, back: boolean, animate: boolean) {
   const update = () => {
     previous = current
     current = to
@@ -66,16 +74,44 @@ async function show(to: string, back: boolean, animate: boolean) {
 }
 
 /** Goes to a page of the app. replace: no new history entry, and no animation. */
-export function navigate(to: string, { replace = false } = {}) {
+export async function navigate(to: string, { replace = false } = {}) {
   if (to === location.pathname && to === current) return
+  if (!(await leave())) return
   if (replace) history.replaceState({ i: index }, '', to)
   else history.pushState({ i: ++index }, '', to)
   return show(to, false, !replace)
 }
 
-window.addEventListener('popstate', (e) => {
+/**
+ * Loads a page from the server instead of switching in place (no argument:
+ * reloads this one). Needed when the session cookie has just changed (signing
+ * in, out or deleting the account): the app's state, such as who is signed in,
+ * was read under the old session. Like navigate it first waits for pages to
+ * finish pending work (saving edits), but it doesn't let them cancel: the
+ * session is already gone or changed.
+ */
+export async function reloadTo(to?: string) {
+  await leave()
+  if (to === undefined) location.reload()
+  else location.assign(to)
+}
+
+let undoing = false
+window.addEventListener('popstate', async (e) => {
+  if (undoing) {
+    undoing = false
+    return
+  }
   const i = (e.state as { i?: number } | null)?.i ?? 0
   const back = i < index
+  if (!(await leave())) {
+    // Stay: put the browser's history back where it was.
+    if (index !== i) {
+      undoing = true
+      history.go(index - i)
+    }
+    return
+  }
   index = i
   show(location.pathname, back, true)
 })

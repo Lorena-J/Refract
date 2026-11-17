@@ -38,6 +38,7 @@ Refract started as a replacement for OpenAI Prism: it opens Prism's exports as t
 - **Your files stay yours.** Projects are plain folders and git repositories on your server. Export any project as a .zip, or push it to GitHub or any git remote.
 - **The assistant never edits behind your back.** It works on a copy of the project, can compile and fix its own errors, and hands you a diff. Nothing changes until you accept it, file by file if you like.
 - **Citations come from real metadata.** The assistant searches OpenAlex and arXiv, and every bibliography entry is built from the publisher's or arXiv's record, never written by a model.
+- **Citation checks** in the project menu find missing citation keys, duplicate keys or works, incomplete entries and unused bibliography entries in the selected main document, its `\input`/`\include` files and the bibliographies it loads with `\bibliography`/`\addbibresource` (paths resolve from the main file's folder). **Check DOIs online** explicitly contacts doi.org and distinguishes missing DOIs from unavailable metadata services. Incomplete entries with a DOI or arXiv identifier offer **Review source metadata**: the correction preserves the citation key and local fields absent from the source, and appears as an editor proposal to accept (Tab) or reject (Esc). No AI connection is needed. Alternate drafts, independent subdocuments and unloaded bibliographies are excluded. Checks do not expand custom macros or evaluate conditional LaTeX; `\nocite{*}` marks all entries as used, and `crossref`/`xdata` dependencies are counted. Files over 8 MB are reported as skipped.
 - **Use the AI you already pay for.** Your ChatGPT plan, your own API keys (OpenAI, Anthropic, Gemini, OpenRouter and more), or local models through Ollama when self-hosted.
 
 ## Features
@@ -88,15 +89,17 @@ Select text and a toolbar offers **Improve**, **Shorten**, **Fix grammar**, **Ta
 
 - Create a blank project, or import a Prism export (.zip) or a folder. Imports are checked: up to 200 MB and 5,000 files, nothing outside the project, no symlinks.
 - **New → From a template…** starts a project from an article, thesis, Beamer presentation, letter or CV. The starters include styled typography, a restrained colour palette and editable metadata at the top of `main.tex`: an article with equations, a results table and references; a thesis with a cover, contents, research chapters and appendix; eight widescreen slides; a formal letter with a personal letterhead; and a one-page CV. Sample text and clearly labelled illustrative data show how to use each layout. All five compile with Tectonic without external images or bibliography tools; standard TeX packages may download on first use. You can still choose **Blank project** in the same picker. Changes to built-in starters apply to newly created projects; existing projects and saved templates keep their source.
-- **Save as template…** in a project's menu (or its row in the project list) keeps a private copy of its current source files and selected main file. Open editor changes are saved first. Your templates appear in the new-project picker, are visible only to you, and can be deleted there. Each project created from one has independent files and a fresh history; chats, remote connections and build output are not copied. Editing or deleting the original or template does not change projects already created from it.
+- **Save as template…** in a project's menu (or its row in the project list) keeps a private copy of its current source files and selected main file. Open editor changes are saved first. Your templates appear in the new-project picker, are visible only to you, and can be deleted there. Each project created from one has independent files and a fresh history; chats, remote connections and build output are not copied. Editing or deleting the original or template does not change projects already created from it. Deleted templates move to the trash and can be restored there; restored templates return to the template picker. Saved templates count toward hosted project and storage limits.
 - Every project is a git repository. Compiling, accepting AI changes and restoring old versions all create commits. The history view shows each version's diff and restores a file or the whole project, as a new commit.
 - Push and pull to any https git remote with a token, or connect a GitHub account and pick or create repositories from Refract. Optional auto-push after each commit. On the hosted service (`REFRACT_MODE=saas`), remotes must be public addresses and redirects aren't followed: a renamed repository needs its new URL.
 - Export any project as a .zip at any time.
+- Deleting a project moves it to the trash. Restore it within 30 days, or delete it forever from there; after 30 days it is deleted for good.
 
 ### Accounts
 
 - Several users, each with their own projects, chats, AI connections and GitHub account. Nothing is shared between users.
 - Sign-in through Cloudflare Access, Refract's own sign-in page (passwords and, optionally, OpenID Connect such as Google, Microsoft Entra, Keycloak or Authentik), or no sign-in on a private network.
+- With Refract's own sign-in and a mail server, people can create their own account and confirm their address, choose a new password by email, and delete their account with everything in it from **Settings → Account**. Self-hosted installs stay as they are until you turn it on (see [Let people sign up](#let-people-sign-up)).
 
 ## Screenshots
 
@@ -164,7 +167,7 @@ Refract is a single container: the Go server with the web app built in, Tectonic
 docker run -d --name refract --restart unless-stopped --stop-timeout 30 \
   -p 127.0.0.1:8080:8080 -v refract-data:/data \
   -e REFRACT_SECRET_KEY="<the output of: openssl rand -base64 32>" \
-  -e REFRACT_AUTH=password \
+  -e REFRACT_AUTH=builtin \
   ghcr.io/ponytojas/refract:0.1
 ```
 
@@ -179,29 +182,49 @@ Refract refuses to start until `REFRACT_AUTH` says how people get in.
 | `REFRACT_AUTH` | Who gets in | Use it when |
 |---|---|---|
 | `cloudflare` (default) | Whoever your [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/) policy allows. Refract verifies Access's token itself, so reaching the server directly doesn't bypass it. | Refract is behind a Cloudflare Tunnel or proxy. |
-| `password` | Accounts you create, with a password and optionally an OpenID Connect provider. | Any other public deployment. Serve it over https. |
+| `builtin` | Accounts you create (or, if you turn it on, people sign up for), with a password and optionally an OpenID Connect provider. `password` still works as the old name. | Any other public deployment. Serve it over https. |
 | `none` | Anyone who can reach the port, as a single local user. | Only on your own machine or a private network. |
 
 **Cloudflare Access:** set `REFRACT_CF_TEAM_DOMAIN` (e.g. `yourteam.cloudflareaccess.com`) and `REFRACT_CF_AUD` (the application's AUD tag). Each email Access lets in gets its own account on first visit.
 
-**Passwords:** create accounts on the server. The command prints a generated password, which the user can change in **Settings → General**. Running it again for the same email resets the password and signs that user out everywhere.
+**Passwords:** create accounts on the server. The command prints a generated password, which the user can change in **Settings → Account**. Running it again for the same email resets the password and signs that user out everywhere.
 
 ```sh
 docker exec refract refract users add ana@example.com
 docker exec refract refract users list
 ```
 
-To end all of someone's sessions (a lost laptop, say), run `refract users signout <email>`. After too many failed sign-ins an account waits 15 minutes; `refract users unlock <email>` lets it in at once. To delete an account with its projects, chats and connections, run `refract users remove <email>`: it lists what would go, and deletes only when run again with `--yes`. With Cloudflare Access, also remove the person from your Access policy, or they get a new, empty account on their next visit.
+Accounts you add this way count as confirmed: you vouch for the address. To end all of someone's sessions (a lost laptop, say), run `refract users signout <email>`. After too many failed sign-ins an account waits 15 minutes; `refract users unlock <email>` lets it in at once. To delete an account with its projects (those in the trash too), chats and connections, run `refract users remove <email>`: it lists what would go, and deletes only when run again with `--yes`. With Cloudflare Access, also remove the person from your Access policy, or they get a new, empty account on their next visit.
 
 ### Sign in with OpenID Connect
 
-With `REFRACT_AUTH=password`, an OpenID Connect provider (Google, Microsoft Entra, Keycloak, Authentik, Authelia…) can add a **Continue with …** button next to the password form.
+With `REFRACT_AUTH=builtin`, an OpenID Connect provider (Google, Microsoft Entra, Keycloak, Authentik, Authelia…) can add a **Continue with …** button next to the password form.
 
 1. Register Refract with your provider as a web application. The redirect URI is `https://<your Refract address>/api/auth/oidc/callback`.
 2. Set `REFRACT_PUBLIC_URL` (e.g. `https://refract.example.com`), `REFRACT_OIDC_ISSUER`, `REFRACT_OIDC_CLIENT_ID`, `REFRACT_OIDC_CLIENT_SECRET`, and optionally `REFRACT_OIDC_NAME` for the button label.
 3. Decide who may sign in. By default, only emails that already have an account (from `refract users add`). To let people create their account by signing in, list their emails or domains in `REFRACT_OIDC_ALLOWED`, e.g. `@lab.example.org,guest@example.com`.
 
-The provider must report the email as verified. The sign-in uses the authorization code flow with PKCE, and the ID token is checked against the provider's keys.
+A provider that reports the email as not verified (`email_verified` false) is refused. A provider that leaves the claim out (some Microsoft Entra setups) can't sign in to an account that has a password, because without the claim Refract can't tell the owner from someone who registered the address; it can still sign in to accounts without a password, such as those made by signing in. Binding identities to the provider's issuer and subject, which would lift this, is planned. If the account came from a sign-up nobody confirmed, the provider must report the email as verified, and then its word wins: everything the sign-up attached is removed (password, sessions, AI keys and connections, usage, projects) and the address is confirmed. The sign-in uses the authorization code flow with PKCE, and the ID token is checked against the provider's keys.
+
+### Let people sign up
+
+By default nobody can create an account: you add them with `refract users add`. With `REFRACT_AUTH=builtin` and a mail server, Refract can also let people sign up, confirm their address and reset a forgotten password themselves.
+
+```sh
+-e REFRACT_PUBLIC_URL=https://refract.example.com \
+-e REFRACT_SMTP_URL=smtp://user:password@smtp.example.com:587 \
+-e REFRACT_MAIL_FROM='Refract <no-reply@refract.example.com>' \
+-e REFRACT_SIGNUP=open
+```
+
+- **Mail:** set both `REFRACT_SMTP_URL` and `REFRACT_MAIL_FROM`, and `REFRACT_PUBLIC_URL` (the base of the links in the emails). The server must offer STARTTLS on port 587; Refract refuses to send mail or credentials in clear, except to `localhost`, `127.0.0.1` and `::1`. Without a usable `REFRACT_PUBLIC_URL`, sign-up and password reset stay off, with a warning in the log.
+- **What is sent:** a confirmation link (valid 24 hours), a reset link (1 hour), and a note when an account is deleted. They are plain text, in English or Spanish: the person picks the language when signing up and can change it in **Settings → Account**. Each link works once, and the database only keeps a hash of it. The link carries its token in the part of the address after `#`, so it doesn't reach server logs, and mail scanners that merely open it can't use it up: the page asks for a button press.
+- **Unconfirmed accounts** can sign in but can't create or import projects until the address is confirmed. Confirming asks for the account's password unless the browser is already signed in to it, so someone who signs up with another person's address can't get them to confirm it.
+- **No guessing which addresses have accounts:** signing up or asking for a reset answers the same either way and sends its email after answering. Signing up with an address that already has an account changes nothing and sends that address a reset link instead. At most 3 emails per address and 20 per network address are sent every 15 minutes: past 3 for an address the answer stays the same but nothing is sent, and past 20 for a network address the request is refused. Someone who keeps asking for emails for an address can therefore keep its owner from getting a new link for a while (links sent earlier still work, and a new one doesn't cancel the 2 before it); `refract users unlock <email>` clears an address's count.
+- **Deleting an account** (Settings → Account) asks for the password (or a sign-in with the provider in the last 10 minutes, for accounts without one) and deletes the projects, those in the trash too, with their history, chats and connections.
+- **`REFRACT_SIGNUP`** is `open` or `closed` (the default). It only applies with `REFRACT_AUTH=builtin`, and only takes effect once mail works. Creating accounts through OpenID Connect is governed by `REFRACT_OIDC_ALLOWED` alone.
+- **Hosted service:** with `REFRACT_MODE=saas`, `REFRACT_SIGNUP=open` is refused until the terms and privacy policy people accept when signing up exist in a future version. Keep it `closed` and add accounts with `refract users add`.
+- **Trying it:** run [Mailpit](https://mailpit.axllent.org/) (`docker run -p 127.0.0.1:1025:1025 -p 127.0.0.1:8025:8025 axllent/mailpit`), set `REFRACT_SMTP_URL=smtp://127.0.0.1:1025`, and read the emails at <http://127.0.0.1:8025>.
 
 ### Behind a reverse proxy
 
@@ -232,6 +255,39 @@ location / {
 }
 ```
 
+### Compile sandbox
+
+Tectonic runs as the same user as the server, so a document could `\input` any file that user can read: the database, other accounts' projects, the server's environment. With `REFRACT_SANDBOX=bwrap` (Linux, [bubblewrap](https://github.com/containers/bubblewrap)) every compile runs in a sandbox instead: no network, a read-only view of the system, the TeX bundle and the one project being built (only `.refract/build` is writable), nothing else of the host, and limits of CPU time (the compile timeout plus a margin), 1 GiB of memory, 64 processes and 200 MiB per file. **`REFRACT_MODE=saas` requires it.** Whether or not it is on, compiles go through a queue: `REFRACT_COMPILE_WORKERS` at once, one per account (with `REFRACT_AUTH=none` everyone is the same account, so projects compile one after another), and a compile that waits longer than `REFRACT_COMPILE_MAX_WAIT` seconds is answered "the server is busy" (or, when only the account's own running compile is in the way, "another of your compiles is still running"). A newer compile replaces a waiting one of the same project; other projects of the account wait their turn. `REFRACT_COMPILE_MAX_WAIT=0` waits without limit, which `REFRACT_MODE=saas` refuses. The CPU limit is `REFRACT_COMPILE_TIMEOUT` plus 5 s, and a compile that hits it is reported as timed out. A project whose `.refract` or `.refract/build` is a symbolic link is not compiled, and the folder checked is the one mounted, even if the path changes during the compile (a `git pull`, for example).
+
+Because the sandbox has no network, Tectonic can't download packages: it needs the whole TeX bundle as a local folder, with its format file built once. On the server:
+
+```sh
+sudo apt install bubblewrap                       # and util-linux's prlimit, already there on Ubuntu
+packaging/server/prepare-bundle.sh /opt/refract/tex   # downloads 2.7 GB, needs 3 GB; tectonic on the PATH
+```
+
+then set `REFRACT_SANDBOX=bwrap`, `REFRACT_TECTONIC_BUNDLE=/opt/refract/tex/bundle` and `TECTONIC_CACHE_DIR=/opt/refract/tex/cache`. Run the script again when Tectonic or the bundle changes. [`packaging/server/refract.service`](packaging/server/refract.service) is a systemd unit for the hosted service, with the secret key given through `LoadCredential=`; its comments list what to prepare. The unit leaves out `RestrictNamespaces=`, `PrivateUsers=`, `ProtectKernelTunables=`, `ProtectProc=` and `ProcSubset=` because bubblewrap needs user namespaces and its own `/proc`.
+
+The sandbox needs bubblewrap 0.5 or later (for `--bind-fd`). The process limit needs Linux 5.14 or later (which counts processes per user namespace) and a `bwrap` that is not setuid; Refract refuses to start with a setuid one. Fontconfig's configuration (`/etc/fonts`) and the loader cache (`/etc/ld.so.cache`) are mounted read-only; nothing else of `/etc` is.
+
+At startup Refract compiles a one-line document in the sandbox and refuses to start if that fails, printing Tectonic's last lines. If it fails:
+
+- **`bwrap: setting up uid map: Permission denied`, or `Operation not permitted`.** The host blocks unprivileged user namespaces. Ubuntu 24.04 and later do so through AppArmor (`kernel.apparmor_restrict_unprivileged_userns=1`) for programs without a profile. Recent releases (tested on 26.04) install a `bwrap-userns-restrict` profile with the `bubblewrap` package, and then nothing is needed. If your `bwrap` has none (or lives elsewhere), give it one that allows `userns`, for example in `/etc/apparmor.d/bwrap-refract`, then `sudo apparmor_parser -r /etc/apparmor.d/bwrap-refract`:
+
+  ```
+  abi <abi/4.0>,
+  include <tunables/global>
+  profile bwrap-refract /usr/bin/bwrap flags=(unconfined) {
+    userns,
+  }
+  ```
+
+  Setting `kernel.apparmor_restrict_unprivileged_userns=0` also works, but lifts the restriction for every program.
+- **`Permission denied` reading the bundle.** The bundle's files must be readable by the server's user: `prepare-bundle.sh` sets them to `0444`.
+- **A format file error, or `Read-only file system` under the cache.** The cache has no format file for this Tectonic and bundle: run `prepare-bundle.sh` again with the Tectonic the server uses.
+
+The Docker image keeps `REFRACT_SANDBOX=none`: bubblewrap needs user namespaces, which the default container profile blocks, so using it in a container takes a host or privileged setup (`--security-opt seccomp=unconfined --security-opt apparmor=unconfined`) and the bundle on a volume. Biber isn't available inside the sandbox.
+
 ### Data, backups and upgrades
 
 Everything lives in the `/data` volume:
@@ -240,7 +296,7 @@ Everything lives in the `/data` volume:
 |---|---|
 | `refract.db` | Users, sessions, projects, chats and settings (SQLite). Credentials and keys in it are encrypted with `REFRACT_SECRET_KEY`. |
 | `refract.db.pre-upgrade` | A copy of the database exactly as it was when the last upgrade started. Safe to delete once the new version works. |
-| `projects/` | One git repository per project. |
+| `projects/` | One git repository per project, including those in the trash. |
 | `tectonic-cache/` | LaTeX packages Tectonic has downloaded. Safe to delete: they come back on the next compile. |
 | `tmp/` | Uploads in progress. |
 
@@ -340,12 +396,15 @@ All settings are environment variables.
 | Variable | Purpose |
 |---|---|
 | `REFRACT_SECRET_KEY` | **Required.** 32 bytes, base64 (`openssl rand -base64 32`). Encrypts stored credentials and keys. |
-| `REFRACT_AUTH` | `cloudflare` (default), `password` or `none`. See [Choose how people sign in](#choose-how-people-sign-in). |
+| `REFRACT_AUTH` | `cloudflare` (default), `builtin` (Refract's own sign-in; `password` still works) or `none`. See [Choose how people sign in](#choose-how-people-sign-in). |
 | `REFRACT_DATA_DIR` | Where projects, the database and caches live. Default `/data`. |
 | `REFRACT_ADDR` | Listen address. Default `:8080`. |
-| `REFRACT_MODE` | `selfhost` (default) or `saas`, for the hosted service. With `saas`, the ChatGPT plan is off (OpenAI's plan usage covers self-hosted apps): people use the assistant with API providers only. Refract refuses to start with `REFRACT_AUTH=none` or without an https `REFRACT_PUBLIC_URL`. AI providers and git remotes must be public https addresses (no loopback, private or metadata addresses, no local models), and proxy settings are ignored for them. Needs git 2.37 or later. |
+| `REFRACT_MODE` | `selfhost` (default) or `saas`, for the hosted service. With `saas`, the ChatGPT plan is off (OpenAI's plan usage covers self-hosted apps): people use the assistant with API providers only. Refract refuses to start with `REFRACT_AUTH=none` or without an https `REFRACT_PUBLIC_URL`. AI providers and git remotes must be public https addresses (no loopback, private or metadata addresses, no local models), and proxy settings are ignored for them. Needs git 2.37 or later. With `saas`, each account has a plan (`free` by default) that limits its projects, storage and assistant turns; self-hosted installs have no limits. Storage counts a project's files, git history and the assistant's pending-review worktrees (full copies of the project until you accept or reject the turn), but not build output or caches; trashed projects count until deleted forever. A pull, an accepted assistant turn and a restore of an older version are only measured after they ran, so each of these can take an account past its limit once; it stands, and further growth is refused until the account is back under. A save that grows a file is refused once the account is at or over its limit, whether saves arrive one by one or in parallel; the save that crosses the line is the last, and it can't exceed the file size limit. Saves that keep a file the same size or make it smaller always work. |
 | `REFRACT_CF_TEAM_DOMAIN`, `REFRACT_CF_AUD` | Cloudflare Access team domain and application AUD tag. |
-| `REFRACT_PUBLIC_URL` | The address users open Refract at, e.g. `https://refract.example.com`. Needed for OpenID Connect, and required with `REFRACT_MODE=saas`. |
+| `REFRACT_PUBLIC_URL` | The address users open Refract at, e.g. `https://refract.example.com`. Needed for OpenID Connect and for the links in emails, and required with `REFRACT_MODE=saas`. |
+| `REFRACT_SIGNUP` | `open` or `closed` (default): whether people can create their own account. Only with `REFRACT_AUTH=builtin`; needs the three mail settings. See [Let people sign up](#let-people-sign-up). |
+| `REFRACT_SMTP_URL` | The mail server, `smtp://user:pass@host:587` (URL-encode special characters). STARTTLS is required except to `localhost`, `127.0.0.1` and `::1`. |
+| `REFRACT_MAIL_FROM` | The sender, e.g. `Refract <no-reply@refract.example.com>`. Set both mail variables or neither. |
 | `REFRACT_OIDC_ISSUER`, `REFRACT_OIDC_CLIENT_ID`, `REFRACT_OIDC_CLIENT_SECRET` | Your OpenID Connect provider's issuer URL and Refract's client credentials there. |
 | `REFRACT_OIDC_NAME` | Label of the sign-in button: *Continue with …*. Default `SSO`. |
 | `REFRACT_OIDC_ALLOWED` | Comma-separated emails and `@domains` that may create an account by signing in with OpenID Connect. Empty: existing accounts only. |
@@ -353,10 +412,13 @@ All settings are environment variables.
 | `REFRACT_MODEL_AGENT` | Default model for the assistant. |
 | `REFRACT_MODEL_QUICK` | Default model for quick actions and citations. |
 | `REFRACT_COMPILE_TIMEOUT` | Seconds per compile. Default 90. |
+| `REFRACT_SANDBOX` | `none` (default) or `bwrap`: run every compile in a [sandbox](#compile-sandbox). Required with `REFRACT_MODE=saas`. |
+| `REFRACT_COMPILE_WORKERS` | Compiles running at once, across all accounts. Default: the number of CPUs minus one, at least 1. Each account runs one compile at a time. |
+| `REFRACT_COMPILE_MAX_WAIT` | Seconds a compile waits for its turn before the server answers "busy, try again". Default 20. With `REFRACT_MODE=saas`, this plus `REFRACT_COMPILE_TIMEOUT` must not exceed 95, because a proxy cuts a request with no response at about 100 s. |
 | `REFRACT_FONT_DOWNLOADS` | `0` disables Google Fonts requests; project, TeX bundle and cached fonts still work. Default: downloads enabled. |
 | `REFRACT_GITHUB_CLIENT_ID` | Client ID of your GitHub OAuth App, to connect GitHub accounts (see below). |
 | `REFRACT_OPENALEX_API_KEY` | A free [OpenAlex key](https://openalex.org/settings/api). Without one, paper searches share a small daily budget per IP address. |
-| `REFRACT_TECTONIC_BUNDLE` | Pinned Tectonic bundle URL. Set in the image. |
+| `REFRACT_TECTONIC_BUNDLE` | The Tectonic bundle: a URL (pinned in the image), or a local folder (required with the sandbox). |
 
 ### Connect GitHub
 
@@ -372,11 +434,12 @@ Without this, any project can still push to and pull from an https git remote wi
 refract                         run the server (configured with REFRACT_* variables)
 refract login                   sign in with ChatGPT on this computer and write a credential
                                 file to upload in Settings → Assistant (refract login -h)
-refract users add <email>       create an account or reset its password (REFRACT_AUTH=password)
+refract users add <email>       create a confirmed account or reset its password (REFRACT_AUTH=builtin)
 refract users rename <a> <b>    change an account's email, keeping its data
 refract users signout <email>   end all of an account's sessions
-refract users unlock <email>    clear an account's failed sign-ins (--all: every account and address)
-refract users remove <email>    delete an account and everything it owns (asks for --yes)
+refract users unlock <email>    clear an account's failed sign-ins and email limit (--all: every account and address)
+refract users remove <email>    delete an account and everything it owns, trash included (asks for --yes)
+refract users plan <email> <plan>  set an account's plan: free, plus or ai (REFRACT_MODE=saas)
 refract users list              list accounts
 refract version                 print the version
 ```
@@ -401,11 +464,12 @@ On Windows and Linux, read <kbd>Ctrl</kbd> for <kbd>⌘</kbd>. Hold <kbd>⌘</kb
 ## Security
 
 - **Sign-in:** Cloudflare Access tokens are verified on every request. Passwords are hashed with PBKDF2-SHA256 (600,000 iterations). Repeated failures for an account, or from one address, are refused for 15 minutes; the counts survive restarts. Sessions are random tokens stored only as hashes, in `HttpOnly`, `SameSite=Lax` cookies that last 30 days.
+- **Account links:** confirmation and reset links are random, expire, work once and are stored only as hashes. Setting a password by any means cancels reset links. Sign-up and reset answer the same for addresses with and without an account, email goes out after the answer, and emails are limited per address and per network address.
 - **Requests:** every API call must carry a custom header that browsers can't add cross-site, which blocks cross-site request forgery.
 - **Browser:** a strict Content-Security-Policy lets the app run only its own scripts and connect only to its own server. Refract can't be embedded in other sites, and over https it sends `Strict-Transport-Security`.
 - **Secrets at rest:** ChatGPT credentials, API keys and git tokens are encrypted with AES-GCM under `REFRACT_SECRET_KEY`, each bound to its owner.
 - **Isolation between users:** projects, chats and connections are checked against their owner on every access.
-- **Compilation:** Tectonic runs with shell escape disabled (`--untrusted`) and a time limit. Imports are size-limited and can't write outside the project.
+- **Compilation:** Tectonic runs with shell escape disabled (`--untrusted`) and a time limit, and with `REFRACT_SANDBOX=bwrap` (required for the hosted service) inside a [sandbox](#compile-sandbox) with no network, no access to other projects or the database, and limits on memory, processes and CPU. Imports are size-limited and can't write outside the project.
 - **Outbound requests:** user-supplied AI provider URLs can't reach link-local addresses such as cloud metadata services. With `REFRACT_MODE=saas`, AI providers and git remotes can't reach the server's own network either: loopback, private, shared (CGNAT) and reserved addresses are refused, checked on every connection (so DNS answers and redirects are covered), and git connects only to the addresses it checked. A host firewall that limits outbound traffic is still a good second layer. Compiling a document that names a font found neither in the project nor in the TeX bundle downloads it from Google Fonts, sending only the family name; `REFRACT_FONT_DOWNLOADS=0` turns that off.
 
 Found a vulnerability? Please report it privately through the repository's **Security** tab (*Report a vulnerability*) rather than in a public issue.
@@ -416,7 +480,7 @@ You need Go, Node.js, git, ripgrep, Tectonic and `synctex` (and Google Chrome fo
 
 ```sh
 make dev                                  # API on :8080 and Vite on :5173; open http://localhost:5173
-make dev AUTH=password                    # the same, with the sign-in page
+make dev AUTH=builtin                     # the same, with the sign-in page
 make users ARGS="add you@example.com"     # accounts in the development data
 make login                                # refract login, for ChatGPT
 make test                                 # go vet, Go tests and web unit tests
