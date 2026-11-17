@@ -120,7 +120,30 @@ func AddEntry(bib string, p Ref) (content, key string, added bool) {
 	return bib + p.BibTeX(key), key, true
 }
 
-var bibCommand = regexp.MustCompile(`\\(addbibresource|bibliography)\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}`)
+var bibCommand = regexp.MustCompile(`\\(addbibresource|bibliography)\s*(?:\[[^\]]*\])?\s*\{([^{}]*)\}`)
+
+// bibliographyNames is shared by document checks and the target picker.
+// Callers decide which sources to inspect and validate their resolved paths.
+func bibliographyNames(src string) []string {
+	var names []string
+	for _, m := range bibCommand.FindAllStringSubmatch(documentText(src), -1) {
+		arg := m[2]
+		if m[1] == "bibliography" {
+			arg = strings.Join(strings.Fields(arg), "")
+		}
+		for _, name := range strings.Split(arg, ",") {
+			name = strings.TrimSpace(name)
+			if name == "" {
+				continue
+			}
+			if !strings.EqualFold(path.Ext(name), ".bib") {
+				name += ".bib"
+			}
+			names = append(names, name)
+		}
+	}
+	return names
+}
 
 // BibTarget picks the .bib file citations go to: the first one a .tex file
 // names (\addbibresource or \bibliography), else a .bib in the folder of a
@@ -157,26 +180,13 @@ func BibTarget(fsys fs.FS, mainFile string) (target string, needsSetup bool) {
 		if err != nil {
 			continue
 		}
-		for _, m := range bibCommand.FindAllStringSubmatch(projects.StripComments(string(b)), -1) {
-			arg := m[2]
-			if m[1] == "bibliography" {
-				// LaTeX drops every space: \bibliography{my refs} loads myrefs.bib.
-				arg = strings.Join(strings.Fields(arg), "")
+		for _, name := range bibliographyNames(string(b)) {
+			if strings.HasPrefix(name, "/") {
+				continue
 			}
-			// The first usable name of the list: \bibliography{a,b} loads both.
-			for _, name := range strings.Split(arg, ",") {
-				name = strings.TrimSpace(name)
-				if name == "" || strings.HasPrefix(name, "/") {
-					continue
-				}
-				if !strings.HasSuffix(strings.ToLower(name), ".bib") {
-					name += ".bib"
-				}
-				// Paths in \bibliography are relative to the main file's folder
-				// (Tectonic runs there), whichever .tex file names them.
-				if p := path.Join(base, name); !outside(p) {
-					return p, false
-				}
+			// Relative to the main file, where Tectonic runs.
+			if p := path.Join(base, name); !outside(p) {
+				return p, false
 			}
 		}
 	}

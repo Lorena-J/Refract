@@ -58,12 +58,14 @@ import Review from './Review'
 import History from './History'
 import GitDialog, { pulledMessage, type PullResult } from './GitDialog'
 import CiteDialog, { type Citation, type CiteTarget } from './CiteDialog'
+import CitationChecks, { type CitationFix } from './CitationChecks'
 import { Autosaver, type SaveStatus } from './autosave'
 import { noSymbols, type ProjectSymbols } from '@/lib/completion'
 import { Link, navigate, pageReady, useBeforeLeave } from '@/lib/router'
 import CompileStatus, { type CompileResult, type Problem } from './CompileStatus'
 import Editor from './Editor'
 import { moveLimits } from '@/lib/wordlimits'
+import { proposal as pendingProposal } from '@/lib/proposal'
 import { defaultRules } from '@/lib/wordcount'
 import FileTree from './FileTree'
 import PdfViewer, { type Highlight } from './PdfViewer'
@@ -188,8 +190,9 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
   const prefs = usePrefs()
   const countEnabled = prefs.wordCount
   const [citing, setCiting] = useState<{ target: CiteTarget | null; suggest: boolean } | null>(null)
+  const [citationChecks, setCitationChecks] = useState(false)
   const [proposal, setProposal] = useState<
-    { path: string; from: number; to: number; original: string; text: string } | undefined
+    { path: string; from: number; to: number; original: string; text: string; kind?: 'metadata' } | undefined
   >()
   const [insert, setInsert] = useState<{ path: string; text: string } | undefined>()
   const [aiRequest, setAiRequest] = useState<{ text: string; n: number } | undefined>()
@@ -391,6 +394,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
       setHistoryOpen(false)
       setGitOpen(false)
       setCiting(null)
+      setCitationChecks(false)
       setAsk(null)
       setConfirm(null)
       setChatOpen(false)
@@ -742,6 +746,23 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
     setReview(null)
     setTabs((t) => (t.includes(path) ? t : [...t, path]))
     setActive(path)
+  }
+
+  async function reviewCitationFix(fix: CitationFix) {
+    if (goneRef.current) return
+    if (proposal || [...states.current.values()].some((state) => pendingProposal(state)))
+      throw new Error(t('Accept or reject the pending proposal before reviewing another one.'))
+    await open(fix.path)
+    if (goneRef.current) return
+    const file = loaded.current.get(fix.path)
+    const current = states.current.get(fix.path)?.doc.toString() ?? (file?.text ? file.content : undefined)
+    // CodeMirror normalizes line endings, including for a file opened above.
+    const before = fix.before.replace(/\r\n?/g, '\n')
+    const after = fix.after.replace(/\r\n?/g, '\n')
+    if (current?.replace(/\r\n?/g, '\n') !== before)
+      throw new Error(t('The bibliography changed. Run the citation checks again.'))
+    if (before === after) throw new Error(t('The source metadata matches this entry.'))
+    setProposal({ path: fix.path, from: 0, to: before.length, original: before, text: after, kind: 'metadata' })
   }
 
   // Closing never cancels a pending save: the autosaver finishes it on its own.
@@ -1165,6 +1186,9 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                       <DropdownMenuItem onClick={() => setCiting({ target: null, suggest: false })}>
                         <BookMarked /> {t('Add a reference…')}
                       </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setCitationChecks(true)}>
+                        <BookMarked /> {t('Citation checks')}
+                      </DropdownMenuItem>
                     </>
                   )}
                   <DropdownMenuSeparator />
@@ -1532,11 +1556,15 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                   onCite={locked ? undefined : (target, suggest) => setCiting({ target, suggest })}
                   instructions={quickInstructions}
                   proposal={proposal}
-                  onProposed={(ok) => {
+                  onProposed={(ok, pending) => {
                     setProposal(undefined)
                     if (!ok)
                       toast.error(
-                        t('The text changed in the meantime: the citation was added to the bibliography only.'),
+                        pending
+                          ? t('Accept or reject the pending proposal before reviewing another one.')
+                          : proposal?.kind === 'metadata'
+                            ? t('The bibliography changed. Run the citation checks again.')
+                            : t('The text changed in the meantime: the citation was added to the bibliography only.'),
                       )
                   }}
                   quick={aiReady && !locked}
@@ -1654,6 +1682,18 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
         onClose={() => setCiting(null)}
         onCited={cited}
       />
+      {citationChecks && !locked && (
+        <CitationChecks
+          projectId={id}
+          onClose={() => setCitationChecks(false)}
+          beforeCheck={() => autosave.flushAll()}
+          onLocate={(file, line) => {
+            setCitationChecks(false)
+            void jumpTo(file, line)
+          }}
+          onProposal={reviewCitationFix}
+        />
+      )}
 
       <AlertDialog open={!!confirm} onOpenChange={(o) => !o && setConfirm(null)}>
         <AlertDialogContent>

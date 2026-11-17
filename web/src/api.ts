@@ -220,7 +220,7 @@ export type Warning = { file: string; line: number; kind: string; message: strin
 export type ImportResult = { project: Project; warnings: Warning[]; skipped?: string[]; candidates?: string[] }
 
 export function errorText(e: unknown): string {
-  return e instanceof RequestError ? describe(e.error) : String(e)
+  return e instanceof RequestError ? describe(e.error) : e instanceof Error ? e.message : String(e)
 }
 
 export type FileEntry = { path: string; dir: boolean; size: number; mtime: number }
