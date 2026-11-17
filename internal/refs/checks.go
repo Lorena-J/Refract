@@ -18,11 +18,24 @@ type Record struct {
 }
 
 var recordStart = regexp.MustCompile(`(?i)@([a-z]+)\s*([({])`)
+var recordRecovery = regexp.MustCompile(`(?m)^[\t ]*@`)
+
+// Source positions are visited in order; count each intervening newline once.
+type lineCounter struct{ offset, line int }
+
+func (c *lineCounter) at(src string, offset int) int {
+	c.line += strings.Count(src[c.offset:offset], "\n")
+	c.offset = offset
+	return c.line + 1
+}
 
 // Records reads brace- and parenthesis-delimited BibTeX, including nested
 // values and quoted commas. Comments, strings and preambles are not entries.
 func Records(src string) []Record {
 	var out []Record
+	var lines lineCounter
+	var recovery [][]int
+	recoveryAt := 0
 	for pos := 0; pos < len(src); {
 		if src[pos] == '%' {
 			if n := strings.IndexByte(src[pos:], '\n'); n >= 0 {
@@ -75,8 +88,20 @@ func Records(src string) []Record {
 			}
 		}
 		if end >= len(src) {
-			break
-		} // never propose replacing a partial entry
+			// Never propose replacing a partial entry, but let later entries
+			// be checked. Only recover at a line beginning with an @.
+			if recovery == nil {
+				recovery = recordRecovery.FindAllStringIndex(src, -1)
+			}
+			for recoveryAt < len(recovery) && recovery[recoveryAt][1]-1 <= start {
+				recoveryAt++
+			}
+			if recoveryAt == len(recovery) {
+				break
+			}
+			pos = recovery[recoveryAt][1] - 1
+			continue
+		}
 		pos = end + 1
 		if kind == "comment" || kind == "string" || kind == "preamble" {
 			continue
@@ -87,7 +112,7 @@ func Records(src string) []Record {
 			continue
 		}
 		fields := bibFields(blankFieldComments(src[body+strings.IndexByte(src[body:end], ',')+1:end]) + "}")
-		out = append(out, Record{key, kind, fields, start, end + 1, 1 + strings.Count(src[:start], "\n")})
+		out = append(out, Record{key, kind, fields, start, end + 1, lines.at(src, start)})
 	}
 	return out
 }
@@ -121,10 +146,14 @@ type CitationReport struct {
 
 // citationToken consumes escapes before looking for another command, so
 // \\cite is not a citation. Literal environments and inline verb hide examples.
-var citationToken = regexp.MustCompile(`(?s)%[^\n]*|\\begin\{(verbatim\*?|Verbatim\*?|lstlisting|minted|comment)\}|\\verb\*?([^a-zA-Z\s])|\\(?:[a-zA-Z]*[Cc]ite[a-zA-Z]*|nocite)\*?\s*(?:\[[^\]]*\]\s*)*\{([^{}\\#\n]*)\}|\\.`)
+var citationToken = regexp.MustCompile(`(?s)%[^\n]*|\\begin\{(verbatim\*?|Verbatim\*?|lstlisting|minted|comment)\}|\\verb\*?([^a-zA-Z\s])|\\([a-zA-Z]*[Cc]ite[a-zA-Z]*|nocite)\b\*?|\\.`)
+
+var citationArguments = regexp.MustCompile(`(?s)^\s*(?:\[[^\]]*\]\s*)*\{([^{}\\#]*)\}`)
+var multiciteNotes = regexp.MustCompile(`(?s)^\s*(?:\([^)]*\)\s*){1,2}`)
 
 func citations(src string) []Finding {
 	var out []Finding
+	var lines lineCounter
 	for pos := 0; pos < len(src); {
 		m := citationToken.FindStringSubmatchIndex(src[pos:])
 		if m == nil {
@@ -146,9 +175,33 @@ func citations(src string) []Finding {
 			}
 			end += at + 1
 		case m[6] >= 0:
-			for _, key := range strings.Split(src[pos+m[6]:pos+m[7]], ",") {
-				if key = strings.TrimSpace(key); key != "" {
-					out = append(out, Finding{Line: 1 + strings.Count(src[:start], "\n"), Key: key})
+			command := strings.ToLower(src[pos+m[6] : pos+m[7]])
+			multi := strings.HasSuffix(command, "cites") || command == "footcitetexts"
+			if multi {
+				// Biblatex multicites may have overall notes in parentheses,
+				// followed by optional notes for each individual citation.
+				if notes := multiciteNotes.FindStringIndex(src[end:]); notes != nil {
+					end += notes[1]
+				}
+			}
+			for first := true; ; first = false {
+				args := citationArguments.FindStringSubmatchIndex(src[end:])
+				if args == nil {
+					break
+				}
+				lineAt := start
+				if !first {
+					lineAt = end + args[2] - 1 // this group's opening brace
+				}
+				line := lines.at(src, lineAt)
+				for _, key := range strings.Split(src[end+args[2]:end+args[3]], ",") {
+					if key = strings.TrimSpace(key); key != "" {
+						out = append(out, Finding{Line: line, Key: key})
+					}
+				}
+				end += args[1]
+				if !multi {
+					break
 				}
 			}
 		}
@@ -224,12 +277,7 @@ func CheckCitations(fsys fs.FS, mainFile string) (CitationReport, error) {
 	seenKey, seenWork := map[string]bool{}, map[string]bool{}
 	for _, e := range entries {
 		r := e.record
-		id := ""
-		if r.Fields["doi"] != "" {
-			id = "doi:" + r.Fields["doi"]
-		} else if r.Fields["eprint"] != "" && (strings.EqualFold(r.Fields["archiveprefix"], "arxiv") || strings.EqualFold(r.Fields["eprinttype"], "arxiv")) {
-			id = "arxiv:" + r.Fields["eprint"]
-		}
+		id := MetadataIdentifier(r.Fields)
 		out.Entries = append(out.Entries, BibliographyEntry{e.file, r.Line, r.Key, r.Fields["doi"], id})
 		add := func(kind string, fields []string) {
 			out.Findings = append(out.Findings, Finding{File: e.file, Line: r.Line, Kind: kind, Key: r.Key, Fields: fields, Identifier: id})
@@ -239,8 +287,6 @@ func CheckCitations(fsys fs.FS, mainFile string) (CitationReport, error) {
 		}
 		seenKey[r.Key] = true
 		work := strings.ToLower(id)
-		work = strings.ReplaceAll(work, "https://doi.org/", "")
-		work = strings.ReplaceAll(work, "http://doi.org/", "")
 		if work != "" && seenWork[work] {
 			add("duplicate-work", nil)
 		}
@@ -323,12 +369,17 @@ type MetadataFix struct {
 // fields (notes, keywords, attachments); only source-supplied fields replace
 // existing values. A duplicate key is ambiguous and requires manual repair.
 func ProposeMetadata(file, bib, key, metadata string) (MetadataFix, error) {
-	if !ValidKey(key) {
-		return MetadataFix{}, errors.New("invalid citation key")
+	r, err := FindRecord(bib, key)
+	if err != nil {
+		return MetadataFix{}, err
 	}
-	source := Records(metadata)
-	if len(source) != 1 || source[0].Fields["title"] == "" {
-		return MetadataFix{}, errors.New("source did not return a complete bibliography entry")
+	return r.ProposeMetadata(file, bib, metadata)
+}
+
+// FindRecord parses a bibliography and requires exactly one entry for key.
+func FindRecord(bib, key string) (Record, error) {
+	if !ValidKey(key) {
+		return Record{}, errors.New("invalid citation key")
 	}
 	var found []Record
 	for _, r := range Records(bib) {
@@ -337,15 +388,24 @@ func ProposeMetadata(file, bib, key, metadata string) (MetadataFix, error) {
 		}
 	}
 	if len(found) != 1 {
-		return MetadataFix{}, errors.New("entry changed or citation key is ambiguous; run the checks again")
+		return Record{}, errors.New("entry changed or citation key is ambiguous; run the checks again")
 	}
-	r := found[0]
+	return found[0], nil
+}
+
+// ProposeMetadata reuses an unambiguous record returned by FindRecord, from
+// this exact bib snapshot, so source lookup doesn't require a second parse.
+func (r Record) ProposeMetadata(file, bib, metadata string) (MetadataFix, error) {
+	source := Records(metadata)
+	if len(source) != 1 || source[0].Fields["title"] == "" {
+		return MetadataFix{}, errors.New("source did not return a complete bibliography entry")
+	}
 	// Keep the original raw values for fields absent from the authoritative
 	// entry, rather than converting LaTeX markup to completion's plain text.
 	replacement := metadata[source[0].Start:source[0].End]
 	comma := strings.IndexByte(replacement, ',')
 	open := strings.IndexAny(replacement, "{(")
-	replacement = replacement[:open+1] + key + replacement[comma:]
+	replacement = replacement[:open+1] + r.Key + replacement[comma:]
 	var extras []string
 	for name := range r.Fields {
 		if _, ok := source[0].Fields[name]; !ok {

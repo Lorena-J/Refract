@@ -53,7 +53,7 @@ func documentText(src string) string {
 	return string(b)
 }
 
-var documentCommand = regexp.MustCompile(`\\(input|include)\s*\{([^{}]*)\}|\\(input)\s+([^\s{}%\\]+)|\\(addbibresource|bibliography)\s*(?:\[[^\]]*\])?\s*\{([^{}]*)\}|\\(end)\s*\{document\}`)
+var documentCommand = regexp.MustCompile(`\\(input|include)\s*\{([^{}]*)\}|\\(input)\s+([^\s{}%\\]+)|\\(end)\s*\{document\}`)
 
 // Follow the selected manuscript only. Paths resolve from the main file's
 // directory, where Tectonic runs, including names in nested source files.
@@ -93,7 +93,7 @@ func documentFiles(fsys fs.FS, mainFile string) (map[string]string, []Finding, e
 		}
 		text := documentText(string(b))
 		for _, m := range documentCommand.FindAllStringSubmatchIndex(text, -1) {
-			if m[14] >= 0 {
+			if m[10] >= 0 {
 				text = text[:m[0]]
 				break
 			}
@@ -112,23 +112,11 @@ func documentFiles(fsys fs.FS, mainFile string) (map[string]string, []Finding, e
 				if err := load(documentPath(mainFile, name)); err != nil {
 					return err
 				}
-			case m[5] != "":
-				arg := m[6]
-				if m[5] == "bibliography" {
-					arg = strings.Join(strings.Fields(arg), "")
-				}
-				for _, name := range strings.Split(arg, ",") {
-					name = strings.TrimSpace(name)
-					if name == "" {
-						continue
-					}
-					if !strings.EqualFold(path.Ext(name), ".bib") {
-						name += ".bib"
-					}
-					if err := load(documentPath(mainFile, name)); err != nil {
-						return err
-					}
-				}
+			}
+		}
+		for _, name := range bibliographyNames(text) {
+			if err := load(documentPath(mainFile, name)); err != nil {
+				return err
 			}
 		}
 		return nil

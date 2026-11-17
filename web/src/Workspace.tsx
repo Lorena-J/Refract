@@ -65,6 +65,7 @@ import { Link, navigate, pageReady, useBeforeLeave } from '@/lib/router'
 import CompileStatus, { type CompileResult, type Problem } from './CompileStatus'
 import Editor from './Editor'
 import { moveLimits } from '@/lib/wordlimits'
+import { proposal as pendingProposal } from '@/lib/proposal'
 import { defaultRules } from '@/lib/wordcount'
 import FileTree from './FileTree'
 import PdfViewer, { type Highlight } from './PdfViewer'
@@ -191,7 +192,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
   const [citing, setCiting] = useState<{ target: CiteTarget | null; suggest: boolean } | null>(null)
   const [citationChecks, setCitationChecks] = useState(false)
   const [proposal, setProposal] = useState<
-    { path: string; from: number; to: number; original: string; text: string } | undefined
+    { path: string; from: number; to: number; original: string; text: string; kind?: 'metadata' } | undefined
   >()
   const [insert, setInsert] = useState<{ path: string; text: string } | undefined>()
   const [aiRequest, setAiRequest] = useState<{ text: string; n: number } | undefined>()
@@ -749,13 +750,19 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
 
   async function reviewCitationFix(fix: CitationFix) {
     if (goneRef.current) return
+    if (proposal || [...states.current.values()].some((state) => pendingProposal(state)))
+      throw new Error(t('Accept or reject the pending proposal before reviewing another one.'))
     await open(fix.path)
     if (goneRef.current) return
     const file = loaded.current.get(fix.path)
     const current = states.current.get(fix.path)?.doc.toString() ?? (file?.text ? file.content : undefined)
-    if (current !== fix.before) throw new Error(t('The bibliography changed. Run the citation checks again.'))
-    if (fix.before === fix.after) throw new Error(t('The source metadata matches this entry.'))
-    setProposal({ path: fix.path, from: 0, to: fix.before.length, original: fix.before, text: fix.after })
+    // CodeMirror normalizes line endings, including for a file opened above.
+    const before = fix.before.replace(/\r\n?/g, '\n')
+    const after = fix.after.replace(/\r\n?/g, '\n')
+    if (current?.replace(/\r\n?/g, '\n') !== before)
+      throw new Error(t('The bibliography changed. Run the citation checks again.'))
+    if (before === after) throw new Error(t('The source metadata matches this entry.'))
+    setProposal({ path: fix.path, from: 0, to: before.length, original: before, text: after, kind: 'metadata' })
   }
 
   // Closing never cancels a pending save: the autosaver finishes it on its own.
@@ -1549,11 +1556,15 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                   onCite={locked ? undefined : (target, suggest) => setCiting({ target, suggest })}
                   instructions={quickInstructions}
                   proposal={proposal}
-                  onProposed={(ok) => {
+                  onProposed={(ok, pending) => {
                     setProposal(undefined)
                     if (!ok)
                       toast.error(
-                        t('The text changed in the meantime: the citation was added to the bibliography only.'),
+                        pending
+                          ? t('Accept or reject the pending proposal before reviewing another one.')
+                          : proposal?.kind === 'metadata'
+                            ? t('The bibliography changed. Run the citation checks again.')
+                            : t('The text changed in the meantime: the citation was added to the bibliography only.'),
                       )
                   }}
                   quick={aiReady && !locked}

@@ -84,23 +84,19 @@ func (a *papersAPI) citationFix(w http.ResponseWriter, r *http.Request) {
 		httpError(w, projects.ErrTooLarge, http.StatusBadRequest)
 		return
 	}
-	var matches []refs.Record
-	for _, entry := range refs.Records(string(before)) {
-		if entry.Key == in.Key {
-			matches = append(matches, entry)
-		}
-	}
-	if len(matches) != 1 {
-		httpError(w, errors.New("entry changed or citation key is ambiguous; run the checks again"), http.StatusConflict)
+	entry, err := refs.FindRecord(string(before), in.Key)
+	if err != nil {
+		httpError(w, err, http.StatusConflict)
 		return
 	}
-	fields := matches[0].Fields
+	fields := entry.Fields
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 	var metadata string
-	if doi := fields["doi"]; doi != "" {
+	identifier := refs.MetadataIdentifier(fields)
+	if doi, ok := strings.CutPrefix(identifier, "doi:"); ok {
 		metadata, err = a.papers.OpenAlex.DOIBibTeX(ctx, doi)
-	} else if id := fields["eprint"]; arxiv.IsID(id) && (strings.EqualFold(fields["archiveprefix"], "arxiv") || strings.EqualFold(fields["eprinttype"], "arxiv")) {
+	} else if id, ok := strings.CutPrefix(identifier, "arxiv:"); ok {
 		var paper *arxiv.Paper
 		paper, err = a.papers.Arxiv.Get(ctx, id)
 		if err == nil {
@@ -114,7 +110,7 @@ func (a *papersAPI) citationFix(w http.ResponseWriter, r *http.Request) {
 		httpError(w, errors.New("could not retrieve bibliography metadata from the source"), http.StatusBadGateway)
 		return
 	}
-	fix, err := refs.ProposeMetadata(in.File, string(before), in.Key, metadata)
+	fix, err := entry.ProposeMetadata(in.File, string(before), metadata)
 	if err != nil {
 		httpError(w, err, http.StatusBadGateway)
 		return

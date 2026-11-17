@@ -1,6 +1,7 @@
 package refs
 
 import (
+	"fmt"
 	"os"
 	"reflect"
 	"strings"
@@ -42,6 +43,45 @@ func TestCitationsSkipLiteralAndComments(t *testing.T) {
 	}
 	if !reflect.DeepEqual(keys, []string{"a", "b", "c", "*"}) {
 		t.Fatal(keys)
+	}
+}
+
+func TestCitationsMultilineAndMulticite(t *testing.T) {
+	for _, tc := range []struct {
+		name, source string
+		want         []Finding
+	}{
+		{"multiline", "\\cite{knuth84,\n lamport94,\n missing}", []Finding{{Key: "knuth84", Line: 1}, {Key: "lamport94", Line: 1}, {Key: "missing", Line: 1}}},
+		{"multicite", `\cites{a}{b}`, []Finding{{Key: "a", Line: 1}, {Key: "b", Line: 1}}},
+		{"notes and lines", "\\parencites[see][12]{a}\n [also][34]{b, c}\n\\cite{d}", []Finding{{Key: "a", Line: 1}, {Key: "b", Line: 2}, {Key: "c", Line: 2}, {Key: "d", Line: 3}}},
+		{"global notes", `\Autocites(see)(and references therein)[12]{a}[34]{b}`, []Finding{{Key: "a", Line: 1}, {Key: "b", Line: 1}}},
+		{"footnote text", `\footcitetexts{a}{b}`, []Finding{{Key: "a", Line: 1}, {Key: "b", Line: 1}}},
+		{"single cite followed by prose", `\cite{a}{ordinary text} \citet{b}{more prose}`, []Finding{{Key: "a", Line: 1}, {Key: "b", Line: 1}}},
+		{"literal multicites", `\\cites{escaped}{also-escaped} \verb|\cites{inline}{hidden}| \begin{verbatim}\cites{example}{hidden}\end{verbatim} \cites{a}{b}`, []Finding{{Key: "a", Line: 1}, {Key: "b", Line: 1}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := citations(tc.source); !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("got %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCitationChecksMultilineAndMulticite(t *testing.T) {
+	fsys := fstest.MapFS{
+		"main.tex": {Data: []byte("\\bibliography{refs}\n\\cite{a, % another key on the next line\n b, missing}\n\\cites{c}\n [see][42]{missing-too}\n")},
+		"refs.bib": {Data: []byte("@misc{a, title={A}}\n@misc{b, title={B}}\n@misc{c, title={C}}")},
+	}
+	report, err := CheckCitations(fsys, "main.tex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Finding{
+		{File: "main.tex", Line: 2, Kind: "missing", Key: "missing"},
+		{File: "main.tex", Line: 5, Kind: "missing", Key: "missing-too"},
+	}
+	if !reflect.DeepEqual(report.Findings, want) {
+		t.Fatalf("got %+v, want %+v", report.Findings, want)
 	}
 }
 
@@ -108,5 +148,54 @@ func TestRecordsAndMetadataProposal(t *testing.T) {
 	}
 	if _, err := ProposeMetadata("refs.bib", bib, "local", "<html>Unavailable</html>"); err == nil {
 		t.Fatal("invalid metadata accepted")
+	}
+}
+
+func TestRecordsRecoverAfterUnclosedEntry(t *testing.T) {
+	for _, broken := range []string{
+		"@article{broken, title={Missing entry brace}\n",
+		"@article{broken, title={Missing field brace\n",
+		"@article{broken, title=\"Missing quote\n",
+		"@article{broken, title={Missing entry brace}\n@misc{also-broken, title={Oops}\n",
+	} {
+		bib := broken + "  @misc{later, title={Valid}}\n@misc{last, title={Also valid}}"
+		records := Records(bib)
+		if len(records) != 2 || records[0].Key != "later" || records[1].Key != "last" {
+			t.Fatalf("recovery from %q: %+v", broken, records)
+		}
+		if records[0].Line != strings.Count(broken, "\n")+1 || bib[records[0].Start:records[0].End] != "@misc{later, title={Valid}}" {
+			t.Fatalf("wrong recovered position: %+v", records[0])
+		}
+		fix, err := ProposeMetadata("refs.bib", bib, "later", "@misc{remote, title={Updated}}")
+		if err != nil || !strings.HasPrefix(fix.After, broken) || !strings.Contains(fix.After, "@misc{last, title={Also valid}}") {
+			t.Fatalf("proposal after recovery: %+v %v", fix, err)
+		}
+	}
+	// An @ inside a complete field is content, not a recovery boundary.
+	if records := Records("@misc{valid, title={Notes:\n@someone\nmore text}}\n@misc{next, title={Next}}"); len(records) != 2 || records[0].Key != "valid" {
+		t.Fatalf("split a valid entry: %+v", records)
+	}
+	fsys := fstest.MapFS{
+		"main.tex": {Data: []byte(`\bibliography{refs} \cite{later}`)},
+		"refs.bib": {Data: []byte("@misc{broken, title={Unclosed}\n@misc{later, title={Valid}}")},
+	}
+	if report, err := CheckCitations(fsys, "main.tex"); err != nil || len(report.Findings) != 0 {
+		t.Fatalf("a later citation was reported missing: %+v %v", report, err)
+	}
+}
+
+func BenchmarkCitationChecksLargeBibliography(b *testing.B) {
+	var bib, tex strings.Builder
+	tex.WriteString("\\bibliography{refs}\n")
+	for i := 0; i < 10000; i++ {
+		fmt.Fprintf(&bib, "@misc{key%d, title={A bibliography entry with enough text to resemble an export}}\n", i)
+		fmt.Fprintf(&tex, "\\cite{key%d}\n", i)
+	}
+	fsys := fstest.MapFS{"main.tex": {Data: []byte(tex.String())}, "refs.bib": {Data: []byte(bib.String())}}
+	b.ResetTimer()
+	for b.Loop() {
+		if report, err := CheckCitations(fsys, "main.tex"); err != nil || len(report.Findings) != 0 {
+			b.Fatalf("%+v %v", report, err)
+		}
 	}
 }

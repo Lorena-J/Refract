@@ -31,4 +31,6 @@ export default {
   'The bibliography changed. Run the citation checks again.':
     'La bibliografía ha cambiado. Vuelve a comprobar las citas.',
   'The source metadata matches this entry.': 'Los metadatos de la fuente coinciden con esta entrada.',
+  'Accept or reject the pending proposal before reviewing another one.':
+    'Acepta o rechaza la propuesta pendiente antes de revisar otra.',
 }

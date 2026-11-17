@@ -183,20 +183,10 @@ func abstract(index map[string][]int) string {
 	return strings.Join(out, " ")
 }
 
-var doiPattern = regexp.MustCompile(`^10\.\d{4,9}/\S+$`)
-
 // NormalizeDOI turns "https://doi.org/10.1/X", "doi:10.1/X" or "10.1/X" into
 // "10.1/x"; it returns "" for anything else.
 func NormalizeDOI(s string) string {
-	s = strings.TrimSpace(s)
-	for _, p := range []string{"https://doi.org/", "http://doi.org/", "https://dx.doi.org/", "http://dx.doi.org/", "doi:", "DOI:"} {
-		s = strings.TrimPrefix(s, p)
-	}
-	s = strings.ToLower(s)
-	if !doiPattern.MatchString(s) {
-		return ""
-	}
-	return s
+	return refs.NormalizeDOI(s)
 }
 
 // Ref makes a work citable. Its BibTeX comes from doi.org; when doi.org has
@@ -218,7 +208,11 @@ func (c *Client) Ref(ctx context.Context, w Work) refs.Ref {
 }
 
 func (c *Client) bibtex(ctx context.Context, doi string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", c.DOIURL+"/"+doi, nil)
+	parts := strings.Split(doi, "/")
+	for i, part := range parts {
+		parts[i] = url.PathEscape(part)
+	}
+	req, err := http.NewRequestWithContext(ctx, "GET", c.DOIURL+"/"+strings.Join(parts, "/"), nil)
 	if err != nil {
 		return "", err
 	}

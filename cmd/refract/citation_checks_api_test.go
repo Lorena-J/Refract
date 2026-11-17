@@ -110,12 +110,21 @@ func TestCitationChecksAPI(t *testing.T) {
 	if w := call("owner", "POST", "/fix", `{"file":"../refs.bib","key":"local"}`); w.Code != 400 {
 		t.Fatalf("unsafe path: %d", w.Code)
 	}
-	preprint := `@misc{preprint, title={Old title}, eprint={1706.03762}, archivePrefix={arXiv}}`
+	preprint := `@misc{preprint, title={Old title}, eprint={arXiv:1706.03762}, archivePrefix={arXiv}}`
 	if err := svc.WriteFile(ctx, p.ID, "preprints.bib", strings.NewReader(preprint)); err != nil {
 		t.Fatal(err)
 	}
 	w = call("owner", "POST", "/fix", `{"file":"preprints.bib","key":"preprint"}`)
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &fix) != nil || fix.Before != preprint || !strings.Contains(fix.After, "@misc{preprint,") || !strings.Contains(fix.After, "Attention Is All You Need") {
 		t.Fatalf("arxiv: %d %s", w.Code, w.Body)
+	}
+	// An ambiguous key is refused before contacting the metadata source.
+	if err := svc.WriteFile(ctx, p.ID, "refs.bib", strings.NewReader(bib+bib)); err != nil {
+		t.Fatal(err)
+	}
+	beforeCalls := calls
+	w = call("owner", "POST", "/fix", `{"file":"refs.bib","key":"local"}`)
+	if w.Code != http.StatusConflict || calls != beforeCalls {
+		t.Fatalf("ambiguous key: %d, source calls %d -> %d", w.Code, beforeCalls, calls)
 	}
 }

@@ -166,3 +166,109 @@ test('online DOI checks confirm success and explain when no DOIs are available',
   await dialog.getByRole('button', { name: 'Check DOIs online' }).click()
   await expect(dialog.getByRole('status')).toHaveText('No DOI identifiers found in the loaded bibliographies.')
 })
+
+for (const alreadyOpen of [false, true]) {
+  test(`CRLF metadata proposals can be rejected and accepted (${alreadyOpen ? 'open' : 'unopened'} bibliography)`, async ({
+    page,
+    request,
+  }) => {
+    const project = await (
+      await request.post('/api/projects', { headers, data: { name: 'Citation checks fixture' } })
+    ).json()
+    const original = bib.replaceAll('\n', '\r\n')
+    const replacement = corrected.replaceAll('\n', '\r\n')
+    await request.put(`/api/projects/${project.id}/file?path=main.tex`, {
+      headers,
+      data: '\\bibliography{refs}\n',
+    })
+    await request.put(`/api/projects/${project.id}/file?path=refs.bib`, { headers, data: original })
+    await request.patch(`/api/projects/${project.id}`, { headers, data: { main_file: 'main.tex' } })
+    await page.goto(`/p/${project.id}`)
+    await page
+      .getByRole('button', { name: alreadyOpen ? 'refs.bib' : 'main.tex', exact: true })
+      .first()
+      .click()
+    await page.route(`**/api/projects/${project.id}/citation-checks/fix`, (route) =>
+      route.fulfill({ json: { path: 'refs.bib', before: original, after: replacement } }),
+    )
+    const saved = () => request.get(`/api/projects/${project.id}/file?path=refs.bib`, { headers }).then((r) => r.text())
+    await openChecks(page)
+    await page.getByRole('button', { name: 'Review source metadata' }).click()
+    await expect(page.locator('.cm-quick-ins').first()).toBeVisible()
+    expect(await saved()).toBe(original)
+    await page.keyboard.press('Escape')
+    await expect(page.locator('.cm-quick-ins')).toHaveCount(0)
+    expect(await saved()).toBe(original)
+    await openChecks(page)
+    await page.getByRole('button', { name: 'Review source metadata' }).click()
+    await expect(page.locator('.cm-quick-ins').first()).toBeVisible()
+    await page.keyboard.press('Tab')
+    await expect.poll(saved).toBe(corrected)
+    await expect(page.locator('.cm-content')).toContainText('Verified title')
+  })
+}
+
+test('reviewing metadata preserves an unreviewed proposal', async ({ page, request }) => {
+  const project = await (
+    await request.post('/api/projects', { headers, data: { name: 'Citation checks fixture' } })
+  ).json()
+  await request.put(`/api/projects/${project.id}/file?path=main.tex`, {
+    headers,
+    data: '\\bibliography{refs}\n',
+  })
+  await request.put(`/api/projects/${project.id}/file?path=refs.bib`, { headers, data: bib })
+  await request.patch(`/api/projects/${project.id}`, { headers, data: { main_file: 'main.tex' } })
+  await page.goto(`/p/${project.id}`)
+  let attempts = 0
+  await page.route(`**/api/projects/${project.id}/citation-checks/fix`, (route) =>
+    route.fulfill({
+      json: {
+        path: 'refs.bib',
+        before: bib,
+        after: ++attempts === 1 ? corrected : corrected.replace('Verified', 'Second'),
+      },
+    }),
+  )
+  await openChecks(page)
+  await page.getByRole('button', { name: 'Review source metadata' }).click()
+  await expect(page.locator('.cm-quick-ins').first()).toHaveText('Verified')
+  await openChecks(page)
+  await page.getByRole('button', { name: 'Review source metadata' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Citation checks', exact: true })
+  await expect(dialog.getByRole('alert')).toHaveText(
+    'Accept or reject the pending proposal before reviewing another one.',
+  )
+  await expect(page.locator('.cm-quick-ins').first()).toHaveText('Verified')
+  await page.keyboard.press('Escape') // close the checks; retain the original proposal
+  await expect(dialog).toBeHidden()
+  await page.locator('.cm-content').click()
+  await page.keyboard.press('Tab')
+  await expect
+    .poll(async () => (await request.get(`/api/projects/${project.id}/file?path=refs.bib`, { headers })).text())
+    .toBe(corrected)
+})
+
+test('citation checks translate server errors in both requests', async ({ page, request }) => {
+  await page.addInitScript(() => localStorage.setItem('refract-prefs', JSON.stringify({ language: 'es' })))
+  const project = await (
+    await request.post('/api/projects', { headers, data: { name: 'Citation checks fixture' } })
+  ).json()
+  await request.put(`/api/projects/${project.id}/file?path=main.tex`, { headers, data: '\\bibliography{refs}\n' })
+  await request.put(`/api/projects/${project.id}/file?path=refs.bib`, { headers, data: bib })
+  await request.patch(`/api/projects/${project.id}`, { headers, data: { main_file: 'main.tex' } })
+  await page.goto(`/p/${project.id}`)
+  const endpoint = `**/api/projects/${project.id}/citation-checks`
+  const fail = { status: 401, json: { error: { kind: 'login_required', message: 'Raw server error' } } }
+  await page.route(endpoint, (route) => route.fulfill(fail))
+  await page.getByRole('button', { name: 'Citation checks fixture' }).click()
+  await page.getByRole('menuitem', { name: 'Comprobaciones de citas', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Comprobaciones de citas', exact: true })
+  await expect(dialog.getByRole('alert')).not.toContainText('Raw server error')
+  await expect(dialog.getByRole('alert')).toHaveText('Tu sesión ha terminado. Recarga la página para volver a entrar.')
+  await page.unroute(endpoint)
+  await dialog.getByRole('button', { name: 'Volver a comprobar', exact: true }).click()
+  await page.route(`${endpoint}/fix`, (route) => route.fulfill(fail))
+  await dialog.getByRole('button', { name: 'Revisar metadatos de la fuente' }).click()
+  await expect(dialog.getByRole('alert')).not.toContainText('Raw server error')
+  await expect(dialog.getByRole('alert')).toHaveText('Tu sesión ha terminado. Recarga la página para volver a entrar.')
+})

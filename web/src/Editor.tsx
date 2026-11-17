@@ -7,7 +7,7 @@ import { latexCompletion, opensArgument, type ProjectSymbols, signatureHint } fr
 import { completionHelp } from '@/lib/completion-help'
 import { latex } from '@/lib/editor'
 import { getPrefs, usePrefs } from '@/lib/prefs'
-import { accept, proposalField, propose, reject } from '@/lib/proposal'
+import { accept, proposal as pendingProposal, proposalField, propose, reject } from '@/lib/proposal'
 import type { CiteTarget } from './CiteDialog'
 import QuickActions, { actions, type QuickHandle } from './QuickActions'
 import { useCommands } from '@/lib/commands'
@@ -59,7 +59,7 @@ type Props = {
   onCite?: (target: CiteTarget, suggest: boolean) => void // find/add a reference for the selection
   instructions?: () => Promise<string | undefined> // REFRACT.md for quick actions
   proposal?: { path: string; from: number; to: number; original: string; text: string } // show as an inline diff
-  onProposed?: (ok: boolean) => void // false: the text there changed meanwhile
+  onProposed?: (ok: boolean, pending?: boolean) => void // false: stale text or an unreviewed proposal
   symbols: RefObject<ProjectSymbols> // what completion offers; a ref, so a refresh doesn't render
   mainFile?: string
   readOnly?: boolean // nothing can change the text (a project in the trash); selecting and copying still work
@@ -346,10 +346,14 @@ export default function Editor({
   useEffect(() => {
     const v = view.current!
     if (!proposal || proposal.path !== path) return
-    const ok = proposal.to <= v.state.doc.length && v.state.sliceDoc(proposal.from, proposal.to) === proposal.original
+    const pending = pendingProposal(v.state) !== null
+    const ok =
+      !pending &&
+      proposal.to <= v.state.doc.length &&
+      v.state.sliceDoc(proposal.from, proposal.to) === proposal.original
     if (ok) propose(v, proposal.from, proposal.to, proposal.text)
     v.focus()
-    onProposed?.(ok)
+    onProposed?.(ok, pending)
   }, [proposal, path])
 
   // Right click: clipboard, AI actions on the selection, sync and compile.

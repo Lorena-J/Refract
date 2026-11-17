@@ -67,3 +67,31 @@ func TestCitationChecksReportIncompleteScope(t *testing.T) {
 		t.Fatalf("%+v %v", r, err)
 	}
 }
+
+func TestBibliographyCommandsAgreeWithTargetPicker(t *testing.T) {
+	source := `% \bibliography{commented}
+\begin{verbatim}\bibliography{literal}\end{verbatim}
+\verb|\addbibresource{inline.bib}|
+\\bibliography{escaped}
+\addbibresource{invalid{nested}.bib}
+\bibliography{my refs, extra.BIB}
+\addbibresource[location=local]{another file.bib}`
+	fsys := fstest.MapFS{
+		"paper/main.tex":         {Data: []byte(source)},
+		"paper/myrefs.bib":       {Data: []byte(`@misc{a,title={A}}`)},
+		"paper/extra.BIB":        {Data: []byte(`@misc{b,title={B}}`)},
+		"paper/another file.bib": {Data: []byte(`@misc{c,title={C}}`)},
+	}
+	if target, setup := BibTarget(fsys, "paper/main.tex"); target != "paper/myrefs.bib" || setup {
+		t.Fatalf("target = %q, needs setup = %v", target, setup)
+	}
+	report, err := CheckCitations(fsys, "paper/main.tex")
+	if err != nil || len(report.Entries) != 3 {
+		t.Fatalf("report = %+v, %v", report, err)
+	}
+	for _, finding := range report.Findings {
+		if finding.Kind != "unused" {
+			t.Errorf("unexpected bibliography or path: %+v", finding)
+		}
+	}
+}

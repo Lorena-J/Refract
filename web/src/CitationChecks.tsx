@@ -101,7 +101,7 @@ export default function CitationChecks({
         )
       }
     } catch (e) {
-      if (!controller.signal.aborted) setError(e instanceof Error ? e.message : errorText(e))
+      if (!controller.signal.aborted) setError(errorText(e))
     } finally {
       if (!controller.signal.aborted) {
         setBusy(false)
@@ -142,7 +142,7 @@ export default function CitationChecks({
       focusEditor.current = true
       onClose()
     } catch (e) {
-      if (!controller.signal.aborted) setError(e instanceof Error ? e.message : errorText(e))
+      if (!controller.signal.aborted) setError(errorText(e))
     } finally {
       if (!controller.signal.aborted) setBusy(false)
     }
