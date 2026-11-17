@@ -77,7 +77,9 @@ func (s *Service) markVerified(ctx context.Context, tx *sql.Tx, userID string) e
 // AuthenticatedAt is when the session's sign-in happened (zero for sessions from before A3).
 func (s *Service) AuthenticatedAt(ctx context.Context, token string) (time.Time, error) {
 	var at int64
-	err := s.DB.QueryRowContext(ctx, `SELECT authenticated_at FROM sessions WHERE id = ? AND expires_at > ?`, sessionID(token), s.now().Unix()).Scan(&at)
+	now := s.now()
+	err := s.DB.QueryRowContext(ctx, `SELECT authenticated_at FROM sessions WHERE id = ? AND expires_at > ? AND last_seen_at > ?`,
+		sessionID(token), now.Unix(), now.Add(-SessionIdle).Unix()).Scan(&at)
 	if err != nil || at == 0 {
 		return time.Time{}, err
 	}

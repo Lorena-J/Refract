@@ -471,3 +471,30 @@ func TestAccountMigrationVerifiesExistingUsers(t *testing.T) {
 		t.Errorf("authenticated_at = %d, %v; want 0", auth, err)
 	}
 }
+
+func TestSessionMigrationDatesExistingSessions(t *testing.T) {
+	idx := slices.IndexFunc(migrations, func(m string) bool { return strings.Contains(m, "sessions ADD COLUMN last_seen_at") })
+	if idx < 0 {
+		t.Fatal("no migration adds sessions.last_seen_at")
+	}
+	path := filepath.Join(t.TempDir(), "r.db")
+	old := at(t, path, idx)
+	expires := time.Now().Add(20 * 24 * time.Hour).Unix()
+	if _, err := old.Exec(`INSERT INTO sessions (id, user_id, expires_at) VALUES ('s', 'a', ?)`, expires); err != nil {
+		t.Fatal(err)
+	}
+	old.Close()
+	before := time.Now().Unix()
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var created, seen int64
+	if err := db.QueryRow(`SELECT created_at, last_seen_at FROM sessions WHERE id = 's'`).Scan(&created, &seen); err != nil {
+		t.Fatal(err)
+	}
+	if created != expires-30*24*3600 || seen < before || seen > time.Now().Unix() {
+		t.Errorf("created_at %d, last_seen_at %d (upgraded at %d)", created, seen, before)
+	}
+}

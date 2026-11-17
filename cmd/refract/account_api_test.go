@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -651,4 +653,169 @@ func TestResetEndpointIsLimited(t *testing.T) {
 		}
 	}
 	b.expect(last, 429, "too_many_attempts")
+}
+
+func TestAccountSessions(t *testing.T) {
+	e := newAccountEnv(t, envOpts{})
+	ctx := context.Background()
+	e.people.SetPassword(ctx, "ana@example.com", "correct horse")
+	bob, _ := e.people.SetPassword(ctx, "bob@example.com", "correct horse")
+	bobs, _ := e.people.NewSession(ctx, bob.ID)
+	signIn := func() *browser {
+		b := e.browser()
+		b.expect(b.post("/api/auth/login", map[string]string{"email": "ana@example.com", "password": "correct horse"}), 204, "")
+		return b
+	}
+	list := func(b *browser) []users.SessionInfo {
+		t.Helper()
+		a := b.do("GET", "/api/account/sessions", nil)
+		var out []users.SessionInfo
+		if err := json.Unmarshal([]byte(a.Body), &out); a.Status != 200 || err != nil {
+			t.Fatalf("list: %d %s", a.Status, a.Body)
+		}
+		return out
+	}
+	laptop, phone, tablet := signIn(), signIn(), signIn()
+
+	got := list(laptop)
+	if len(got) != 3 {
+		t.Fatalf("sessions = %+v", got)
+	}
+	var mine, other string
+	for _, s := range got {
+		if s.Current {
+			mine = s.ID
+		} else {
+			other = s.ID
+		}
+		if s.UserAgent != "Go-http-client/1.1" || s.IP != "127.0.0.1" {
+			t.Errorf("client details: %+v", s)
+		}
+	}
+	if mine == "" {
+		t.Fatal("no session is marked current")
+	}
+
+	// Another account's session can't be named.
+	b := laptop.do("DELETE", "/api/account/sessions/"+fmt.Sprintf("%x", sha256.Sum256([]byte(bobs))), nil)
+	laptop.expect(b, 404, "not_found")
+	if _, err := e.people.Session(ctx, bobs); err != nil {
+		t.Fatal("ended another account's session")
+	}
+
+	if a := laptop.do("DELETE", "/api/account/sessions/"+other, nil); a.Status != 204 {
+		t.Fatalf("revoke: %d %s", a.Status, a.Body)
+	}
+	if len(list(laptop)) != 2 {
+		t.Fatal("the revoked session is still listed")
+	}
+
+	var ended struct{ Ended int }
+	json.Unmarshal([]byte(laptop.do("DELETE", "/api/account/sessions", nil).Body), &ended)
+	if ended.Ended != 1 {
+		t.Fatalf("ended %d", ended.Ended)
+	}
+	for _, br := range []*browser{phone, tablet} {
+		if a := br.do("GET", "/api/account", nil); a.Status != 401 {
+			t.Errorf("a signed-out device still gets %d", a.Status)
+		}
+	}
+
+	// A new password ends every other session and keeps this browser signed in.
+	phone = signIn()
+	laptop.expect(laptop.post("/api/account/password", map[string]string{"current": "correct horse", "new": "battery staple"}), 204, "")
+	if a := phone.do("GET", "/api/account", nil); a.Status != 401 {
+		t.Errorf("the other device survived a password change: %d", a.Status)
+	}
+	got = list(laptop)
+	if len(got) != 1 || !got[0].Current {
+		t.Fatalf("after the password change: %+v", got)
+	}
+
+	// Ending the current session signs this browser out.
+	a := laptop.do("DELETE", "/api/account/sessions/"+got[0].ID, nil)
+	cleared := false
+	for _, c := range a.Cookies {
+		cleared = cleared || (c.Name == users.SessionCookie && c.MaxAge < 0)
+	}
+	if a.Status != 204 || !cleared {
+		t.Fatalf("ending this session: %d, cookie cleared %v", a.Status, cleared)
+	}
+	if a := laptop.do("GET", "/api/account", nil); a.Status != 401 {
+		t.Errorf("still signed in: %d", a.Status)
+	}
+}
+
+// When the database refuses to end sessions, both routes answer 500 and
+// nothing changes: the cookie stays and so do the sessions.
+func TestEndSessionsFailure(t *testing.T) {
+	e := newAccountEnv(t, envOpts{})
+	ctx := context.Background()
+	e.people.SetPassword(ctx, "ana@example.com", "correct horse")
+	b := e.browser()
+	b.expect(b.post("/api/auth/login", map[string]string{"email": "ana@example.com", "password": "correct horse"}), 204, "")
+	other := e.browser()
+	other.expect(other.post("/api/auth/login", map[string]string{"email": "ana@example.com", "password": "correct horse"}), 204, "")
+	var list []users.SessionInfo
+	json.Unmarshal([]byte(b.do("GET", "/api/account/sessions", nil).Body), &list)
+	if len(list) != 2 {
+		t.Fatalf("sessions = %+v", list)
+	}
+	if _, err := e.people.DB.Exec(`CREATE TRIGGER keep_sessions BEFORE DELETE ON sessions BEGIN SELECT RAISE(ABORT, 'disk full'); END`); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range list {
+		a := b.do("DELETE", "/api/account/sessions/"+s.ID, nil)
+		for _, c := range a.Cookies {
+			if c.MaxAge < 0 {
+				t.Errorf("ending %s cleared the cookie although it failed", s.ID)
+			}
+		}
+		if a.Status != 500 {
+			t.Errorf("ending a session: %d %s", a.Status, a.Body)
+		}
+	}
+	if a := b.do("DELETE", "/api/account/sessions", nil); a.Status != 500 {
+		t.Errorf("ending the others: %d %s", a.Status, a.Body)
+	}
+	for _, br := range []*browser{b, other} {
+		if a := br.do("GET", "/api/account", nil); a.Status != 200 {
+			t.Errorf("a session ended although the database refused: %d", a.Status)
+		}
+	}
+}
+
+// Signing out with both cookie names ends both sessions, whoever they belong to.
+func TestLogoutEndsBothCookies(t *testing.T) {
+	e := newAccountEnv(t, envOpts{})
+	ctx := context.Background()
+	ana, _ := e.people.SetPassword(ctx, "ana@example.com", "correct horse")
+	bob, _ := e.people.SetPassword(ctx, "bob@example.com", "correct horse")
+	anas, _ := e.people.NewSession(ctx, ana.ID)
+	bobs, _ := e.people.NewSession(ctx, bob.ID)
+	req, _ := http.NewRequest("POST", e.srv.URL+"/api/auth/logout", nil)
+	req.Header.Set("X-Refract", "1")
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.AddCookie(&http.Cookie{Name: users.SecureSessionCookie, Value: anas})
+	req.AddCookie(&http.Cookie{Name: users.SessionCookie, Value: bobs})
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 204 {
+		t.Fatalf("logout: %d", resp.StatusCode)
+	}
+	cleared := map[string]bool{}
+	for _, c := range resp.Cookies() {
+		cleared[c.Name] = c.MaxAge < 0
+	}
+	if !cleared[users.SecureSessionCookie] || !cleared[users.SessionCookie] {
+		t.Errorf("cookies cleared: %v", cleared)
+	}
+	for _, tok := range []string{anas, bobs} {
+		if _, err := e.people.Session(ctx, tok); err == nil {
+			t.Error("a session survived signing out")
+		}
+	}
 }

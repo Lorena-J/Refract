@@ -189,7 +189,7 @@ docker exec refract refract users add ana@example.com
 docker exec refract refract users list
 ```
 
-Accounts you add this way count as confirmed: you vouch for the address. To end all of someone's sessions (a lost laptop, say), run `refract users signout <email>`. After too many failed sign-ins an account waits 15 minutes; `refract users unlock <email>` lets it in at once. To delete an account with its projects (those in the trash too), chats and connections, run `refract users remove <email>`: it lists what would go, and deletes only when run again with `--yes`. With Cloudflare Access, also remove the person from your Access policy, or they get a new, empty account on their next visit.
+Accounts you add this way count as confirmed: you vouch for the address. People can see and end their own sessions in Settings → Account. To end all of someone's sessions for them (a lost laptop, say), run `refract users signout <email>`. After too many failed sign-ins an account waits 15 minutes; `refract users unlock <email>` lets it in at once. To delete an account with its projects (those in the trash too), chats and connections, run `refract users remove <email>`: it lists what would go, and deletes only when run again with `--yes`. With Cloudflare Access, also remove the person from your Access policy, or they get a new, empty account on their next visit.
 
 ### Sign in with OpenID Connect
 
@@ -458,7 +458,7 @@ On Windows and Linux, read <kbd>Ctrl</kbd> for <kbd>⌘</kbd>. Hold <kbd>⌘</kb
 
 ## Security
 
-- **Sign-in:** Cloudflare Access tokens are verified on every request. Passwords are hashed with PBKDF2-SHA256 (600,000 iterations). Repeated failures for an account, or from one address, are refused for 15 minutes; the counts survive restarts. Sessions are random tokens stored only as hashes, in `HttpOnly`, `SameSite=Lax` cookies that last 30 days.
+- **Sign-in:** Cloudflare Access tokens are verified on every request. Passwords are hashed with PBKDF2-SHA256 (600,000 iterations). Repeated failures for an account, or from one address, are refused for 15 minutes; the counts survive restarts. Sessions are random tokens stored only as hashes, in `HttpOnly`, `SameSite=Lax` cookies (named `__Host-refract_session` over https). A session ends 30 days after signing in, or after 7 days without use; Settings → Account lists where you're signed in and signs out one device or all the others. Changing the password signs out every other device.
 - **Account links:** confirmation and reset links are random, expire, work once and are stored only as hashes. Setting a password by any means cancels reset links. Sign-up and reset answer the same for addresses with and without an account, email goes out after the answer, and emails are limited per address and per network address.
 - **Requests:** every API call must carry a custom header that browsers can't add cross-site, which blocks cross-site request forgery.
 - **Browser:** a strict Content-Security-Policy lets the app run only its own scripts and connect only to its own server. Refract can't be embedded in other sites, and over https it sends `Strict-Transport-Security`.

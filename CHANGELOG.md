@@ -21,6 +21,7 @@ Notable changes to Refract. The format follows [Keep a Changelog](https://keepac
 - `REFRACT_AUTH=builtin` is the new name of `REFRACT_AUTH=password`, which keeps working.
 - `REFRACT_SANDBOX=bwrap` runs every compile in a [bubblewrap](https://github.com/containers/bubblewrap) sandbox: no network, a read-only view of the system and of the project being built, and limits on CPU, memory, processes and file size. It needs the TeX bundle as a local folder: `packaging/server/prepare-bundle.sh` prepares it, and `packaging/server/refract.service` is a systemd unit for the hosted service. Refract checks it at startup by compiling a small document.
 - `REFRACT_COMPILE_WORKERS` and `REFRACT_COMPILE_MAX_WAIT` set how many compiles run at once and how long one waits for its turn.
+- Settings → Account lists the browsers signed in to the account (device, last activity, address) and signs out one of them or all the others. Sessions now also end after 7 days without use, besides 30 days after signing in, and over https the cookie is named `__Host-refract_session`; the upgrade itself signs nobody out (sessions keep their original 30-day end).
 
 ### Changed
 
