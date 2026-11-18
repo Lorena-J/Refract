@@ -3,6 +3,7 @@ package projects
 import (
 	"context"
 	"embed"
+	"errors"
 	"io"
 	"io/fs"
 	"os"
@@ -11,8 +12,10 @@ import (
 	"github.com/ponytojas/Refract/internal/access"
 )
 
-//go:embed templates/*.tex
+//go:embed templates
 var starterFiles embed.FS
+
+var ErrTemplateLanguage = errors.New("template language must be en or es")
 
 type Template struct {
 	ID      string `json:"id"`
@@ -53,7 +56,7 @@ func (s *Service) Templates(ctx context.Context) ([]Template, error) {
 // CreateFromTemplate produces a normal project with its own files and fresh
 // history. Source IDs arrive in a request body, so ownership is checked here
 // as well as on the project-scoped save/delete routes.
-func (s *Service) CreateFromTemplate(ctx context.Context, name, templateID string) (*Project, error) {
+func (s *Service) CreateFromTemplate(ctx context.Context, name, templateID, language string) (*Project, error) {
 	if _, err := access.UserFrom(ctx); err != nil {
 		return nil, err
 	}
@@ -61,13 +64,35 @@ func (s *Service) CreateFromTemplate(ctx context.Context, name, templateID strin
 		if template.ID != templateID {
 			continue
 		}
-		body, err := starterFiles.ReadFile("templates/" + template.ID + ".tex")
+		// Older clients omit the language; keep their English default.
+		if language == "" {
+			language = "en"
+		}
+		if language != "en" && language != "es" {
+			return nil, ErrTemplateLanguage
+		}
+		files, err := fs.Sub(starterFiles, "templates/"+template.ID+"/"+language)
 		if err != nil {
 			return nil, err
 		}
 		res, err := s.create(ctx, name, func(dir string) ([]string, error) {
 			return extract(dir, func(yield func(string, io.Reader) error) error {
-				return yield("main.tex", strings.NewReader(string(body)))
+				return fs.WalkDir(files, ".", func(path string, entry fs.DirEntry, err error) error {
+					if err != nil {
+						return err
+					}
+					if err := ctx.Err(); err != nil {
+						return err
+					}
+					if entry.IsDir() {
+						return nil
+					}
+					body, err := fs.ReadFile(files, path)
+					if err != nil {
+						return err
+					}
+					return yield(path, strings.NewReader(string(body)))
+				})
 			}, s.Limits)
 		}, "create from template")
 		if err != nil {

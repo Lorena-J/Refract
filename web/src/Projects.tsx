@@ -62,7 +62,7 @@ import TemplatePicker from './TemplatePicker'
 import { ago } from '@/lib/time'
 import { daysLeft } from '@/lib/trash'
 import { cn } from '@/lib/utils'
-import { t, tn } from '@/lib/i18n'
+import { lang, t, tn, type Lang } from '@/lib/i18n'
 import { useCommands } from '@/lib/commands'
 import { DropdownItems, WithContextMenu, type MenuEntry } from '@/components/Menu'
 import { Link, navigate, pageReady, previousPath, usePath } from '@/lib/router'
@@ -81,6 +81,7 @@ function ProjectList({ status }: { status: ChatGPTStatus | null }) {
   const [busy, setBusy] = useState(false)
   const [naming, setNaming] = useState<{ mode: 'new' } | { mode: 'rename' | 'template'; project: Project } | null>(null)
   const [template, setTemplate] = useState('')
+  const [templateLanguage, setTemplateLanguage] = useState<Lang>(lang)
   const [saving, setSaving] = useState(false)
   const namingPending = useRef(false)
   const [name, setName] = useState('')
@@ -119,6 +120,7 @@ function ProjectList({ status }: { status: ChatGPTStatus | null }) {
     if (namingPending.current) return
     setName('')
     setTemplate('')
+    setTemplateLanguage(lang)
     setNaming({ mode: 'new' })
   }
 
@@ -258,7 +260,10 @@ function ProjectList({ status }: { status: ChatGPTStatus | null }) {
     setSaving(true)
     try {
       if (naming.mode === 'new') {
-        const p = await api<Project>('/api/projects', { method: 'POST', body: { name: n, template } })
+        const p = await api<Project>('/api/projects', {
+          method: 'POST',
+          body: { name: n, template, language: templateLanguage },
+        })
         setNaming(null)
         navigate(`/p/${p.id}`)
         return
@@ -525,7 +530,15 @@ function ProjectList({ status }: { status: ChatGPTStatus | null }) {
               disabled={saving}
               className="shrink-0"
             />
-            {naming?.mode === 'new' && <TemplatePicker value={template} onChange={setTemplate} disabled={saving} />}
+            {naming?.mode === 'new' && (
+              <TemplatePicker
+                value={template}
+                onChange={setTemplate}
+                language={templateLanguage}
+                onLanguageChange={setTemplateLanguage}
+                disabled={saving}
+              />
+            )}
             <DialogFooter className="mt-4 shrink-0">
               <Button type="button" variant="ghost" disabled={saving} onClick={() => setNaming(null)}>
                 {t('Cancel')}

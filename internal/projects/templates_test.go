@@ -65,7 +65,7 @@ func TestSavedTemplatesArePrivateIndependentCopies(t *testing.T) {
 	if err := s.WriteFile(ownerCtx, p.ID, "REFRACT.md", strings.NewReader("Changed original.")); err != nil {
 		t.Fatal(err)
 	}
-	copy, err := s.CreateFromTemplate(ownerCtx, "Copy", saved.ID)
+	copy, err := s.CreateFromTemplate(ownerCtx, "Copy", saved.ID, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestSavedTemplatesArePrivateIndependentCopies(t *testing.T) {
 
 func TestConcurrentTemplateCopiesAreIndependent(t *testing.T) {
 	s := newService(t)
-	p, err := s.CreateFromTemplate(ownerCtx, "Source", "article")
+	p, err := s.CreateFromTemplate(ownerCtx, "Source", "article", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestConcurrentTemplateCopiesAreIndependent(t *testing.T) {
 	for i := range 8 {
 		wg.Go(func() {
 			if i%2 == 0 {
-				copy, err := s.CreateFromTemplate(ownerCtx, fmt.Sprint("Copy ", i), base.ID)
+				copy, err := s.CreateFromTemplate(ownerCtx, fmt.Sprint("Copy ", i), base.ID, "")
 				if err != nil {
 					errs <- err
 					return
@@ -170,7 +170,7 @@ func TestConcurrentTemplateCopiesAreIndependent(t *testing.T) {
 
 func TestTemplateRegistrationFailureAndCancellationLeaveNothing(t *testing.T) {
 	s := newService(t)
-	p, err := s.CreateFromTemplate(ownerCtx, "Source", "article")
+	p, err := s.CreateFromTemplate(ownerCtx, "Source", "article", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +227,7 @@ func TestTemplateSourceRejectsASymlinkPlantedDuringCopy(t *testing.T) {
 
 func TestTemplatesRequireTheirOwner(t *testing.T) {
 	s := newService(t)
-	p, err := s.CreateFromTemplate(ownerCtx, "Article", "article")
+	p, err := s.CreateFromTemplate(ownerCtx, "Article", "article", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +240,7 @@ func TestTemplatesRequireTheirOwner(t *testing.T) {
 		if _, err := s.SaveTemplate(ctx, p.ID, "Stolen"); !errors.Is(err, access.ErrNotFound) {
 			t.Fatalf("saved another user's project: %v", err)
 		}
-		if _, err := s.CreateFromTemplate(ctx, "Stolen", saved.ID); err == nil {
+		if _, err := s.CreateFromTemplate(ctx, "Stolen", saved.ID, ""); err == nil {
 			t.Fatal("used another user's template")
 		}
 	}
@@ -253,17 +253,17 @@ func TestTemplatesRequireTheirOwner(t *testing.T) {
 			t.Fatal("another user's template was listed")
 		}
 	}
-	if _, err := s.CreateFromTemplate(context.Background(), "Anonymous", "article"); !errors.Is(err, access.ErrNoUser) {
+	if _, err := s.CreateFromTemplate(context.Background(), "Anonymous", "article", ""); !errors.Is(err, access.ErrNoUser) {
 		t.Fatalf("anonymous built-in creation: %v", err)
 	}
-	if _, err := s.CreateFromTemplate(ownerCtx, "Normal", p.ID); !errors.Is(err, ErrNotFound) {
+	if _, err := s.CreateFromTemplate(ownerCtx, "Normal", p.ID, ""); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("normal project used as a template: %v", err)
 	}
 }
 
 func TestTemplateCopyLimitsLeaveNoPartialProject(t *testing.T) {
 	s := newService(t)
-	p, err := s.CreateFromTemplate(ownerCtx, "Article", "article")
+	p, err := s.CreateFromTemplate(ownerCtx, "Article", "article", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +288,7 @@ func TestTemplateCopyLimitsLeaveNoPartialProject(t *testing.T) {
 
 func TestTemplateTrashAndRestore(t *testing.T) {
 	s := newService(t)
-	p, err := s.CreateFromTemplate(ownerCtx, "Article", "article")
+	p, err := s.CreateFromTemplate(ownerCtx, "Article", "article", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +308,7 @@ func TestTemplateTrashAndRestore(t *testing.T) {
 	if list, err := s.Templates(ownerCtx); err != nil || len(list) != len(starters) {
 		t.Fatalf("template list includes trash: %+v, %v", list, err)
 	}
-	if _, err := s.CreateFromTemplate(ownerCtx, "Copy", saved.ID); !errors.Is(err, access.ErrNotFound) {
+	if _, err := s.CreateFromTemplate(ownerCtx, "Copy", saved.ID, ""); !errors.Is(err, access.ErrNotFound) {
 		t.Fatalf("copy trashed template: %v", err)
 	}
 	trash, err := s.ListTrash(ownerCtx)
@@ -330,7 +330,7 @@ func TestTemplateTrashAndRestore(t *testing.T) {
 	if list, err := s.List(ownerCtx); err != nil || len(list) != 0 {
 		t.Fatalf("restored template appears as a project: %+v, %v", list, err)
 	}
-	if _, err := s.CreateFromTemplate(ownerCtx, "Copy", saved.ID); err != nil {
+	if _, err := s.CreateFromTemplate(ownerCtx, "Copy", saved.ID, ""); err != nil {
 		t.Fatalf("copy restored template: %v", err)
 	}
 }
@@ -340,7 +340,7 @@ func TestTemplatesRespectQuota(t *testing.T) {
 	s.QuotaFor = func(context.Context, string) (Quota, error) {
 		return Quota{MaxProjects: 2}, nil
 	}
-	p, err := s.CreateFromTemplate(ownerCtx, "Article", "article")
+	p, err := s.CreateFromTemplate(ownerCtx, "Article", "article", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -358,8 +358,98 @@ func TestTemplatesRespectQuota(t *testing.T) {
 		t.Fatalf("save over quota: %v", err)
 	}
 	for _, id := range []string{"article", saved.ID} {
-		if _, err := s.CreateFromTemplate(ownerCtx, "Extra", id); !errors.Is(err, ErrOverLimit) {
+		if _, err := s.CreateFromTemplate(ownerCtx, "Extra", id, ""); !errors.Is(err, ErrOverLimit) {
 			t.Fatalf("copy %s over quota: %v", id, err)
+		}
+	}
+}
+
+func TestBuiltinTemplateLanguagesAndSections(t *testing.T) {
+	s := newService(t)
+	for _, template := range starters {
+		for _, language := range []string{"en", "es"} {
+			t.Run(template.ID+"/"+language, func(t *testing.T) {
+				p, err := s.CreateFromTemplate(ownerCtx, "Localized starter", template.ID, language)
+				if err != nil {
+					t.Fatal(err)
+				}
+				main, _, err := s.ReadFile(ownerCtx, p.ID, "main.tex")
+				if err != nil {
+					t.Fatal(err)
+				}
+				text := string(main)
+				if !strings.Contains(text, `\input{sections/`) {
+					t.Fatal("main file does not assemble section files")
+				}
+				want, unwanted := "Your name", "Tu nombre"
+				if language == "es" {
+					want, unwanted = unwanted, want
+				}
+				if !strings.Contains(text, want) || strings.Contains(text, unwanted) {
+					t.Fatal("metadata has wrong language")
+				}
+				// Every input must exist in the new project and contain editable content.
+				for _, part := range strings.Split(text, `\input{`)[1:] {
+					path, _, ok := strings.Cut(part, "}")
+					if !ok {
+						t.Fatal("unclosed input")
+					}
+					body, _, err := s.ReadFile(ownerCtx, p.ID, path+".tex")
+					if err != nil || len(body) == 0 {
+						t.Fatalf("missing section %s: %v", path, err)
+					}
+				}
+				if template.ID == "article" || template.ID == "thesis" {
+					want := `\section{Methods}`
+					if template.ID == "thesis" {
+						want = `\chapter{Research design and methods}`
+					}
+					if language == "es" {
+						want = `\section{Métodos}`
+						if template.ID == "thesis" {
+							want = `\chapter{Diseño de la investigación y métodos}`
+						}
+					}
+					body, _, err := s.ReadFile(ownerCtx, p.ID, "sections/methods.tex")
+					if err != nil || !strings.Contains(string(body), want) {
+						t.Fatalf("methods language: %v %s", err, body)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestTemplateLanguageValidationAndSavedContent(t *testing.T) {
+	s := newService(t)
+	for _, language := range []string{"fr", "ES", "../en", "en/../../es"} {
+		if _, err := s.CreateFromTemplate(ownerCtx, "Invalid", "article", language); !errors.Is(err, ErrTemplateLanguage) {
+			t.Fatalf("language %q: %v", language, err)
+		}
+	}
+	if list, err := s.List(ownerCtx); err != nil || len(list) != 0 {
+		t.Fatalf("invalid language created a project: %v %v", list, err)
+	}
+	p, err := s.CreateFromTemplate(ownerCtx, "Spanish", "article", "es")
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := s.SaveTemplate(ownerCtx, p.ID, "Spanish starter")
+	if err != nil {
+		t.Fatal(err)
+	}
+	copy, err := s.CreateFromTemplate(ownerCtx, "Still Spanish", saved.ID, "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"main.tex", "sections/abstract.tex", "sections/methods.tex"} {
+		original, _, err := s.ReadFile(ownerCtx, p.ID, path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		copied, _, err := s.ReadFile(ownerCtx, copy.ID, path)
+		if err != nil || string(original) != string(copied) {
+			t.Fatalf("saved content changed: %s %v", path, err)
 		}
 	}
 }

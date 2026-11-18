@@ -1,0 +1,28 @@
+% EDIT HERE: sender, recipient, subject and date. No logo or external files needed.
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{tgpagella}
+\usepackage[margin=26mm,top=23mm,bottom=25mm]{geometry}
+\usepackage{xcolor,fancyhdr}
+\definecolor{accent}{HTML}{245C61}
+\definecolor{muted}{HTML}{59676B}
+\usepackage[colorlinks=true,allcolors=accent]{hyperref}
+\newcommand{\sendername}{Your name}
+\newcommand{\senderrole}{Your role / Organization}
+\newcommand{\senderemail}{you@example.com}
+\newcommand{\lettersubject}{Subject of your letter}
+\hypersetup{pdftitle={\lettersubject},pdfauthor={\sendername}}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{10pt}
+\linespread{1.08}
+\pagestyle{fancy}\fancyhf{}
+\fancyfoot[L]{\small\color{muted}\sendername\quad /\quad\href{mailto:\senderemail}{\senderemail}}
+\fancyfoot[R]{\small\color{muted}\thepage}
+\renewcommand{\headrulewidth}{0pt}
+\begin{document}
+\input{sections/sender}
+\input{sections/recipient}
+\input{sections/body}
+\input{sections/signature}
+\end{document}

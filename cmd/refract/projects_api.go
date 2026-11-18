@@ -206,6 +206,7 @@ func (a *projectsAPI) create(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Name     string `json:"name"`
 		Template string `json:"template"`
+		Language string `json:"language"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&in); err != nil {
 		httpError(w, err, http.StatusBadRequest)
@@ -214,7 +215,7 @@ func (a *projectsAPI) create(w http.ResponseWriter, r *http.Request) {
 	var p *projects.Project
 	var err error
 	if in.Template != "" {
-		p, err = a.svc.CreateFromTemplate(r.Context(), in.Name, in.Template)
+		p, err = a.svc.CreateFromTemplate(r.Context(), in.Name, in.Template, in.Language)
 	} else {
 		p, err = a.svc.Create(r.Context(), in.Name)
 	}
@@ -413,7 +414,7 @@ func projectError(w http.ResponseWriter, err error) {
 		kindError(w, http.StatusConflict, "project_busy", err)
 	case errors.Is(err, projects.ErrBehind):
 		httpError(w, err, http.StatusConflict)
-	case errors.Is(err, projects.ErrBadRemote), errors.Is(err, projects.ErrPrivateRemote):
+	case errors.Is(err, projects.ErrBadRemote), errors.Is(err, projects.ErrPrivateRemote), errors.Is(err, projects.ErrTemplateLanguage):
 		httpError(w, err, http.StatusBadRequest)
 	case errors.Is(err, fs.ErrExist):
 		httpError(w, err, http.StatusConflict)

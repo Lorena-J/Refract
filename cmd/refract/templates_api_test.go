@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -43,6 +44,25 @@ func TestTemplateAPIOwnershipAndCreation(t *testing.T) {
 	var p projects.Project
 	if err := json.Unmarshal(w.Body.Bytes(), &p); err != nil || p.MainFile != "main.tex" {
 		t.Fatalf("project: %+v %v", p, err)
+	}
+
+	for _, tc := range []struct{ language, want string }{{"en", "Your name"}, {"es", "Tu nombre"}} {
+		w := call("ana", "POST", "/api/projects", `{"name":"Localized","template":"article","language":"`+tc.language+`"}`)
+		var localized projects.Project
+		if err := json.Unmarshal(w.Body.Bytes(), &localized); w.Code != http.StatusOK || err != nil {
+			t.Fatalf("localized create: %d %s", w.Code, w.Body)
+		}
+		source, err := os.ReadFile(filepath.Join(svc.Path(localized.ID), "main.tex"))
+		if err != nil || !strings.Contains(string(source), tc.want) {
+			t.Fatalf("language %s not forwarded: %v", tc.language, err)
+		}
+		section, err := os.ReadFile(filepath.Join(svc.Path(localized.ID), "sections", "abstract.tex"))
+		if err != nil || len(section) == 0 {
+			t.Fatalf("missing abstract: %v", err)
+		}
+	}
+	if w := call("ana", "POST", "/api/projects", `{"name":"Invalid","template":"article","language":"../es"}`); w.Code != http.StatusBadRequest {
+		t.Fatalf("invalid language: %d %s", w.Code, w.Body)
 	}
 	if w := call("ben", "POST", "/api/projects/"+p.ID+"/template", `{"name":"Stolen"}`); w.Code != http.StatusNotFound {
 		t.Fatalf("foreign save: %d", w.Code)

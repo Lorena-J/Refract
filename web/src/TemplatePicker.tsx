@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { FileText, Loader2, Trash2 } from 'lucide-react'
 import { api, errorText } from './api'
 import { Button } from '@/components/ui/button'
-import { t } from '@/lib/i18n'
+import { languageNames, t, type Lang } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 import {
   AlertDialog,
@@ -28,10 +28,14 @@ const starters: Record<string, { name: string; description: string }> = {
 export default function TemplatePicker({
   value,
   onChange,
+  language,
+  onLanguageChange,
   disabled,
 }: {
   value: string
   onChange: (id: string) => void
+  language: Lang
+  onLanguageChange: (language: Lang) => void
   disabled: boolean
 }) {
   const [templates, setTemplates] = useState<ProjectTemplate[] | null>(null)
@@ -100,11 +104,7 @@ export default function TemplatePicker({
   }
 
   return (
-    <div
-      role="radiogroup"
-      aria-label={t('Project template')}
-      className="mt-4 min-h-0 min-w-0 space-y-3 overflow-y-auto p-0.5"
-    >
+    <div className="mt-4 min-h-0 min-w-0 space-y-3 overflow-y-auto p-0.5">
       <p className="text-sm font-medium">{t('Choose a starting point')}</p>
       {error && (
         <div className="flex items-center gap-2">
@@ -132,43 +132,65 @@ export default function TemplatePicker({
           {t('Loading templates…')}
         </p>
       )}
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {option('', t('Blank project'), t('Start with an empty project.'))}
-        {templates
-          ?.filter((item) => item.builtin)
-          .map((item) => (
-            <div key={item.id}>
-              {option(item.id, starters[item.id]?.name ?? item.name, starters[item.id]?.description ?? '')}
-            </div>
-          ))}
-      </div>
-      {!!templates?.some((item) => !item.builtin) && (
-        <>
-          <p className="text-sm font-medium">{t('Your templates')}</p>
-          <div className="space-y-2">
-            {templates
-              .filter((item) => !item.builtin)
-              .map((item) => (
-                <div key={item.id} className="flex items-center gap-1">
-                  {option(item.id, item.name, t('Private copy of your saved project.'))}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    disabled={disabled}
-                    aria-label={t('Delete template {name}', { name: item.name })}
-                    onClick={() => {
-                      setDeleteError('')
-                      setDeleting(item)
-                    }}
-                  >
-                    <Trash2 />
-                  </Button>
-                </div>
-              ))}
+      {templates?.some((item) => item.builtin && item.id === value) && (
+        <fieldset disabled={disabled} className="space-y-2">
+          <legend className="text-sm font-medium">{t('Template language')}</legend>
+          <div className="flex flex-wrap gap-4">
+            {(['en', 'es'] as const).map((code) => (
+              <label key={code} className="flex cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="template-language"
+                  value={code}
+                  checked={language === code}
+                  onChange={() => onLanguageChange(code)}
+                  className="size-4 accent-primary"
+                />
+                {languageNames[code]}
+              </label>
+            ))}
           </div>
-        </>
+        </fieldset>
       )}
+      <div role="radiogroup" aria-label={t('Project template')} className="space-y-3">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {option('', t('Blank project'), t('Start with an empty project.'))}
+          {templates
+            ?.filter((item) => item.builtin)
+            .map((item) => (
+              <div key={item.id}>
+                {option(item.id, starters[item.id]?.name ?? item.name, starters[item.id]?.description ?? '')}
+              </div>
+            ))}
+        </div>
+        {!!templates?.some((item) => !item.builtin) && (
+          <>
+            <p className="text-sm font-medium">{t('Your templates')}</p>
+            <div className="space-y-2">
+              {templates
+                .filter((item) => !item.builtin)
+                .map((item) => (
+                  <div key={item.id} className="flex items-center gap-1">
+                    {option(item.id, item.name, t('Private copy of your saved project.'))}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      disabled={disabled}
+                      aria-label={t('Delete template {name}', { name: item.name })}
+                      onClick={() => {
+                        setDeleteError('')
+                        setDeleting(item)
+                      }}
+                    >
+                      <Trash2 />
+                    </Button>
+                  </div>
+                ))}
+            </div>
+          </>
+        )}
+      </div>
       <AlertDialog open={!!deleting} onOpenChange={(open) => !open && !removePending.current && setDeleting(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>

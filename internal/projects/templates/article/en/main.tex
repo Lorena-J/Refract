@@ -1,0 +1,47 @@
+% EDIT HERE: title, author, affiliation, accent colour, then the sample content.
+% All examples are self-contained: no images or bibliography tools are needed.
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{tgpagella}
+\usepackage[margin=25mm]{geometry}
+\usepackage{microtype,amsmath,amssymb,graphicx,booktabs,tabularx}
+\usepackage{xcolor,titlesec,fancyhdr,enumitem}
+\definecolor{accent}{HTML}{245C61}
+\definecolor{muted}{HTML}{58666B}
+\usepackage[colorlinks=true,allcolors=accent]{hyperref}
+\newcommand{\articletitle}{Article title}
+\newcommand{\authorname}{Your name}
+\newcommand{\affiliation}{Department / Institution}
+\hypersetup{pdftitle={\articletitle},pdfauthor={\authorname}}
+\titleformat{\section}{\large\bfseries\color{accent}}{\thesection}{0.7em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{0.7em}{}
+\titlespacing*{\section}{0pt}{18pt}{7pt}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+\setlist[itemize]{leftmargin=*,itemsep=2pt,topsep=3pt}
+\pagestyle{fancy}\fancyhf{}
+\fancyhead[L]{\small\color{muted}\authorname}
+\fancyhead[R]{\small\color{muted}Research article}
+\fancyfoot[C]{\small\thepage}
+\renewcommand{\headrulewidth}{0pt}
+\setlength{\headheight}{15pt}
+
+\begin{document}
+\thispagestyle{plain}
+{\small\sffamily\color{accent}RESEARCH ARTICLE}\par
+\vspace{8pt}
+{\LARGE\bfseries\articletitle\par}
+\vspace{7pt}
+{\large\authorname}\par
+{\small\color{muted}\affiliation\quad /\quad \today}\par
+\vspace{6pt}{\color{accent}\hrule height 1.2pt}\vspace{10pt}
+\input{sections/abstract}
+\input{sections/introduction}
+\input{sections/methods}
+\input{sections/results}
+\input{sections/discussion}
+\input{sections/conclusion}
+\input{sections/acknowledgements}
+\input{sections/references}
+\end{document}

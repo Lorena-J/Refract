@@ -4,7 +4,10 @@ const headers = { 'X-Refract': '1' }
 test.setTimeout(45_000)
 
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('refract-prefs', JSON.stringify({ language: 'en' })))
+  await page.addInitScript(() => {
+    if (!localStorage.getItem('refract-prefs'))
+      localStorage.setItem('refract-prefs', JSON.stringify({ language: 'en' }))
+  })
 })
 
 test('create from a built-in template and compile', async ({ page }) => {
@@ -107,3 +110,59 @@ test('the project list can save a template and still create a blank project', as
   expect(copy).not.toBe(original.id)
   expect(await (await request.get(`/api/projects/${copy}/files`, { headers })).json()).toEqual([])
 })
+
+for (const ui of ['en', 'es'] as const) {
+  test(`template language defaults to ${ui}, can be changed and resets for the next project`, async ({
+    page,
+    request,
+  }) => {
+    await page.goto('/')
+    await page.evaluate((language) => localStorage.setItem('refract-prefs', JSON.stringify({ language })), ui)
+    await page.reload()
+    const spanish = ui === 'es'
+    const labels = spanish
+      ? {
+          new: 'Nuevo',
+          from: 'Desde una plantilla…',
+          dialog: 'Nuevo proyecto',
+          article: 'Artículo',
+          create: 'Crear',
+          project: 'Nombre del proyecto',
+        }
+      : {
+          new: 'New',
+          from: 'From a template…',
+          dialog: 'New project',
+          article: 'Article',
+          create: 'Create',
+          project: 'Project name',
+        }
+    const open = async () => {
+      await page.getByRole('button', { name: labels.new, exact: true }).click()
+      await page.getByRole('menuitem', { name: labels.from, exact: true }).click()
+    }
+    await open()
+    const dialog = page.getByRole('dialog', { name: labels.dialog, exact: true })
+    await dialog.getByRole('radio', { name: labels.article, exact: true }).check()
+    await expect(dialog.getByRole('radio', { name: spanish ? 'Español' : 'English', exact: true })).toBeChecked()
+    await dialog.getByRole('radio', { name: spanish ? 'English' : 'Español', exact: true }).check()
+    await dialog.getByRole('textbox', { name: labels.project, exact: true }).fill(`Language override ${ui}`)
+    await page.screenshot({ path: test.info().outputPath(`template-language-${ui}.png`), animations: 'disabled' })
+    await dialog.getByRole('button', { name: labels.create, exact: true }).click()
+    await expect(page).toHaveURL(/\/p\/[^/]+$/)
+    const id = page.url().split('/').pop()!
+    const main = await (await request.get(`/api/projects/${id}/file?path=main.tex`, { headers })).text()
+    expect(main).toContain(spanish ? 'Article title' : 'Título del artículo')
+    expect(main).toContain('\\input{sections/abstract}')
+    const abstract = await (
+      await request.get(`/api/projects/${id}/file?path=sections/abstract.tex`, { headers })
+    ).text()
+    expect(abstract).toContain(spanish ? '\\textbf{Abstract}' : '\\textbf{Resumen}')
+    const methods = await (await request.get(`/api/projects/${id}/file?path=sections/methods.tex`, { headers })).text()
+    expect(methods).toContain(spanish ? '\\section{Methods}' : '\\section{Métodos}')
+    await page.goto('/')
+    await open()
+    await dialog.getByRole('radio', { name: labels.article, exact: true }).check()
+    await expect(dialog.getByRole('radio', { name: spanish ? 'Español' : 'English', exact: true })).toBeChecked()
+  })
+}

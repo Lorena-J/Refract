@@ -32,32 +32,34 @@ func TestBuiltInTemplatesCompile(t *testing.T) {
 	if len(templates) != 5 {
 		t.Fatalf("expected five built-ins, got %d", len(templates))
 	}
-	for _, template := range templates {
-		t.Run(template.ID, func(t *testing.T) {
-			p, err := s.CreateFromTemplate(ctx, template.Name, template.ID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			result, err := tc.Compile(ctx, s.Path(p.ID), p.MainFile)
-			if err != nil || !result.OK || result.PDF == "" {
-				t.Fatalf("template compile: %+v %v", result, err)
-			}
-			// A successful compile can still hide clipped text or broken links.
-			log, err := os.ReadFile(filepath.Join(s.Path(p.ID), BuildDir, "main.log"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			for _, warning := range []string{"Overfull", "undefined references", "Citation `", "Reference `"} {
-				if strings.Contains(string(log), warning) {
-					t.Fatalf("template layout or reference warning %q", warning)
+	for _, language := range []string{"en", "es"} {
+		for _, template := range templates {
+			t.Run(template.ID+"/"+language, func(t *testing.T) {
+				p, err := s.CreateFromTemplate(ctx, template.Name, template.ID, language)
+				if err != nil {
+					t.Fatal(err)
 				}
-			}
-			if template.ID == "cv" || template.ID == "letter" {
-				if pages := pdfPages(t, filepath.Join(s.Path(p.ID), result.PDF)); pages != 1 {
-					t.Fatalf("%s should fit one page, got %d", template.ID, pages)
+				result, err := tc.Compile(ctx, s.Path(p.ID), p.MainFile)
+				if err != nil || !result.OK || result.PDF == "" {
+					t.Fatalf("template compile: %+v %v", result, err)
 				}
-			}
-		})
+				// A successful compile can still hide clipped text or broken links.
+				log, err := os.ReadFile(filepath.Join(s.Path(p.ID), BuildDir, "main.log"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, warning := range []string{"Overfull", "undefined references", "Citation `", "Reference `"} {
+					if strings.Contains(string(log), warning) {
+						t.Fatalf("template layout or reference warning %q", warning)
+					}
+				}
+				if template.ID == "cv" || template.ID == "letter" {
+					if pages := pdfPages(t, filepath.Join(s.Path(p.ID), result.PDF)); pages != 1 {
+						t.Fatalf("%s should fit one page, got %d", template.ID, pages)
+					}
+				}
+			})
+		}
 	}
 }
 
@@ -97,7 +99,7 @@ func TestSavedTemplateWithUnicodePathsAndAssetsCompiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	copy, err := s.CreateFromTemplate(ctx, "Independent copy", saved.ID)
+	copy, err := s.CreateFromTemplate(ctx, "Independent copy", saved.ID, "")
 	if err != nil {
 		t.Fatal(err)
 	}

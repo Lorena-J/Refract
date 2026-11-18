@@ -1,4 +1,5 @@
 export default {
+  'Template language': 'Idioma de la plantilla',
   'Template name': 'Nombre de la plantilla',
   Article: 'Artículo',
   Thesis: 'Tesis',
