@@ -25,9 +25,12 @@ Notable changes to Refract. The format follows [Keep a Changelog](https://keepac
 - `REFRACT_AUTH=builtin` is the new name of `REFRACT_AUTH=password`, which keeps working.
 - `REFRACT_SANDBOX=bwrap` runs every compile in a [bubblewrap](https://github.com/containers/bubblewrap) sandbox: no network, a read-only view of the system and of the project being built, and limits on CPU, memory, processes and file size. It needs the TeX bundle as a local folder: `packaging/server/prepare-bundle.sh` prepares it, and `packaging/server/refract.service` is a systemd unit for the hosted service. Refract checks it at startup by compiling a small document.
 - `REFRACT_COMPILE_WORKERS` and `REFRACT_COMPILE_MAX_WAIT` set how many compiles run at once and how long one waits for its turn.
+- Sticky scroll in the editor: the enclosing LaTeX sections and environments stay at the top while you scroll, drawn like their own lines and pushed out smoothly as the next one arrives. On by default; turn it off in **Settings → Editor**.
+- A **Download PDF** button in the preview's header.
 
 ### Changed
 
+- **Compile** and its main file menu moved from the editor's tab row to the preview's header, beside the compile status.
 - Changing the password moved from Settings → General to the new Settings → Account.
 - Until an address is confirmed, an account that signed up can sign in but can't create or import projects. Existing accounts, and those added with `refract users add`, count as confirmed.
 - With `REFRACT_MODE=saas` and `REFRACT_AUTH=builtin`, `REFRACT_SIGNUP=open` is refused until the terms and privacy policy people accept at sign-up exist: keep the default (`closed`) and add accounts with `refract users add`.

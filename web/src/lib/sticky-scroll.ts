@@ -1,5 +1,8 @@
+import { syntaxTree } from '@codemirror/language'
 import { RangeSet, RangeValue, type Range, type Text } from '@codemirror/state'
 import { EditorView, getPanel, showPanel, type Panel } from '@codemirror/view'
+import { highlightTree } from '@lezer/highlight'
+import { latexStyle } from './editor'
 import { headingsIn } from './outline'
 import { maskForSections } from './wordcount'
 
@@ -46,6 +49,29 @@ function findScopes(doc: Text) {
   return RangeSet.of(ranges, true)
 }
 
+// The header line as the editor draws it, so a line that sticks looks the same as it did in the text.
+function headerRow(view: EditorView, doc: Text, start: number) {
+  const row = document.createElement('div')
+  const line = doc.lineAt(start)
+  let pos = line.from
+  highlightTree(
+    syntaxTree(view.state),
+    latexStyle,
+    (from, to, classes) => {
+      if (from > pos) row.append(doc.sliceString(pos, from))
+      const span = document.createElement('span')
+      span.className = classes
+      span.textContent = doc.sliceString(from, to)
+      row.append(span)
+      pos = to
+    },
+    line.from,
+    line.to,
+  )
+  row.append(doc.sliceString(pos, line.to))
+  return row
+}
+
 function stickyPanel(view: EditorView): Panel {
   const dom = document.createElement('div')
   dom.className = 'cm-sticky-scroll'
@@ -56,34 +82,64 @@ function stickyPanel(view: EditorView): Panel {
   let shownDoc: Text | undefined
   let shown: number[] = []
   const measure = {
+    key: dom,
     read(view: EditorView) {
       const doc = view.state.doc
-      const from = view.lineBlockAtHeight(view.scrollDOM.scrollTop - view.documentPadding.top).from
-      // Leave the final line unobstructed when the editor is scrolled past the end.
-      if (from === 0 || from >= doc.line(doc.lines).from) return { doc, starts: [] }
       if (indexedDoc !== doc) {
         indexedDoc = doc
         scopes = findScopes(doc)
       }
-      const starts = new Set<number>()
-      scopes.between(from, from, (start, end) => {
-        if (start < from && from < end) starts.add(start)
-      })
-      return { doc, starts: [...starts].sort((a, b) => a - b).slice(-maxHeaders) }
-    },
-    write({ doc, starts }: { doc: Text; starts: number[] }) {
-      if (doc === shownDoc && starts.length === shown.length && starts.every((start, index) => start === shown[index]))
-        return
-      shownDoc = doc
-      shown = starts
-      dom.hidden = starts.length === 0
-      dom.replaceChildren(
-        ...starts.map((start) => {
-          const row = document.createElement('div')
-          row.textContent = doc.lineAt(start).text
-          return row
-        }),
+      const height = view.defaultLineHeight
+      const scrollTop = view.scrollDOM.scrollTop - view.documentPadding.top
+      // Scopes that reach the rows the headers can cover; the outermost when several start on a line.
+      const candidates = new Map<number, number>()
+      scopes.between(
+        view.lineBlockAtHeight(scrollTop).from,
+        view.lineBlockAtHeight(scrollTop + maxHeaders * height).to,
+        (from, to) => {
+          if (to > (candidates.get(from) ?? 0)) candidates.set(from, to)
+        },
       )
+      // Each header takes the next row once its own line has scrolled past that row, and keeps it
+      // until its scope ends there. The end of a scope pushes its header up pixel by pixel, so the
+      // next one arrives in the row exactly as this one leaves it.
+      const starts: number[] = []
+      let push = 0
+      for (const [from, to] of [...candidates].sort((a, b) => a[0] - b[0])) {
+        const row = scrollTop + starts.length * height
+        if (view.lineBlockAt(from).top >= row) break
+        const end = view.lineBlockAt(to).top
+        if (end <= row) continue
+        starts.push(from)
+        push = Math.min(0, end - row - height)
+        if (push < 0 || starts.length === maxHeaders) break
+      }
+      // Text starts where the editor's lines do: after the gutters and the line's own padding.
+      return { doc, starts, push, height, left: view.contentDOM.offsetLeft + 6 }
+    },
+    write({
+      doc,
+      starts,
+      push,
+      height,
+      left,
+    }: {
+      doc: Text
+      starts: number[]
+      push: number
+      height: number
+      left: number
+    }) {
+      if (doc !== shownDoc || starts.length !== shown.length || starts.some((start, index) => start !== shown[index])) {
+        shownDoc = doc
+        shown = starts
+        dom.hidden = starts.length === 0
+        dom.replaceChildren(...starts.map((start) => headerRow(view, doc, start)))
+      }
+      dom.style.setProperty('--sticky-row', `${height}px`)
+      dom.style.paddingLeft = `${left}px`
+      dom.style.height = `${starts.length * height + push}px`
+      if (dom.lastElementChild) (dom.lastElementChild as HTMLElement).style.marginTop = `${push}px`
     },
   }
   const refresh = () => view.requestMeasure(measure)
@@ -118,14 +174,25 @@ export const stickyScroll = [
     '.cm-sticky-scroll': {
       position: 'absolute',
       inset: '0 0 auto',
+      isolation: 'isolate',
+      overflow: 'hidden',
       pointerEvents: 'none',
       backgroundColor: 'var(--card)',
       borderBottom: '1px solid var(--border)',
       color: 'var(--foreground)',
       fontFamily: 'var(--font-mono)',
-      lineHeight: '1.65',
-      paddingInline: '0.75rem',
+      paddingRight: '0.75rem',
     },
-    '.cm-sticky-scroll > div': { whiteSpace: 'pre', overflow: 'hidden', textOverflow: 'ellipsis' },
+    '.cm-sticky-scroll > div': {
+      position: 'relative',
+      height: 'var(--sticky-row)',
+      lineHeight: 'var(--sticky-row)',
+      backgroundColor: 'var(--card)',
+      whiteSpace: 'pre',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+    },
+    // The header being pushed out slides under the one above it.
+    '.cm-sticky-scroll > div:last-child': { zIndex: '-1' },
   }),
 ]
