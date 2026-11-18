@@ -185,6 +185,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
   const [pdfVersion, setPdfVersion] = useState(0)
   const [highlight, setHighlight] = useState<Highlight | undefined>()
   const [chatOpen, setChatOpen] = useState(false)
+  const floatingChat = useRef<HTMLDivElement>(null)
   const [chatFocus, setChatFocus] = useState(0)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [gitOpen, setGitOpen] = useState(false)
@@ -1149,6 +1150,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
       focus={chatFocus}
       request={aiRequest}
       docked={asPanel}
+      floatingRef={asPanel ? undefined : floatingChat}
       readOnly={locked}
     />
   )
@@ -1553,12 +1555,13 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
               </div>
             </div>
 
-            <div className="relative min-h-0 flex-1">
+            <div className="editor-workspace relative min-h-0 flex-1">
               {review && (
                 <Review turn={review} onAccept={acceptTurn} onReject={rejectTurn} onClose={() => setReview(null)} />
               )}
               {!review && active && current?.text && (
                 <Editor
+                  floatingChat={floatingChat}
                   symbols={symbols}
                   mainFile={project?.main_file}
                   projectId={id}

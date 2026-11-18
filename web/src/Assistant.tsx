@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type RefObject } from 'react'
 import {
   ArrowUp,
   Check,
@@ -70,6 +70,7 @@ type Props = {
   turnUpdate?: Turn // a turn changed by the review view
   open: boolean // the chat sheet over the editor; collapsed it is an input bar or a bubble
   docked?: boolean // rendered in a side panel: always open, no bar or bubble
+  floatingRef?: RefObject<HTMLDivElement | null>
   onOpen: (open: boolean) => void
   focus?: number // bump to focus the input
   request?: { text: string; n: number } // send this (n changes on every request)
@@ -88,8 +89,6 @@ const suggestions = [
   t('Check the grammar of the open file'),
   t('Make the abstract more concise'),
 ]
-const MIN_HEIGHT = 260
-
 // The assistant floats over the editor (Prism-style): an input bar, a bubble, or a resizable sheet.
 export default function Assistant(p: Props) {
   const prefs = usePrefs()
@@ -249,9 +248,13 @@ export default function Assistant(p: Props) {
     e.currentTarget.setPointerCapture(e.pointerId)
   }
   function resize(e: PointerEvent) {
-    if (!e.currentTarget.hasPointerCapture(e.pointerId) || !overlay.current) return
-    const r = overlay.current.getBoundingClientRect()
-    setHeight(Math.max(MIN_HEIGHT, Math.min(r.bottom - 12 - e.clientY, r.height - 24)))
+    const container = overlay.current
+    if (!e.currentTarget.hasPointerCapture(e.pointerId) || !container) return
+    const bounds = container.getBoundingClientRect()
+    const { paddingTop, paddingBottom } = getComputedStyle(container)
+    const bottom = bounds.bottom - parseFloat(paddingBottom)
+    const available = Math.max(0, bottom - bounds.top - parseFloat(paddingTop))
+    setHeight(Math.min(available, Math.max(260, bottom - e.clientY)))
   }
   function endResize() {
     if (height !== null) setPref('chatHeight', Math.round(height))
@@ -267,7 +270,7 @@ export default function Assistant(p: Props) {
 
   if (bubble) {
     return (
-      <div className="pointer-events-none absolute inset-0 z-20 flex items-end justify-end p-4">
+      <div ref={p.floatingRef} className="pointer-events-none absolute right-4 bottom-4 z-20">
         <Tooltip>
           <TooltipTrigger
             render={
@@ -299,15 +302,17 @@ export default function Assistant(p: Props) {
   return (
     <div
       ref={overlay}
-      className={
+      className={cn(
         p.docked
           ? 'flex h-full min-h-0 flex-col'
-          : 'pointer-events-none absolute inset-0 z-20 flex flex-col justify-end p-3'
-      }
+          : 'pointer-events-none absolute inset-0 z-20 flex flex-col justify-end p-3',
+        open && !p.docked && 'pt-[calc(3rem+4px+var(--sticky-scroll-height,0px))]',
+      )}
     >
       <div
+        ref={p.floatingRef}
         onKeyDown={onCardKey}
-        style={open && !p.docked ? { height: sheetHeight ? sheetHeight : '55%' } : undefined}
+        style={open && !p.docked ? { height: sheetHeight || '55%' } : undefined}
         className={cn(
           'relative flex w-full flex-col',
           p.docked
@@ -316,7 +321,7 @@ export default function Assistant(p: Props) {
                 'pointer-events-auto mx-auto max-h-full rounded-2xl border bg-card/95 shadow-lg backdrop-blur-md',
                 // The bar appears from the bubble's corner; the sheet just grows (its content fades in).
                 'origin-bottom-right transition-[scale,opacity] duration-200 ease-out starting:scale-95 starting:opacity-0',
-                open ? 'min-h-[260px]' : 'max-w-3xl',
+                open ? 'min-h-[min(260px,100%)]' : 'max-w-3xl',
               ],
         )}
       >

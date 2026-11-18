@@ -4,6 +4,7 @@ import { useSyncExternalStore } from 'react'
 export type Prefs = {
   fontSize: 'small' | 'normal' | 'large'
   wrap: boolean
+  stickyScroll: boolean
   wordCountTitles: boolean
   wordCount: boolean
   chatBubble: boolean // collapsed assistant: a bubble instead of the input bar
@@ -18,6 +19,7 @@ const KEY = 'refract-prefs'
 const defaults: Prefs = {
   fontSize: 'normal',
   wrap: true,
+  stickyScroll: true,
   wordCount: false,
   wordCountTitles: true,
   chatBubble: false,

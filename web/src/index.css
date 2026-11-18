@@ -665,10 +665,6 @@
   white-space: pre-wrap;
 }
 
-/* Room for the floating assistant bar under the last line. */
-.cm-content {
-  padding-bottom: 6rem;
-}
 .cm-editor.cm-focused {
   outline: none;
 }

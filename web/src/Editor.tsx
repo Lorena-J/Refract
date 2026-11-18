@@ -2,10 +2,11 @@ import { type RefObject, useEffect, useReducer, useRef, useState } from 'react'
 import { acceptCompletion, autocompletion } from '@codemirror/autocomplete'
 import { basicSetup } from 'codemirror'
 import { Compartment, EditorSelection, EditorState, Prec } from '@codemirror/state'
-import { EditorView, keymap, tooltips } from '@codemirror/view'
+import { EditorView, keymap, scrollPastEnd, tooltips } from '@codemirror/view'
 import { latexCompletion, opensArgument, type ProjectSymbols, signatureHint } from '@/lib/completion'
 import { completionHelp } from '@/lib/completion-help'
 import { latex } from '@/lib/editor'
+import { stickyScroll } from '@/lib/sticky-scroll'
 import { getPrefs, usePrefs } from '@/lib/prefs'
 import { accept, proposal as pendingProposal, proposalField, propose, reject } from '@/lib/proposal'
 import type { CiteTarget } from './CiteDialog'
@@ -30,13 +31,16 @@ import { wordLimits, wordCountEnabled, excessWords, loadLimits, saveLimits, setL
 import { t } from '@/lib/i18n'
 
 const wrapping = new Compartment()
+const stickyHeaders = new Compartment()
 const counter = new Compartment()
 const lock = new Compartment()
 const wrapExt = (on: boolean) => (on ? EditorView.lineWrapping : [])
+const stickyExt = (on: boolean, path: string) => (on && /\.tex$/i.test(path) ? stickyScroll : [])
 // Read-only, and every change refused: this also stops what the code dispatches itself (menu Cut and Paste, proposals, quick actions).
 const lockExt = (on: boolean) => (on ? [EditorState.readOnly.of(true), EditorState.changeFilter.of(() => false)] : [])
 
 type Props = {
+  floatingChat: RefObject<HTMLDivElement | null>
   projectId: string
   countEnabled: boolean
   onWordCount: (count: number | null) => void
@@ -67,6 +71,7 @@ type Props = {
 
 // One EditorView; each open file keeps its own EditorState, swapped on tab switch.
 export default function Editor({
+  floatingChat,
   projectId,
   countEnabled,
   onWordCount,
@@ -175,9 +180,19 @@ export default function Editor({
     )
   }
 
-  const { wrap, wordCountTitles } = usePrefs()
+  const { wrap, stickyScroll: showStickyHeaders, wordCountTitles } = usePrefs()
   const extensions = useRef([
     basicSetup,
+    scrollPastEnd(),
+    // Keep the top inset outside the scroller so no part of the previous line remains at the end.
+    EditorView.theme({ '&': { paddingTop: '4px' }, '.cm-content': { paddingTop: '0' } }),
+    EditorView.scrollMargins.of((view) => {
+      const chat = floatingChat.current
+      if (!chat) return null
+      const editor = view.scrollDOM.getBoundingClientRect()
+      const overlap = editor.bottom - chat.getBoundingClientRect().top
+      return { bottom: Math.max(0, Math.min(overlap, editor.height - view.defaultLineHeight)) }
+    }),
     latex,
     autocompletion({
       override: [
@@ -202,6 +217,7 @@ export default function Editor({
     excessWords,
     counter.of(wordCountEnabled.of(countEnabled)),
     wrapping.of(wrapExt(getPrefs().wrap)),
+    stickyHeaders.of(stickyExt(getPrefs().stickyScroll, path)),
     lock.of(lockExt(false)),
     // Highest precedence: basicSetup binds Mod-Enter to "insert blank line".
     Prec.highest(
@@ -306,6 +322,10 @@ export default function Editor({
   useEffect(() => {
     view.current!.dispatch({ effects: wrapping.reconfigure(wrapExt(wrap)) })
   }, [wrap, path])
+
+  useEffect(() => {
+    view.current!.dispatch({ effects: stickyHeaders.reconfigure(stickyExt(showStickyHeaders, path)) })
+  }, [showStickyHeaders, path])
 
   // Stored states keep the lock they were created with, so it is applied to whichever is shown.
   useEffect(() => {
