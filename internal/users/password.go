@@ -35,9 +35,6 @@ const (
 	MinPassword = 8
 	maxPassword = 1024
 
-	SessionCookie = "refract_session"
-	SessionTTL    = 30 * 24 * time.Hour
-
 	maxFailures      = 10 // per account
 	maxFailuresPerIP = 30 // per address: allows a few people behind one network
 	failWindow       = 15 * time.Minute
@@ -164,15 +161,15 @@ func (s *Service) Login(ctx context.Context, email, pw, ip string) (auth.User, e
 // account's: checking takes a while, and meanwhile the address's real owner
 // may have taken over an unverified account (ConfirmByProvider, a reset) or
 // the password may have changed. Then it is ErrBadLogin.
-func (s *Service) SignIn(ctx context.Context, email, pw, ip string) (auth.User, string, error) {
-	u, stored, err := s.login(ctx, email, pw, ip)
+func (s *Service) SignIn(ctx context.Context, email, pw string, c Client) (auth.User, string, error) {
+	u, stored, err := s.login(ctx, email, pw, c.IP)
 	if err != nil {
 		return auth.User{}, "", err
 	}
 	if testHookPasswordChecked != nil {
 		testHookPasswordChecked(u.ID)
 	}
-	token, ok, err := s.newSession(ctx, u.ID, stored)
+	token, ok, err := s.newSession(ctx, u.ID, stored, c)
 	if err != nil {
 		return auth.User{}, "", err
 	}
@@ -542,78 +539,6 @@ func sessionID(token string) string { return digest(token) }
 func digest(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
-}
-
-// NewSession signs a user in and returns the cookie's token.
-func (s *Service) NewSession(ctx context.Context, userID string) (string, error) {
-	token, _, err := s.newSession(ctx, userID, "")
-	return token, err
-}
-
-// newSession creates a session for userID. With a non-empty password hash it
-// does so only if that is still the account's password, in the same
-// statement, and reports ok=false otherwise.
-func (s *Service) newSession(ctx context.Context, userID, password string) (token string, ok bool, err error) {
-	b := make([]byte, 32)
-	rand.Read(b)
-	token = base64.RawURLEncoding.EncodeToString(b)
-	now := s.now()
-	s.DB.ExecContext(ctx, `DELETE FROM sessions WHERE expires_at < ?`, now.Unix())
-	res, err := s.DB.ExecContext(ctx, `INSERT INTO sessions (id, user_id, expires_at, authenticated_at)
-		SELECT ?, ?, ?, ? WHERE ? = '' OR EXISTS (SELECT 1 FROM users WHERE id = ? AND password = ?)`,
-		sessionID(token), userID, now.Add(SessionTTL).Unix(), now.Unix(), password, userID, password)
-	if err != nil {
-		return "", false, err
-	}
-	n, err := res.RowsAffected()
-	return token, n == 1, err
-}
-
-// Session returns the user a session token belongs to.
-func (s *Service) Session(ctx context.Context, token string) (auth.User, error) {
-	var u auth.User
-	err := s.DB.QueryRowContext(ctx, `SELECT u.id, u.email FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ? AND s.expires_at > ?`,
-		sessionID(token), time.Now().Unix()).Scan(&u.ID, &u.Email)
-	return u, err
-}
-
-func (s *Service) EndSession(ctx context.Context, token string) error {
-	_, err := s.DB.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, sessionID(token))
-	return err
-}
-
-// SessionGuard is the web UI guard for REFRACT_AUTH=builtin. Requests with a
-// valid session go on as that user. Without one, /api gets 401 and every
-// other path is served by public: the app's files, which show the sign-in page.
-func (s *Service) SessionGuard(public http.Handler) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if c, err := r.Cookie(SessionCookie); err == nil {
-				if u, err := s.Session(r.Context(), c.Value); err == nil {
-					next.ServeHTTP(w, auth.WithIdentity(r, u.Email))
-					return
-				}
-			}
-			if strings.HasPrefix(r.URL.Path, "/api/") {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusUnauthorized)
-				w.Write([]byte(`{"error":{"kind":"login_required","message":"Sign in to continue."}}`))
-				return
-			}
-			public.ServeHTTP(w, r)
-		})
-	}
-}
-
-// SetSessionCookie and ClearSessionCookie write the session cookie. Secure
-// when the request came over https (directly or through a proxy).
-func SetSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
-	http.SetCookie(w, &http.Cookie{Name: SessionCookie, Value: token, Path: "/", MaxAge: int(SessionTTL.Seconds()),
-		HttpOnly: true, Secure: Secure(r), SameSite: http.SameSiteLaxMode})
-}
-
-func ClearSessionCookie(w http.ResponseWriter, r *http.Request) {
-	http.SetCookie(w, &http.Cookie{Name: SessionCookie, Path: "/", MaxAge: -1, HttpOnly: true, Secure: Secure(r), SameSite: http.SameSiteLaxMode})
 }
 
 func Secure(r *http.Request) bool {

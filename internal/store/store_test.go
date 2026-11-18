@@ -147,8 +147,12 @@ func TestRefusesNewerDatabase(t *testing.T) {
 }
 
 func TestTemplateMigrationPreservesExistingProjects(t *testing.T) {
+	idx := slices.IndexFunc(migrations, func(m string) bool { return strings.Contains(m, "projects ADD COLUMN is_template") })
+	if idx < 0 {
+		t.Fatal("no migration adds projects.is_template")
+	}
 	path := filepath.Join(t.TempDir(), "refract.db")
-	old := at(t, path, len(migrations)-1)
+	old := at(t, path, idx)
 	if _, err := old.Exec(`INSERT INTO projects (id, name, main_file, created_at, updated_at, owner) VALUES ('paper', 'Tesis ñ', 'paper/main.tex', 123, 456, 'owner')`); err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +170,7 @@ func TestTemplateMigrationPreservesExistingProjects(t *testing.T) {
 	if name != "Tesis ñ" || main != "paper/main.tex" || owner != "owner" || created != 123 || updated != 456 || flag != 0 {
 		t.Fatalf("project changed: %q %q %q %d %d %d", name, main, owner, created, updated, flag)
 	}
-	if got := versionOf(t, path+".pre-upgrade"); got != len(migrations)-1 {
+	if got := versionOf(t, path+".pre-upgrade"); got != idx {
 		t.Fatalf("wrong backup version: %d", got)
 	}
 	if _, err := db.Exec(`UPDATE projects SET is_template = 2 WHERE id = 'paper'`); err == nil {
@@ -497,5 +501,32 @@ func TestAccountMigrationVerifiesExistingUsers(t *testing.T) {
 	var auth int
 	if err := db.QueryRow(`SELECT authenticated_at FROM sessions WHERE id = 's'`).Scan(&auth); err != nil || auth != 0 {
 		t.Errorf("authenticated_at = %d, %v; want 0", auth, err)
+	}
+}
+
+func TestSessionMigrationDatesExistingSessions(t *testing.T) {
+	idx := slices.IndexFunc(migrations, func(m string) bool { return strings.Contains(m, "sessions ADD COLUMN last_seen_at") })
+	if idx < 0 {
+		t.Fatal("no migration adds sessions.last_seen_at")
+	}
+	path := filepath.Join(t.TempDir(), "r.db")
+	old := at(t, path, idx)
+	expires := time.Now().Add(20 * 24 * time.Hour).Unix()
+	if _, err := old.Exec(`INSERT INTO sessions (id, user_id, expires_at) VALUES ('s', 'a', ?)`, expires); err != nil {
+		t.Fatal(err)
+	}
+	old.Close()
+	before := time.Now().Unix()
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var created, seen int64
+	if err := db.QueryRow(`SELECT created_at, last_seen_at FROM sessions WHERE id = 's'`).Scan(&created, &seen); err != nil {
+		t.Fatal(err)
+	}
+	if created != expires-30*24*3600 || seen < before || seen > time.Now().Unix() {
+		t.Errorf("created_at %d, last_seen_at %d (upgraded at %d)", created, seen, before)
 	}
 }

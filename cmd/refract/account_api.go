@@ -179,10 +179,8 @@ func (a *loginAPI) verifyEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var signedInAs string
-	if c, err := r.Cookie(users.SessionCookie); err == nil {
-		if u, err := a.users.Session(r.Context(), c.Value); err == nil {
-			signedInAs = u.ID
-		}
+	if u, _, err := a.users.SessionFrom(r.Context(), r); err == nil {
+		signedInAs = u.ID
 	}
 	u, err := a.users.VerifyEmail(r.Context(), in.Token, signedInAs, in.Password, users.ClientIP(r))
 	switch {
@@ -238,11 +236,11 @@ func (a *loginAPI) account(w http.ResponseWriter, r *http.Request) {
 
 // recentSignIn: this session's sign-in happened within users.RecentAuth.
 func (a *loginAPI) recentSignIn(r *http.Request) bool {
-	c, err := r.Cookie(users.SessionCookie)
+	_, token, err := a.users.SessionFrom(r.Context(), r)
 	if err != nil {
 		return false
 	}
-	at, err := a.users.AuthenticatedAt(r.Context(), c.Value)
+	at, err := a.users.AuthenticatedAt(r.Context(), token)
 	return err == nil && !at.IsZero() && time.Since(at) <= users.RecentAuth
 }
 
@@ -325,3 +323,44 @@ func (a *loginAPI) deleteAccount(w http.ResponseWriter, r *http.Request) {
 
 // thenAccount is the only value oidcStart takes for ?then=.
 func thenAccount(r *http.Request) bool { return r.URL.Query().Get("then") == "account" }
+
+// Sessions: the account's signed-in browsers, and ending them.
+
+func (a *loginAPI) sessions(w http.ResponseWriter, r *http.Request) {
+	u, _ := auth.UserFrom(r.Context())
+	list, err := a.users.Sessions(r.Context(), u.ID, users.CurrentSession(r.Context()))
+	if err != nil {
+		httpError(w, err, http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, list)
+}
+
+// endSession ends one of the caller's sessions; ending the current one signs
+// this browser out too.
+func (a *loginAPI) endSession(w http.ResponseWriter, r *http.Request) {
+	u, _ := auth.UserFrom(r.Context())
+	id := r.PathValue("id")
+	switch err := a.users.RevokeSession(r.Context(), u.ID, id); {
+	case errors.Is(err, users.ErrNoSession):
+		kindError(w, http.StatusNotFound, "not_found", err)
+		return
+	case err != nil:
+		httpError(w, err, http.StatusInternalServerError)
+		return
+	}
+	if id == users.CurrentSession(r.Context()) {
+		users.ClearSessionCookie(w, r)
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *loginAPI) endOtherSessions(w http.ResponseWriter, r *http.Request) {
+	u, _ := auth.UserFrom(r.Context())
+	n, err := a.users.RevokeOtherSessions(r.Context(), u.ID, users.CurrentSession(r.Context()))
+	if err != nil {
+		httpError(w, err, http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]int64{"ended": n})
+}

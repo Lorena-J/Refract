@@ -60,6 +60,9 @@ func (a *loginAPI) accountRoutes(rt *router) {
 	rt.user("POST /api/account/verify-email", a.resendVerification)
 	rt.user("PUT /api/account/lang", a.setLang)
 	rt.user("POST /api/account/delete", a.deleteAccount)
+	rt.user("GET /api/account/sessions", a.sessions)
+	rt.user("DELETE /api/account/sessions", a.endOtherSessions)
+	rt.user("DELETE /api/account/sessions/{id}", a.endSession)
 }
 
 func (a *loginAPI) login(w http.ResponseWriter, r *http.Request) {
@@ -71,7 +74,7 @@ func (a *loginAPI) login(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err, http.StatusBadRequest)
 		return
 	}
-	_, token, err := a.users.SignIn(r.Context(), in.Email, in.Password, users.ClientIP(r))
+	_, token, err := a.users.SignIn(r.Context(), in.Email, in.Password, users.ClientOf(r))
 	switch {
 	case errors.Is(err, users.ErrTooMany):
 		kindError(w, http.StatusTooManyRequests, "too_many_attempts", err)
@@ -88,7 +91,7 @@ func (a *loginAPI) login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *loginAPI) signIn(w http.ResponseWriter, r *http.Request, userID string) bool {
-	token, err := a.users.NewSession(r.Context(), userID)
+	token, err := a.users.StartSession(r.Context(), userID, users.ClientOf(r))
 	if err != nil {
 		httpError(w, err, http.StatusInternalServerError)
 		return false
@@ -99,8 +102,8 @@ func (a *loginAPI) signIn(w http.ResponseWriter, r *http.Request, userID string)
 }
 
 func (a *loginAPI) logout(w http.ResponseWriter, r *http.Request) {
-	if c, err := r.Cookie(users.SessionCookie); err == nil {
-		a.users.EndSession(r.Context(), c.Value)
+	for _, token := range users.SessionTokens(r) { // both names, while the old one lingers
+		a.users.EndSession(r.Context(), token)
 	}
 	users.ClearSessionCookie(w, r)
 	w.WriteHeader(http.StatusNoContent)
@@ -165,7 +168,7 @@ func (a *loginAPI) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		fail("failed", err)
 		return
 	}
-	token, err := a.users.NewSession(r.Context(), u.ID)
+	token, err := a.users.StartSession(r.Context(), u.ID, users.ClientOf(r))
 	if err != nil {
 		fail("failed", err)
 		return

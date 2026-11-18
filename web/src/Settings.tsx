@@ -19,6 +19,9 @@ import {
 import { toast } from 'sonner'
 import { api, describe, errorText, modelsChanged, RequestError, type ChatGPTStatus } from './api'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { device } from '@/lib/device'
+import { ago } from '@/lib/time'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
@@ -335,6 +338,7 @@ function AssistantPane({ status, onChange }: Props) {
 function AccountPane() {
   const me = useMe()
   const { account, sending, reload, resend } = useAccount()
+  const [passwordChanges, setPasswordChanges] = useState(0)
   useEffect(() => void reload(), [reload]) // sign-in age and project count may have changed
   async function setEmailLang(v: string) {
     try {
@@ -374,13 +378,20 @@ function AccountPane() {
           />
         </SettingsRow>
       </SettingsGroup>
-      <PasswordGroup account={account} />
+      <PasswordGroup account={account} onPasswordChanged={() => setPasswordChanges((count) => count + 1)} />
+      <SessionsGroup key={passwordChanges} />
       <DeleteGroup account={account} reload={reload} />
     </SettingsPane>
   )
 }
 
-function PasswordGroup({ account }: { account: ReturnType<typeof useAccount>['account'] }) {
+function PasswordGroup({
+  account,
+  onPasswordChanged,
+}: {
+  account: ReturnType<typeof useAccount>['account']
+  onPasswordChanged: () => void
+}) {
   const me = useMe()
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
@@ -398,6 +409,7 @@ function PasswordGroup({ account }: { account: ReturnType<typeof useAccount>['ac
     setBusy(true)
     try {
       await api('/api/account/password', { method: 'POST', body: { current, new: next } })
+      onPasswordChanged()
       setCurrent('')
       setNext('')
       toast.success(t('Password changed. Other devices were signed out.'))
@@ -435,6 +447,136 @@ function PasswordGroup({ account }: { account: ReturnType<typeof useAccount>['ac
           </Button>
         </form>
       </SettingsRow>
+    </SettingsGroup>
+  )
+}
+
+type Session = {
+  id: string
+  created_at: string
+  last_seen_at: string
+  user_agent: string
+  ip: string
+  current: boolean
+}
+
+// The browsers signed in to this account, and signing them out.
+function SessionsGroup() {
+  const [sessions, setSessions] = useState<Session[] | null>(null)
+  const [failed, setFailed] = useState(false) // the last fetch failed
+  // A session's id, 'others' or 'reload', from the click until the list is fetched again.
+  const [busy, setBusy] = useState<string | null>(null)
+  const [version, setVersion] = useState(0) // bumped to fetch the list again
+  useEffect(() => {
+    let live = true
+    api<Session[]>('/api/account/sessions')
+      .then(
+        (list) => {
+          if (!live) return
+          setSessions(list)
+          setFailed(false)
+        },
+        (err) => {
+          if (!live) return
+          setFailed(true)
+          toast.error(errorText(err))
+        },
+      )
+      .finally(() => live && setBusy(null))
+    return () => void (live = false)
+  }, [version])
+
+  async function end(path: string, key: string, done: string) {
+    setBusy(key)
+    try {
+      await api(path, { method: 'DELETE' })
+      toast.success(done)
+    } catch (err) {
+      toast.error(errorText(err))
+    }
+    setVersion((v) => v + 1)
+  }
+  const others = sessions?.filter((s) => !s.current).length ?? 0
+  return (
+    <SettingsGroup
+      title={t('Where you’re signed in')}
+      description={t('A session ends after 7 days without use, and 30 days after you signed in.')}
+    >
+      {(!sessions || failed) && (
+        <SettingsRow
+          label={
+            !failed ? t('Loading…') : sessions ? t('This list may be out of date.') : t('Sessions couldn’t be loaded.')
+          }
+          description={failed ? t('Check your connection and try again.') : undefined}
+        >
+          {failed ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={busy !== null}
+              onClick={() => {
+                setBusy('reload')
+                setVersion((v) => v + 1)
+              }}
+            >
+              {busy === 'reload' && <Loader2 className="animate-spin" />} {t('Try again')}
+            </Button>
+          ) : (
+            <Loader2 className="size-4 animate-spin text-muted-foreground" aria-hidden />
+          )}
+        </SettingsRow>
+      )}
+      {sessions?.map((s) => {
+        const d = device(s.user_agent)
+        const name =
+          d.browser && d.os
+            ? t('{browser} on {os}', { browser: d.browser, os: d.os })
+            : (d.browser ?? d.os ?? t('Unknown browser'))
+        const seen = ago(s.last_seen_at)
+        return (
+          <SettingsRow
+            key={s.id}
+            label={
+              <span className="flex items-center gap-2">
+                {name}
+                {s.current && <Badge variant="secondary">{t('This device')}</Badge>}
+              </span>
+            }
+            description={[s.current || seen === t('now') ? t('Active now') : t('Active {ago} ago', { ago: seen }), s.ip]
+              .filter(Boolean)
+              .join(' · ')}
+          >
+            {!s.current && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={busy !== null || failed}
+                aria-label={t('Sign out of {device}', { device: [name, s.ip].filter(Boolean).join(', ') })}
+                onClick={() =>
+                  end(`/api/account/sessions/${s.id}`, s.id, t('Signed out of {device}.', { device: name }))
+                }
+              >
+                {busy === s.id && <Loader2 className="animate-spin" />} {t('Sign out')}
+              </Button>
+            )}
+          </SettingsRow>
+        )
+      })}
+      {others > 1 && (
+        <SettingsRow label={t('Other devices')} description={t('Signs out everywhere except this browser.')}>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={busy !== null || failed}
+            onClick={() => end('/api/account/sessions', 'others', t('Signed out of every other device.'))}
+          >
+            {busy === 'others' && <Loader2 className="animate-spin" />} {t('Sign out of all other devices')}
+          </Button>
+        </SettingsRow>
+      )}
     </SettingsGroup>
   )
 }

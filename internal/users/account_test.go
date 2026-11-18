@@ -273,7 +273,7 @@ func TestSignInAfterTakeoverGetsNoSession(t *testing.T) {
 			t.Error(err)
 		}
 	}
-	if _, tok, err := s.SignIn(ctx, "ana@example.com", "attacker pass", ""); !errors.Is(err, ErrBadLogin) || tok != "" {
+	if _, tok, err := s.SignIn(ctx, "ana@example.com", "attacker pass", Client{}); !errors.Is(err, ErrBadLogin) || tok != "" {
 		t.Fatalf("sign-in resumed after the takeover: token %q, %v; want ErrBadLogin", tok, err)
 	}
 	if n := sessions(l.To.ID); n != 0 {
@@ -286,12 +286,12 @@ func TestSignInAfterTakeoverGetsNoSession(t *testing.T) {
 			t.Error(err)
 		}
 	}
-	if _, _, err := s.SignIn(ctx, "ben@example.com", "correct horse", ""); !errors.Is(err, ErrBadLogin) {
+	if _, _, err := s.SignIn(ctx, "ben@example.com", "correct horse", Client{}); !errors.Is(err, ErrBadLogin) {
 		t.Fatalf("sign-in with the old password after a change: %v; want ErrBadLogin", err)
 	}
 
 	testHookPasswordChecked = nil
-	got, tok, err := s.SignIn(ctx, "ben@example.com", "a new password", "")
+	got, tok, err := s.SignIn(ctx, "ben@example.com", "a new password", Client{})
 	if err != nil || got.ID != u.ID {
 		t.Fatalf("sign-in: %+v, %v", got, err)
 	}

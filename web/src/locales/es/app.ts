@@ -334,4 +334,22 @@ export default {
   "To confirm, sign in again with {oidc}. You'll come back here.":
     'Para confirmar, vuelve a iniciar sesión con {oidc}. Volverás aquí.',
   'Sign in again': 'Iniciar sesión de nuevo',
+  'Where you’re signed in': 'Dónde has iniciado sesión',
+  'A session ends after 7 days without use, and 30 days after you signed in.':
+    'Una sesión termina tras 7 días sin uso, y 30 días después de iniciarla.',
+  '{browser} on {os}': '{browser} en {os}',
+  'Unknown browser': 'Navegador desconocido',
+  'This device': 'Este dispositivo',
+  'Active now': 'Activa ahora',
+  'Active {ago} ago': 'Activa hace {ago}',
+  'Signed out of {device}.': 'Se cerró la sesión en {device}.',
+  'Other devices': 'Otros dispositivos',
+  'Signs out everywhere except this browser.': 'Cierra la sesión en todas partes excepto en este navegador.',
+  'Signed out of every other device.': 'Se cerró la sesión en todos los demás dispositivos.',
+  'Sign out of all other devices': 'Cerrar sesión en los demás dispositivos',
+  'Sessions couldn’t be loaded.': 'No se pudieron cargar las sesiones.',
+  'Check your connection and try again.': 'Comprueba la conexión y vuelve a intentarlo.',
+  'Try again': 'Reintentar',
+  'Sign out of {device}': 'Cerrar sesión en {device}',
+  'This list may be out of date.': 'Puede que esta lista no esté al día.',
 } as Record<string, string>

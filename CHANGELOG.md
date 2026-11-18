@@ -27,6 +27,7 @@ Notable changes to Refract. The format follows [Keep a Changelog](https://keepac
 - `REFRACT_COMPILE_WORKERS` and `REFRACT_COMPILE_MAX_WAIT` set how many compiles run at once and how long one waits for its turn.
 - Sticky scroll in the editor: the enclosing LaTeX sections and environments stay at the top while you scroll, drawn like their own lines and pushed out smoothly as the next one arrives. On by default; turn it off in **Settings → Editor**.
 - A **Download PDF** button in the preview's header.
+- Settings → Account lists the browsers signed in to the account (device, last activity, address) and signs out one of them or all the others. Sessions now also end after 7 days without use, besides 30 days after signing in, and over https the cookie is named `__Host-refract_session`; the upgrade itself signs nobody out (sessions keep their original 30-day end).
 
 ### Changed
 

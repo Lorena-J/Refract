@@ -114,6 +114,15 @@ var migrations = []string{
 	ALTER TABLE users ADD COLUMN plan TEXT NOT NULL DEFAULT 'free'`,
 	// Private saved templates reuse the project file store and ownership checks.
 	`ALTER TABLE projects ADD COLUMN is_template INTEGER NOT NULL DEFAULT 0 CHECK (is_template IN (0, 1))`,
+	// Sessions (A2): when each began and was last used, and from which
+	// browser and address, so people can see and end them. Every session was
+	// made to last 30 days, which dates the existing ones; they count as seen
+	// now, so the idle timeout signs nobody out at the upgrade.
+	`ALTER TABLE sessions ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE sessions ADD COLUMN last_seen_at INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE sessions ADD COLUMN user_agent TEXT NOT NULL DEFAULT '';
+	ALTER TABLE sessions ADD COLUMN ip TEXT NOT NULL DEFAULT '';
+	UPDATE sessions SET created_at = expires_at - 2592000, last_seen_at = CAST(strftime('%s', 'now') AS INTEGER)`,
 }
 
 // Open opens (creating if needed) the database at path and applies pending migrations.
