@@ -112,6 +112,8 @@ var migrations = []string{
 	`ALTER TABLE projects ADD COLUMN size_bytes INTEGER NOT NULL DEFAULT 0;
 	ALTER TABLE projects ADD COLUMN size_measured_at INTEGER NOT NULL DEFAULT 0;
 	ALTER TABLE users ADD COLUMN plan TEXT NOT NULL DEFAULT 'free'`,
+	// Private saved templates reuse the project file store and ownership checks.
+	`ALTER TABLE projects ADD COLUMN is_template INTEGER NOT NULL DEFAULT 0 CHECK (is_template IN (0, 1))`,
 	// Sessions (A2): when each began and was last used, and from which
 	// browser and address, so people can see and end them. Every session was
 	// made to last 30 days, which dates the existing ones; they count as seen

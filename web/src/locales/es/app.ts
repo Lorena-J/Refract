@@ -26,6 +26,9 @@ export default {
   Normal: 'Normal',
   Large: 'Grande',
   'Word wrap': 'Ajuste de línea',
+  'Sticky scroll': 'Encabezados fijos',
+  'Keep enclosing sections and environments visible at the top of the editor while scrolling.':
+    'Muestra arriba las secciones y los entornos que contienen el código visible al desplazarte.',
   'Wrap long lines instead of scrolling sideways.': 'Ajusta las líneas largas en lugar de desplazarte en horizontal.',
   'Refract uses your ChatGPT plan or your own API keys for AI requests.':
     'Refract usa tu plan de ChatGPT o tus propias claves de API para las peticiones de IA.',

@@ -19,6 +19,7 @@ import {
   ChevronRight,
   FolderTree,
   ListTree,
+  LayoutTemplate,
   Loader2,
   MessageSquare,
   MessageSquarePlus,
@@ -58,12 +59,14 @@ import Review from './Review'
 import History from './History'
 import GitDialog, { pulledMessage, type PullResult } from './GitDialog'
 import CiteDialog, { type Citation, type CiteTarget } from './CiteDialog'
+import CitationChecks, { type CitationFix } from './CitationChecks'
 import { Autosaver, type SaveStatus } from './autosave'
 import { noSymbols, type ProjectSymbols } from '@/lib/completion'
 import { Link, navigate, pageReady, useBeforeLeave } from '@/lib/router'
 import CompileStatus, { type CompileResult, type Problem } from './CompileStatus'
 import Editor from './Editor'
 import { moveLimits } from '@/lib/wordlimits'
+import { proposal as pendingProposal } from '@/lib/proposal'
 import { defaultRules } from '@/lib/wordcount'
 import FileTree from './FileTree'
 import PdfViewer, { type Highlight } from './PdfViewer'
@@ -182,14 +185,16 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
   const [pdfVersion, setPdfVersion] = useState(0)
   const [highlight, setHighlight] = useState<Highlight | undefined>()
   const [chatOpen, setChatOpen] = useState(false)
+  const floatingChat = useRef<HTMLDivElement>(null)
   const [chatFocus, setChatFocus] = useState(0)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [gitOpen, setGitOpen] = useState(false)
   const prefs = usePrefs()
   const countEnabled = prefs.wordCount
   const [citing, setCiting] = useState<{ target: CiteTarget | null; suggest: boolean } | null>(null)
+  const [citationChecks, setCitationChecks] = useState(false)
   const [proposal, setProposal] = useState<
-    { path: string; from: number; to: number; original: string; text: string } | undefined
+    { path: string; from: number; to: number; original: string; text: string; kind?: 'metadata' } | undefined
   >()
   const [insert, setInsert] = useState<{ path: string; text: string } | undefined>()
   const [aiRequest, setAiRequest] = useState<{ text: string; n: number } | undefined>()
@@ -216,6 +221,8 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [ask, setAsk] = useState<Ask | null>(null)
   const [askValue, setAskValue] = useState('')
+  const [asking, setAsking] = useState(false)
+  const askPending = useRef(false)
   const [confirm, setConfirm] = useState<Confirm | null>(null)
   // Set when the project is in the trash or deleted: nothing can change it, edits stay in memory.
   const [gone, setGone] = useState<Gone | null>(null)
@@ -391,6 +398,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
       setHistoryOpen(false)
       setGitOpen(false)
       setCiting(null)
+      setCitationChecks(false)
       setAsk(null)
       setConfirm(null)
       setChatOpen(false)
@@ -744,6 +752,23 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
     setActive(path)
   }
 
+  async function reviewCitationFix(fix: CitationFix) {
+    if (goneRef.current) return
+    if (proposal || [...states.current.values()].some((state) => pendingProposal(state)))
+      throw new Error(t('Accept or reject the pending proposal before reviewing another one.'))
+    await open(fix.path)
+    if (goneRef.current) return
+    const file = loaded.current.get(fix.path)
+    const current = states.current.get(fix.path)?.doc.toString() ?? (file?.text ? file.content : undefined)
+    // CodeMirror normalizes line endings, including for a file opened above.
+    const before = fix.before.replace(/\r\n?/g, '\n')
+    const after = fix.after.replace(/\r\n?/g, '\n')
+    if (current?.replace(/\r\n?/g, '\n') !== before)
+      throw new Error(t('The bibliography changed. Run the citation checks again.'))
+    if (before === after) throw new Error(t('The source metadata matches this entry.'))
+    setProposal({ path: fix.path, from: 0, to: before.length, original: before, text: after, kind: 'metadata' })
+  }
+
   // Closing never cancels a pending save: the autosaver finishes it on its own.
   function forget(paths: string[]) {
     for (const p of paths) {
@@ -761,8 +786,27 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
   }
 
   function askFor(a: Ask) {
+    if (askPending.current) return
     setAskValue(a.value)
     setAsk(a)
+  }
+
+  function saveAsTemplate() {
+    if (locked) return
+    askFor({
+      title: t('Save as template'),
+      description: t(
+        'Keep a private copy of this project to reuse later. Its history, chats and remote connection are not copied.',
+      ),
+      value: project?.name ?? '',
+      action: t('Save'),
+      onSubmit: async (name) => {
+        if (!name.trim()) throw new Error(t('Enter a name.'))
+        await autosave.flushAll()
+        await api(`/api/projects/${id}/template`, { method: 'POST', body: { name } })
+        toast.success(t('Saved template {name}', { name }))
+      },
+    })
   }
 
   function create(dir: string, kind: 'file' | 'folder') {
@@ -923,6 +967,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
     'ws:pull',
     'ws:history',
     'ws:cite',
+    'ws:template',
   ])
   useCommands(() =>
     [
@@ -965,6 +1010,13 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
         icon: ScrollText,
         keywords: 'refract.md assistant rules style remember',
         run: openInstructions,
+      },
+      {
+        id: 'ws:template',
+        group: 'Actions',
+        label: t('Save as template…'),
+        icon: LayoutTemplate,
+        run: saveAsTemplate,
       },
       {
         id: 'ws:git',
@@ -1098,6 +1150,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
       focus={chatFocus}
       request={aiRequest}
       docked={asPanel}
+      floatingRef={asPanel ? undefined : floatingChat}
       readOnly={locked}
     />
   )
@@ -1156,6 +1209,9 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                       <DropdownMenuItem onClick={openInstructions}>
                         <ScrollText /> {t('Project instructions')}
                       </DropdownMenuItem>
+                      <DropdownMenuItem onClick={saveAsTemplate}>
+                        <LayoutTemplate /> {t('Save as template…')}
+                      </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => setGitOpen(true)}>
                         <GitBranch /> {t('Git remote…')}
                       </DropdownMenuItem>
@@ -1164,6 +1220,9 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => setCiting({ target: null, suggest: false })}>
                         <BookMarked /> {t('Add a reference…')}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setCitationChecks(true)}>
+                        <BookMarked /> {t('Citation checks')}
                       </DropdownMenuItem>
                     </>
                   )}
@@ -1444,64 +1503,15 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                   {tn(wordSelection.count, 'Counter: {n} word', 'Counter: {n} words')}
                 </span>
               )}
-              <div className="flex shrink-0 items-center">
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        size="sm"
-                        className="rounded-r-none"
-                        onClick={compile}
-                        disabled={compiling || locked || !project?.main_file}
-                      />
-                    }
-                  >
-                    {compiling ? <Loader2 className="animate-spin" /> : <Play className="fill-current" />}
-                    {t('Compile')}
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {t('Compile')} <kbd className="ml-1 opacity-70">{mod}↵</kbd>
-                  </TooltipContent>
-                </Tooltip>
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    disabled={locked}
-                    render={
-                      <Button
-                        size="icon-sm"
-                        className="rounded-l-none border-l border-primary-foreground/20"
-                        aria-label={t('Compile options')}
-                      />
-                    }
-                  >
-                    <ChevronDown />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="max-h-80 w-64">
-                    <DropdownMenuGroup>
-                      <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-                        {t('Main file')}
-                      </DropdownMenuLabel>
-                      {texFiles.map((f) => (
-                        <DropdownMenuItem key={f} onClick={() => setMainFile(f)}>
-                          <span className="truncate font-mono text-xs">{f}</span>
-                          <Check className={cn('ml-auto', project?.main_file !== f && 'invisible')} />
-                        </DropdownMenuItem>
-                      ))}
-                      {texFiles.length === 0 && (
-                        <p className="px-2 py-1.5 text-xs text-muted-foreground">{t('No .tex files yet.')}</p>
-                      )}
-                    </DropdownMenuGroup>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
             </div>
 
-            <div className="relative min-h-0 flex-1">
+            <div className="editor-workspace relative min-h-0 flex-1">
               {review && (
                 <Review turn={review} onAccept={acceptTurn} onReject={rejectTurn} onClose={() => setReview(null)} />
               )}
               {!review && active && current?.text && (
                 <Editor
+                  floatingChat={floatingChat}
                   symbols={symbols}
                   mainFile={project?.main_file}
                   projectId={id}
@@ -1532,11 +1542,15 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                   onCite={locked ? undefined : (target, suggest) => setCiting({ target, suggest })}
                   instructions={quickInstructions}
                   proposal={proposal}
-                  onProposed={(ok) => {
+                  onProposed={(ok, pending) => {
                     setProposal(undefined)
                     if (!ok)
                       toast.error(
-                        t('The text changed in the meantime: the citation was added to the bibliography only.'),
+                        pending
+                          ? t('Accept or reject the pending proposal before reviewing another one.')
+                          : proposal?.kind === 'metadata'
+                            ? t('The bibliography changed. Run the citation checks again.')
+                            : t('The text changed in the meantime: the citation was added to the bibliography only.'),
                       )
                   }}
                   quick={aiReady && !locked}
@@ -1571,14 +1585,66 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
               highlight={highlight}
               onInverse={syncToSource}
               toolbar={
-                <CompileStatus
-                  projectId={id}
-                  compiling={compiling}
-                  result={result}
-                  error={compileError}
-                  onJump={jumpTo}
-                  onFix={aiReady && !locked ? fixWithAI : undefined}
-                />
+                <>
+                  <div className="flex shrink-0 items-center">
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            size="sm"
+                            className="rounded-r-none"
+                            onClick={compile}
+                            disabled={compiling || locked || !project?.main_file}
+                          />
+                        }
+                      >
+                        {compiling ? <Loader2 className="animate-spin" /> : <Play className="fill-current" />}
+                        {t('Compile')}
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {t('Compile')} <kbd className="ml-1 opacity-70">{mod}↵</kbd>
+                      </TooltipContent>
+                    </Tooltip>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        disabled={locked}
+                        render={
+                          <Button
+                            size="icon-sm"
+                            className="rounded-l-none border-l border-primary-foreground/20"
+                            aria-label={t('Compile options')}
+                          />
+                        }
+                      >
+                        <ChevronDown />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="max-h-80 w-64">
+                        <DropdownMenuGroup>
+                          <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                            {t('Main file')}
+                          </DropdownMenuLabel>
+                          {texFiles.map((f) => (
+                            <DropdownMenuItem key={f} onClick={() => setMainFile(f)}>
+                              <span className="truncate font-mono text-xs">{f}</span>
+                              <Check className={cn('ml-auto', project?.main_file !== f && 'invisible')} />
+                            </DropdownMenuItem>
+                          ))}
+                          {texFiles.length === 0 && (
+                            <p className="px-2 py-1.5 text-xs text-muted-foreground">{t('No .tex files yet.')}</p>
+                          )}
+                        </DropdownMenuGroup>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                  <CompileStatus
+                    projectId={id}
+                    compiling={compiling}
+                    result={result}
+                    error={compileError}
+                    onJump={jumpTo}
+                    onFix={aiReady && !locked ? fixWithAI : undefined}
+                  />
+                </>
               }
             />
           </section>
@@ -1593,21 +1659,27 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
         )}
       </ResizablePanelGroup>
 
-      <Dialog open={!!ask} onOpenChange={(o) => !o && setAsk(null)}>
+      <Dialog open={!!ask} onOpenChange={(o) => !o && !askPending.current && setAsk(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{ask?.title}</DialogTitle>
             {ask?.description && <DialogDescription>{ask.description}</DialogDescription>}
           </DialogHeader>
           <form
+            aria-busy={asking}
             onSubmit={async (e) => {
               e.preventDefault()
-              if (!ask) return
+              if (!ask || askPending.current) return
+              askPending.current = true
+              setAsking(true)
               try {
                 await ask.onSubmit(askValue.trim())
                 setAsk(null)
               } catch (err) {
                 toast.error(errorText(err))
+              } finally {
+                askPending.current = false
+                setAsking(false)
               }
             }}
           >
@@ -1617,12 +1689,16 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
               onChange={(e) => setAskValue(e.target.value)}
               className="font-mono text-sm"
               aria-label={ask?.title}
+              disabled={asking}
             />
             <DialogFooter className="mt-4">
-              <Button type="button" variant="ghost" onClick={() => setAsk(null)}>
+              <Button type="button" variant="ghost" disabled={asking} onClick={() => setAsk(null)}>
                 {t('Cancel')}
               </Button>
-              <Button type="submit">{ask?.action}</Button>
+              <Button type="submit" disabled={asking}>
+                {asking && <Loader2 className="animate-spin" />}
+                {ask?.action}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -1654,6 +1730,18 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
         onClose={() => setCiting(null)}
         onCited={cited}
       />
+      {citationChecks && !locked && (
+        <CitationChecks
+          projectId={id}
+          onClose={() => setCitationChecks(false)}
+          beforeCheck={() => autosave.flushAll()}
+          onLocate={(file, line) => {
+            setCitationChecks(false)
+            void jumpTo(file, line)
+          }}
+          onProposal={reviewCitationFix}
+        />
+      )}
 
       <AlertDialog open={!!confirm} onOpenChange={(o) => !o && setConfirm(null)}>
         <AlertDialogContent>

@@ -402,11 +402,10 @@ func TestHandlersKeepUsersApart(t *testing.T) {
 	}
 }
 
-// Creating or importing a project needs a verified email, declared on the route
-// and enforced by the guard: no other route asks for it.
+// Creating or importing a project, including a saved template, needs a verified email.
 func TestRouteNeeds(t *testing.T) {
 	rt := table(accessDB(t))
-	want := []string{"POST /api/projects", "POST /api/projects/import", "POST /api/projects/import-folder"}
+	want := []string{"POST /api/projects", "POST /api/projects/import", "POST /api/projects/import-folder", "POST /api/projects/{id}/template"}
 	var got []string
 	for _, r := range rt.routes {
 		if slices.Contains(r.Needs, access.VerifiedEmail) {
@@ -422,6 +421,21 @@ func TestRouteNeeds(t *testing.T) {
 		return auth.WithUser(context.Background(), auth.User{ID: user})
 	}
 	for _, r := range rt.routes {
+		if r.Pattern == "POST /api/projects/{id}/template" {
+			for _, at := range []int{0, 1} {
+				if _, err := rt.acc.DB.Exec(`UPDATE users SET email_verified_at = ? WHERE id = 'ana'`, at); err != nil {
+					t.Fatal(err)
+				}
+				w := httptest.NewRecorder()
+				rt.mux.ServeHTTP(w, request(r, ana).WithContext(as("ana")))
+				if at == 0 && (w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), `"email_unverified"`)) {
+					t.Fatalf("unverified template save: %d %s", w.Code, w.Body.String())
+				}
+				if at == 1 && w.Code != reached {
+					t.Fatalf("verified template save: %d", w.Code)
+				}
+			}
+		}
 		if r.Scope != scopeUser {
 			continue
 		}
@@ -450,6 +464,9 @@ func TestRouteNeeds(t *testing.T) {
 func TestRouteNeedsWaivedOutsideBuiltin(t *testing.T) {
 	acc := accessDB(t)
 	acc.SkipVerified = true
+	if _, err := acc.DB.Exec(`UPDATE projects SET owner = 'una' WHERE id = ?`, ana.project); err != nil {
+		t.Fatal(err)
+	}
 	rt := table(acc)
 	for _, r := range rt.routes {
 		if !slices.Contains(r.Needs, access.VerifiedEmail) {

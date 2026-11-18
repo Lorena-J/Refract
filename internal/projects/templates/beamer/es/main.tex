@@ -1,0 +1,43 @@
+% EDITA AQUÍ: título, subtítulo, autoría, institución y color.
+% Diapositivas 16:9 sin imágenes externas.
+\documentclass[aspectratio=169,11pt]{beamer}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-nodecimaldot,es-noquoting]{babel}
+\usepackage{tgheros}
+\usepackage{booktabs}
+\definecolor{accent}{HTML}{245C61}
+\definecolor{ink}{HTML}{182E3B}
+\definecolor{muted}{HTML}{60717B}
+\definecolor{wash}{HTML}{EDF4F3}
+\setbeamercolor{normal text}{fg=ink,bg=white}
+\setbeamercolor{structure}{fg=accent}
+\setbeamercolor{frametitle}{fg=ink}
+\setbeamercolor{title}{fg=ink}
+\setbeamercolor{subtitle}{fg=accent}
+\setbeamercolor{block title}{fg=white,bg=accent}
+\setbeamercolor{block body}{fg=ink,bg=wash}
+\setbeamercolor{alerted text}{fg=accent}
+\setbeamerfont{title}{size=\Huge,series=\bfseries}
+\setbeamerfont{subtitle}{size=\large}
+\setbeamerfont{frametitle}{size=\LARGE,series=\bfseries}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{itemize item}{\small\raise1pt\hbox{\textbullet}}
+\setbeamertemplate{itemize subitem}{\textendash}
+\setbeamersize{text margin left=11mm,text margin right=11mm}
+\setbeamertemplate{frametitle}{\vspace{6mm}\insertframetitle\par\vspace{3mm}{\color{accent}\hrule height 0.7pt}}
+\setbeamertemplate{footline}{%
+\hspace{11mm}\color{muted}\scriptsize\insertshorttitle\hfill\insertframenumber\,/\,\inserttotalframenumber\hspace{11mm}\vspace{4mm}}
+\title[Título de la presentación]{Título de la presentación}
+\subtitle{Una frase clara sobre tu aportación}
+\author{Tu nombre}
+\institute{Tu departamento / Institución}
+\date{\today}
+
+\begin{document}
+\input{secciones/titulo}
+\input{secciones/pregunta}
+\input{secciones/enfoque}
+\input{secciones/evidencias}
+\input{secciones/ideas_clave}
+\input{secciones/cierre}
+\end{document}

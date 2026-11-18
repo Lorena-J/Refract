@@ -290,7 +290,7 @@ export function selectedWords(words: Word[], from: number, to: number) {
 }
 
 // Mask literal examples and definitions without moving any source positions.
-function sectionSource(source: string): string {
+function sectionSource(source: string, keepLiteralBoundaries = false): string {
   const chars = source.split('')
   const tokens = /%[^\n]*|\\(?:[a-zA-Z@]+\*?|[^])/g
   const skipGroup = (start: number, open = '{', close = '}') => {
@@ -315,6 +315,11 @@ function sectionSource(source: string): string {
       if (!env) continue
       const close = `\\end{${env[1]}}`
       const at = source.indexOf(close, end + env[0].length)
+      if (keepLiteralBoundaries && env[1] !== 'comment') {
+        chars.fill(' ', end + env[0].length, at < 0 ? source.length : at)
+        tokens.lastIndex = at < 0 ? source.length : at + close.length
+        continue
+      }
       end = at < 0 ? source.length : at + close.length
     } else if (command === '\\verb') {
       const at = source.indexOf(source[end], end + 1)

@@ -183,20 +183,10 @@ func abstract(index map[string][]int) string {
 	return strings.Join(out, " ")
 }
 
-var doiPattern = regexp.MustCompile(`^10\.\d{4,9}/\S+$`)
-
 // NormalizeDOI turns "https://doi.org/10.1/X", "doi:10.1/X" or "10.1/X" into
 // "10.1/x"; it returns "" for anything else.
 func NormalizeDOI(s string) string {
-	s = strings.TrimSpace(s)
-	for _, p := range []string{"https://doi.org/", "http://doi.org/", "https://dx.doi.org/", "http://dx.doi.org/", "doi:", "DOI:"} {
-		s = strings.TrimPrefix(s, p)
-	}
-	s = strings.ToLower(s)
-	if !doiPattern.MatchString(s) {
-		return ""
-	}
-	return s
+	return refs.NormalizeDOI(s)
 }
 
 // Ref makes a work citable. Its BibTeX comes from doi.org; when doi.org has
@@ -218,7 +208,11 @@ func (c *Client) Ref(ctx context.Context, w Work) refs.Ref {
 }
 
 func (c *Client) bibtex(ctx context.Context, doi string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", c.DOIURL+"/"+doi, nil)
+	parts := strings.Split(doi, "/")
+	for i, part := range parts {
+		parts[i] = url.PathEscape(part)
+	}
+	req, err := http.NewRequestWithContext(ctx, "GET", c.DOIURL+"/"+strings.Join(parts, "/"), nil)
 	if err != nil {
 		return "", err
 	}
@@ -228,6 +222,9 @@ func (c *Client) bibtex(ctx context.Context, doi string) (string, error) {
 		return "", err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone {
+		return "", ErrDOINotFound
+	}
 	b, err := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 	if err != nil || resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("doi.org answered HTTP %d", resp.StatusCode)
@@ -237,6 +234,19 @@ func (c *Client) bibtex(ctx context.Context, doi string) (string, error) {
 		return "", errors.New("doi.org did not return BibTeX")
 	}
 	return pretty(s), nil
+}
+
+// ErrDOINotFound distinguishes a missing DOI from a timeout or rate limit.
+var ErrDOINotFound = errors.New("DOI does not resolve")
+
+// DOIBibTeX fetches authoritative metadata directly from doi.org, without an
+// OpenAlex lookup or a model. HTTP failures other than 404/410 are inconclusive.
+func (c *Client) DOIBibTeX(ctx context.Context, doi string) (string, error) {
+	doi = NormalizeDOI(doi)
+	if doi == "" {
+		return "", errors.New("invalid DOI")
+	}
+	return c.bibtex(ctx, doi)
 }
 
 var entryStart = regexp.MustCompile(`^@\w+\s*\{\s*[^,\s]*\s*,`)

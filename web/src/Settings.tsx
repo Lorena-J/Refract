@@ -179,6 +179,12 @@ function EditorPane() {
         <SettingsRow label={t('Word wrap')} description={t('Wrap long lines instead of scrolling sideways.')}>
           <SettingsSwitch checked={prefs.wrap} onCheckedChange={(v) => setPref('wrap', v)} />
         </SettingsRow>
+        <SettingsRow
+          label={t('Sticky scroll')}
+          description={t('Keep enclosing sections and environments visible at the top of the editor while scrolling.')}
+        >
+          <SettingsSwitch checked={prefs.stickyScroll} onCheckedChange={(v) => setPref('stickyScroll', v)} />
+        </SettingsRow>
         <SettingsRow label={t('Word count')}>
           <SettingsSwitch checked={prefs.wordCount} onCheckedChange={(v) => setPref('wordCount', v)} />
         </SettingsRow>
@@ -332,6 +338,7 @@ function AssistantPane({ status, onChange }: Props) {
 function AccountPane() {
   const me = useMe()
   const { account, sending, reload, resend } = useAccount()
+  const [passwordChanges, setPasswordChanges] = useState(0)
   useEffect(() => void reload(), [reload]) // sign-in age and project count may have changed
   async function setEmailLang(v: string) {
     try {
@@ -371,14 +378,20 @@ function AccountPane() {
           />
         </SettingsRow>
       </SettingsGroup>
-      <PasswordGroup account={account} />
-      <SessionsGroup />
+      <PasswordGroup account={account} onPasswordChanged={() => setPasswordChanges((count) => count + 1)} />
+      <SessionsGroup key={passwordChanges} />
       <DeleteGroup account={account} reload={reload} />
     </SettingsPane>
   )
 }
 
-function PasswordGroup({ account }: { account: ReturnType<typeof useAccount>['account'] }) {
+function PasswordGroup({
+  account,
+  onPasswordChanged,
+}: {
+  account: ReturnType<typeof useAccount>['account']
+  onPasswordChanged: () => void
+}) {
   const me = useMe()
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
@@ -396,6 +409,7 @@ function PasswordGroup({ account }: { account: ReturnType<typeof useAccount>['ac
     setBusy(true)
     try {
       await api('/api/account/password', { method: 'POST', body: { current, new: next } })
+      onPasswordChanged()
       setCurrent('')
       setNext('')
       toast.success(t('Password changed. Other devices were signed out.'))

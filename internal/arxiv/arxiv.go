@@ -48,10 +48,8 @@ const interval = 3 * time.Second
 // ErrBadID is returned for anything that is not an arXiv identifier.
 var ErrBadID = errors.New("not an arXiv identifier")
 
-var idPattern = regexp.MustCompile(`^(\d{4}\.\d{4,5}|[a-z-]+(\.[A-Z]{2})?/\d{7})(v\d+)?$`)
-
 // IsID reports whether s looks like an arXiv identifier (with or without version).
-func IsID(s string) bool { return idPattern.MatchString(strings.TrimSpace(s)) }
+func IsID(s string) bool { return refs.IsArxivID(s) }
 
 // Search runs a free-text search: every word must appear somewhere in the
 // record. Field prefixes (ti:, au:, abs:, all:) are passed through as written.

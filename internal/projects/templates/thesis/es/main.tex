@@ -1,0 +1,45 @@
+% EDITA AQUÍ: datos de la tesis y color. Después, sustituye los capítulos de ejemplo.
+% Edita cada capítulo en su archivo dentro de secciones/.
+\documentclass[11pt,a4paper,oneside]{report}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-nodecimaldot,es-noquoting]{babel}
+\usepackage{tgpagella}
+\usepackage[inner=30mm,outer=25mm,top=27mm,bottom=27mm]{geometry}
+\usepackage{microtype,amsmath,amssymb,graphicx,booktabs,tabularx}
+\usepackage{xcolor,titlesec,fancyhdr,enumitem}
+\definecolor{accent}{HTML}{245C61}
+\definecolor{muted}{HTML}{59676B}
+\usepackage[colorlinks=true,allcolors=accent]{hyperref}
+\newcommand{\thesistitle}{Título de la tesis}
+\newcommand{\thesissubtitle}{Un subtítulo descriptivo para tu investigación}
+\newcommand{\authorname}{Tu nombre}
+\newcommand{\university}{Tu universidad}
+\newcommand{\department}{Departamento / Facultad}
+\newcommand{\degree}{Trabajo de máster / Tesis doctoral}
+\newcommand{\supervisor}{Nombre del director}
+\hypersetup{pdftitle={\thesistitle},pdfauthor={\authorname}}
+\linespread{1.12}
+\setlength{\parindent}{0pt}\setlength{\parskip}{7pt}
+\setlist[itemize]{leftmargin=*,itemsep=3pt,topsep=4pt}
+\titleformat{\chapter}[display]{\bfseries\color{accent}}{\small\sffamily\MakeUppercase{\chaptertitlename}\ \thechapter}{8pt}{\Huge}
+\titlespacing*{\chapter}{0pt}{0pt}{24pt}
+\titleformat{\section}{\large\bfseries\color{accent}}{\thesection}{0.7em}{}
+\pagestyle{fancy}\fancyhf{}
+\fancyhead[L]{\small\color{muted}\nouppercase{\leftmark}}
+\fancyfoot[L]{\small\color{muted}\authorname}
+\fancyfoot[R]{\small\thepage}
+\renewcommand{\headrulewidth}{0pt}\setlength{\headheight}{16pt}
+
+\begin{document}
+\input{secciones/portada}
+\input{secciones/resumen}
+\input{secciones/agradecimientos}
+\input{secciones/indice}
+\input{secciones/introduccion}
+\input{secciones/metodos}
+\input{secciones/resultados}
+\input{secciones/discusion}
+\input{secciones/conclusion}
+\input{secciones/referencias}
+\input{secciones/apendice}
+\end{document}

@@ -1,0 +1,33 @@
+% EDIT HERE: contact details, accent colour, then your own experience.
+% Keep bullets short and use measurable outcomes. This layout fits one A4 page.
+\documentclass[10pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{tgheros}
+\renewcommand{\familydefault}{\sfdefault}
+\usepackage[margin=19mm]{geometry}
+\usepackage{xcolor,titlesec,enumitem,tabularx}
+\definecolor{accent}{HTML}{245C61}
+\definecolor{muted}{HTML}{59676B}
+\usepackage[colorlinks=true,allcolors=accent]{hyperref}
+\newcommand{\yourname}{Your name}
+\newcommand{\yourrole}{Researcher / Your professional title}
+\newcommand{\youremail}{you@example.com}
+\hypersetup{pdftitle={\yourname\space -- CV},pdfauthor={\yourname}}
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{4pt}
+\titleformat{\section}{\small\bfseries\color{accent}}{}{0pt}{}[\vspace{3pt}\titlerule]
+\titlespacing*{\section}{0pt}{13pt}{6pt}
+\setlist[itemize]{leftmargin=1.2em,itemsep=2pt,topsep=3pt,parsep=0pt}
+\newcommand{\entry}[4]{\textbf{#1}\hfill{\small #2}\\{\small\color{muted}#3\hfill #4}\par}
+
+\begin{document}
+\input{sections/contact}
+\input{sections/profile}
+\input{sections/experience}
+\input{sections/education}
+\input{sections/projects}
+\input{sections/skills}
+\input{sections/recognition}
+\end{document}
