@@ -56,7 +56,7 @@ type Props = {
   version: number // bump to reload the PDF after a compile
   highlight?: Highlight
   onInverse: (page: number, x: number, y: number) => void
-  toolbar?: ReactNode // left side of the toolbar (compile status)
+  toolbar?: ReactNode // left side of the toolbar (compile button and status)
   actions?: ReactNode // right side, after zoom
   toolbarTarget?: HTMLElement | null // render the toolbar there (shared header row) instead of its own row
 }
@@ -262,6 +262,9 @@ export default function PdfViewer({
     })
   }
 
+  const downloadPdf = () =>
+    download(`/api/projects/${projectId}/pdf`, 'document.pdf').catch((err) => toast.error(errorText(err)))
+
   // Right click: where on which page, for "Go to source here".
   const point = useRef<{ page: number; x: number; y: number } | null>(null)
   function rememberPoint(e: MouseEvent) {
@@ -285,13 +288,7 @@ export default function PdfViewer({
       { label: t('Zoom out'), icon: ZoomOut, disabled: !doc, onSelect: () => zoom(Math.max(0.25, s / 1.25)) },
       { label: t('Zoom to fit'), icon: Maximize2, disabled: !doc, onSelect: () => zoom('fit') },
       '-',
-      {
-        label: t('Download PDF'),
-        icon: Download,
-        disabled: !doc,
-        onSelect: () =>
-          download(`/api/projects/${projectId}/pdf`, 'document.pdf').catch((err) => toast.error(errorText(err))),
-      },
+      { label: t('Download PDF'), icon: Download, disabled: !doc, onSelect: downloadPdf },
     ]
   }
 
@@ -319,6 +316,16 @@ export default function PdfViewer({
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        disabled={!doc}
+        aria-label={t('Download PDF')}
+        title={t('Download PDF')}
+        onClick={downloadPdf}
+      >
+        <Download />
+      </Button>
       {actions}
     </>
   )

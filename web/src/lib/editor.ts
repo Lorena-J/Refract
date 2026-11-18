@@ -4,7 +4,7 @@ import { stex } from '@codemirror/legacy-modes/mode/stex'
 import { tags as t } from '@lezer/highlight'
 
 // LaTeX highlighting driven by CSS variables, so it follows the light/dark theme.
-const latexStyle = HighlightStyle.define([
+export const latexStyle = HighlightStyle.define([
   { tag: [t.tagName, t.keyword], color: 'var(--syn-command)' },
   { tag: t.bracket, color: 'var(--syn-brace)' },
   { tag: [t.atom, t.special(t.variableName), t.variableName], color: 'var(--syn-arg)' },

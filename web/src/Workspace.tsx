@@ -185,6 +185,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
   const [pdfVersion, setPdfVersion] = useState(0)
   const [highlight, setHighlight] = useState<Highlight | undefined>()
   const [chatOpen, setChatOpen] = useState(false)
+  const floatingChat = useRef<HTMLDivElement>(null)
   const [chatFocus, setChatFocus] = useState(0)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [gitOpen, setGitOpen] = useState(false)
@@ -1149,6 +1150,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
       focus={chatFocus}
       request={aiRequest}
       docked={asPanel}
+      floatingRef={asPanel ? undefined : floatingChat}
       readOnly={locked}
     />
   )
@@ -1501,64 +1503,15 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                   {tn(wordSelection.count, 'Counter: {n} word', 'Counter: {n} words')}
                 </span>
               )}
-              <div className="flex shrink-0 items-center">
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        size="sm"
-                        className="rounded-r-none"
-                        onClick={compile}
-                        disabled={compiling || locked || !project?.main_file}
-                      />
-                    }
-                  >
-                    {compiling ? <Loader2 className="animate-spin" /> : <Play className="fill-current" />}
-                    {t('Compile')}
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {t('Compile')} <kbd className="ml-1 opacity-70">{mod}↵</kbd>
-                  </TooltipContent>
-                </Tooltip>
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    disabled={locked}
-                    render={
-                      <Button
-                        size="icon-sm"
-                        className="rounded-l-none border-l border-primary-foreground/20"
-                        aria-label={t('Compile options')}
-                      />
-                    }
-                  >
-                    <ChevronDown />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="max-h-80 w-64">
-                    <DropdownMenuGroup>
-                      <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-                        {t('Main file')}
-                      </DropdownMenuLabel>
-                      {texFiles.map((f) => (
-                        <DropdownMenuItem key={f} onClick={() => setMainFile(f)}>
-                          <span className="truncate font-mono text-xs">{f}</span>
-                          <Check className={cn('ml-auto', project?.main_file !== f && 'invisible')} />
-                        </DropdownMenuItem>
-                      ))}
-                      {texFiles.length === 0 && (
-                        <p className="px-2 py-1.5 text-xs text-muted-foreground">{t('No .tex files yet.')}</p>
-                      )}
-                    </DropdownMenuGroup>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
             </div>
 
-            <div className="relative min-h-0 flex-1">
+            <div className="editor-workspace relative min-h-0 flex-1">
               {review && (
                 <Review turn={review} onAccept={acceptTurn} onReject={rejectTurn} onClose={() => setReview(null)} />
               )}
               {!review && active && current?.text && (
                 <Editor
+                  floatingChat={floatingChat}
                   symbols={symbols}
                   mainFile={project?.main_file}
                   projectId={id}
@@ -1632,14 +1585,66 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
               highlight={highlight}
               onInverse={syncToSource}
               toolbar={
-                <CompileStatus
-                  projectId={id}
-                  compiling={compiling}
-                  result={result}
-                  error={compileError}
-                  onJump={jumpTo}
-                  onFix={aiReady && !locked ? fixWithAI : undefined}
-                />
+                <>
+                  <div className="flex shrink-0 items-center">
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            size="sm"
+                            className="rounded-r-none"
+                            onClick={compile}
+                            disabled={compiling || locked || !project?.main_file}
+                          />
+                        }
+                      >
+                        {compiling ? <Loader2 className="animate-spin" /> : <Play className="fill-current" />}
+                        {t('Compile')}
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {t('Compile')} <kbd className="ml-1 opacity-70">{mod}↵</kbd>
+                      </TooltipContent>
+                    </Tooltip>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        disabled={locked}
+                        render={
+                          <Button
+                            size="icon-sm"
+                            className="rounded-l-none border-l border-primary-foreground/20"
+                            aria-label={t('Compile options')}
+                          />
+                        }
+                      >
+                        <ChevronDown />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="max-h-80 w-64">
+                        <DropdownMenuGroup>
+                          <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                            {t('Main file')}
+                          </DropdownMenuLabel>
+                          {texFiles.map((f) => (
+                            <DropdownMenuItem key={f} onClick={() => setMainFile(f)}>
+                              <span className="truncate font-mono text-xs">{f}</span>
+                              <Check className={cn('ml-auto', project?.main_file !== f && 'invisible')} />
+                            </DropdownMenuItem>
+                          ))}
+                          {texFiles.length === 0 && (
+                            <p className="px-2 py-1.5 text-xs text-muted-foreground">{t('No .tex files yet.')}</p>
+                          )}
+                        </DropdownMenuGroup>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                  <CompileStatus
+                    projectId={id}
+                    compiling={compiling}
+                    result={result}
+                    error={compileError}
+                    onJump={jumpTo}
+                    onFix={aiReady && !locked ? fixWithAI : undefined}
+                  />
+                </>
               }
             />
           </section>

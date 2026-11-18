@@ -27,6 +27,13 @@ test('open project, edit, compile, see the PDF', async ({ page, request }) => {
   const canvas = page.locator('[data-page="1"] canvas')
   await expect.poll(() => canvas.evaluate((c: HTMLCanvasElement) => c.width)).toBeGreaterThan(0)
 
+  // Compile and download live in the preview's header.
+  const preview = page.getByRole('region', { name: 'PDF preview' })
+  await expect(preview.getByRole('button', { name: 'Compile', exact: true })).toBeEnabled()
+  const downloading = page.waitForEvent('download')
+  await preview.getByRole('button', { name: 'Download PDF' }).click()
+  expect((await downloading).suggestedFilename()).toBe('document.pdf')
+
   // The edit reached the disk before compiling.
   const saved = await (await request.get(`/api/projects/${project.id}/file?path=main.tex`, { headers: api })).text()
   expect(saved).toContain('% edited in the browser')

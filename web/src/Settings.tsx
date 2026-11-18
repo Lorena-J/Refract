@@ -176,6 +176,12 @@ function EditorPane() {
         <SettingsRow label={t('Word wrap')} description={t('Wrap long lines instead of scrolling sideways.')}>
           <SettingsSwitch checked={prefs.wrap} onCheckedChange={(v) => setPref('wrap', v)} />
         </SettingsRow>
+        <SettingsRow
+          label={t('Sticky scroll')}
+          description={t('Keep enclosing sections and environments visible at the top of the editor while scrolling.')}
+        >
+          <SettingsSwitch checked={prefs.stickyScroll} onCheckedChange={(v) => setPref('stickyScroll', v)} />
+        </SettingsRow>
         <SettingsRow label={t('Word count')}>
           <SettingsSwitch checked={prefs.wordCount} onCheckedChange={(v) => setPref('wordCount', v)} />
         </SettingsRow>
