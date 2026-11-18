@@ -13,6 +13,7 @@ import {
   RotateCcw,
   Search,
   Trash2,
+  LayoutTemplate,
   Upload,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -57,10 +58,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import AccountMenu from '@/components/AccountMenu'
 import VerifyEmailNotice from '@/components/VerifyEmailNotice'
 import PaperIcon from '@/components/PaperIcon'
+import TemplatePicker from './TemplatePicker'
 import { ago } from '@/lib/time'
 import { daysLeft } from '@/lib/trash'
 import { cn } from '@/lib/utils'
-import { t, tn } from '@/lib/i18n'
+import { lang, t, tn, type Lang } from '@/lib/i18n'
 import { useCommands } from '@/lib/commands'
 import { DropdownItems, WithContextMenu, type MenuEntry } from '@/components/Menu'
 import { Link, navigate, pageReady, previousPath, usePath } from '@/lib/router'
@@ -77,7 +79,11 @@ function ProjectList({ status }: { status: ChatGPTStatus | null }) {
   const [sort, setSort] = useState<Sort>({ key: 'updated', desc: true })
   const [dragging, setDragging] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [naming, setNaming] = useState<{ mode: 'new' } | { mode: 'rename'; project: Project } | null>(null)
+  const [naming, setNaming] = useState<{ mode: 'new' } | { mode: 'rename' | 'template'; project: Project } | null>(null)
+  const [template, setTemplate] = useState('')
+  const [templateLanguage, setTemplateLanguage] = useState<Lang>(lang)
+  const [saving, setSaving] = useState(false)
+  const namingPending = useRef(false)
   const [name, setName] = useState('')
   const [reports, setReports] = useState<ImportResult[]>([])
   const zipInput = useRef<HTMLInputElement>(null)
@@ -94,6 +100,14 @@ function ProjectList({ status }: { status: ChatGPTStatus | null }) {
       },
     },
     {
+      label: t('Save as template…'),
+      icon: LayoutTemplate,
+      onSelect: () => {
+        setName(p.name)
+        setNaming({ mode: 'template', project: p })
+      },
+    },
+    {
       label: t('Export .zip'),
       icon: Download,
       onSelect: () => download(`/api/projects/${p.id}/export`, `${p.name}.zip`).catch((e) => toast.error(errorText(e))),
@@ -102,17 +116,23 @@ function ProjectList({ status }: { status: ChatGPTStatus | null }) {
     { label: t('Move to trash'), icon: Trash2, onSelect: () => moveToTrash(p) },
   ]
 
+  function newProject() {
+    if (namingPending.current) return
+    setName('')
+    setTemplate('')
+    setTemplateLanguage(lang)
+    setNaming({ mode: 'new' })
+  }
+
   useCommands(() => [
     {
       id: 'p:new',
       group: 'Actions',
       label: t('New blank project'),
       icon: Plus,
-      run: () => {
-        setName('')
-        setNaming({ mode: 'new' })
-      },
+      run: newProject,
     },
+    { id: 'p:template', group: 'Actions', label: t('Project templates'), icon: LayoutTemplate, run: newProject },
     {
       id: 'p:zip',
       group: 'Actions',
@@ -235,12 +255,23 @@ function ProjectList({ status }: { status: ChatGPTStatus | null }) {
 
   async function submitName() {
     const n = name.trim()
-    if (!n || !naming) return
+    if (!n || !naming || namingPending.current) return
+    namingPending.current = true
+    setSaving(true)
     try {
       if (naming.mode === 'new') {
-        const p = await api<Project>('/api/projects', { method: 'POST', body: { name: n } })
+        const p = await api<Project>('/api/projects', {
+          method: 'POST',
+          body: { name: n, template, language: templateLanguage },
+        })
         setNaming(null)
         navigate(`/p/${p.id}`)
+        return
+      }
+      if (naming.mode === 'template') {
+        await api(`/api/projects/${naming.project.id}/template`, { method: 'POST', body: { name: n } })
+        toast.success(t('Saved template {name}', { name: n }))
+        setNaming(null)
         return
       }
       await api(`/api/projects/${naming.project.id}`, { method: 'PATCH', body: { name: n } })
@@ -248,6 +279,9 @@ function ProjectList({ status }: { status: ChatGPTStatus | null }) {
       load()
     } catch (e) {
       toast.error(errorText(e))
+    } finally {
+      namingPending.current = false
+      setSaving(false)
     }
   }
 
@@ -331,13 +365,12 @@ function ProjectList({ status }: { status: ChatGPTStatus | null }) {
               <Plus /> {t('New')} <ChevronDown className="opacity-60" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuItem
-                onClick={() => {
-                  setName('')
-                  setNaming({ mode: 'new' })
-                }}
-              >
+              <DropdownMenuItem onClick={newProject}>
                 <Plus /> {t('Blank project')}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={newProject}>
+                <LayoutTemplate />
+                {t('From a template…')}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => zipInput.current?.click()}>
@@ -458,12 +491,31 @@ function ProjectList({ status }: { status: ChatGPTStatus | null }) {
         <AccountMenu status={status} />
       </footer>
 
-      <Dialog open={!!naming} onOpenChange={(o) => !o && setNaming(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{naming?.mode === 'new' ? t('New project') : t('Rename project')}</DialogTitle>
+      <Dialog open={!!naming} onOpenChange={(o) => !o && !namingPending.current && setNaming(null)}>
+        <DialogContent
+          className={cn(
+            'max-h-[85vh]',
+            naming?.mode === 'new' ? 'flex flex-col overflow-hidden sm:max-w-2xl' : 'overflow-y-auto sm:max-w-md',
+          )}
+        >
+          <DialogHeader className="shrink-0">
+            <DialogTitle>
+              {naming?.mode === 'new'
+                ? t('New project')
+                : naming?.mode === 'template'
+                  ? t('Save as template')
+                  : t('Rename project')}
+            </DialogTitle>
+            {naming?.mode === 'template' && (
+              <DialogDescription>
+                {t(
+                  'Keep a private copy of this project to reuse later. Its history, chats and remote connection are not copied.',
+                )}
+              </DialogDescription>
+            )}
           </DialogHeader>
           <form
+            className={cn('min-w-0', naming?.mode === 'new' && 'flex min-h-0 flex-col')}
             onSubmit={(e) => {
               e.preventDefault()
               submitName()
@@ -473,14 +525,25 @@ function ProjectList({ status }: { status: ChatGPTStatus | null }) {
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder={t('Project name')}
-              aria-label={t('Project name')}
+              placeholder={naming?.mode === 'template' ? t('Template name') : t('Project name')}
+              aria-label={naming?.mode === 'template' ? t('Template name') : t('Project name')}
+              disabled={saving}
+              className="shrink-0"
             />
-            <DialogFooter className="mt-4">
-              <Button type="button" variant="ghost" onClick={() => setNaming(null)}>
+            {naming?.mode === 'new' && (
+              <TemplatePicker
+                value={template}
+                onChange={setTemplate}
+                language={templateLanguage}
+                onLanguageChange={setTemplateLanguage}
+                disabled={saving}
+              />
+            )}
+            <DialogFooter className="mt-4 shrink-0">
+              <Button type="button" variant="ghost" disabled={saving} onClick={() => setNaming(null)}>
                 {t('Cancel')}
               </Button>
-              <Button type="submit" disabled={!name.trim()}>
+              <Button type="submit" disabled={!name.trim() || saving}>
                 {naming?.mode === 'new' ? t('Create') : t('Save')}
               </Button>
             </DialogFooter>

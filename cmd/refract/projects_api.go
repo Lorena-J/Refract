@@ -31,6 +31,8 @@ func (a *projectsAPI) routes(rt *router) {
 	rt.user("GET /api/trash", a.trash)
 	rt.trashed("POST /api/projects/{id}/restore", access.Owner, a.untrash)
 	rt.trashed("DELETE /api/projects/{id}/purge", access.Owner, a.purge)
+	rt.user("GET /api/templates", a.templates)
+	rt.project("POST /api/projects/{id}/template", access.Owner, a.saveTemplate, access.VerifiedEmail)
 	rt.project("GET /api/projects/{id}", access.Owner, a.get)
 	rt.project("PATCH /api/projects/{id}", access.Owner, a.update)
 	rt.project("DELETE /api/projects/{id}", access.Owner, a.delete)
@@ -201,17 +203,56 @@ func (a *projectsAPI) get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *projectsAPI) create(w http.ResponseWriter, r *http.Request) {
-	var in struct{ Name string }
+	var in struct {
+		Name     string `json:"name"`
+		Template string `json:"template"`
+		Language string `json:"language"`
+	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&in); err != nil {
 		httpError(w, err, http.StatusBadRequest)
 		return
 	}
-	p, err := a.svc.Create(r.Context(), in.Name)
+	var p *projects.Project
+	var err error
+	if in.Template != "" {
+		p, err = a.svc.CreateFromTemplate(r.Context(), in.Name, in.Template, in.Language)
+	} else {
+		p, err = a.svc.Create(r.Context(), in.Name)
+	}
 	if err != nil {
 		projectError(w, err)
 		return
 	}
 	writeJSON(w, p)
+}
+
+func (a *projectsAPI) templates(w http.ResponseWriter, r *http.Request) {
+	templates, err := a.svc.Templates(r.Context())
+	if err != nil {
+		projectError(w, err)
+		return
+	}
+	writeJSON(w, templates)
+}
+
+func (a *projectsAPI) saveTemplate(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&in); err != nil {
+		httpError(w, err, http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(in.Name) == "" {
+		httpError(w, errors.New("template name required"), http.StatusBadRequest)
+		return
+	}
+	template, err := a.svc.SaveTemplate(r.Context(), r.PathValue("id"), in.Name)
+	if err != nil {
+		projectError(w, err)
+		return
+	}
+	writeJSON(w, template)
 }
 
 // importZip takes the raw zip as the body; the project name comes from ?name=.
@@ -373,7 +414,7 @@ func projectError(w http.ResponseWriter, err error) {
 		kindError(w, http.StatusConflict, "project_busy", err)
 	case errors.Is(err, projects.ErrBehind):
 		httpError(w, err, http.StatusConflict)
-	case errors.Is(err, projects.ErrBadRemote), errors.Is(err, projects.ErrPrivateRemote):
+	case errors.Is(err, projects.ErrBadRemote), errors.Is(err, projects.ErrPrivateRemote), errors.Is(err, projects.ErrTemplateLanguage):
 		httpError(w, err, http.StatusBadRequest)
 	case errors.Is(err, fs.ErrExist):
 		httpError(w, err, http.StatusConflict)

@@ -19,6 +19,7 @@ import {
   ChevronRight,
   FolderTree,
   ListTree,
+  LayoutTemplate,
   Loader2,
   MessageSquare,
   MessageSquarePlus,
@@ -219,6 +220,8 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [ask, setAsk] = useState<Ask | null>(null)
   const [askValue, setAskValue] = useState('')
+  const [asking, setAsking] = useState(false)
+  const askPending = useRef(false)
   const [confirm, setConfirm] = useState<Confirm | null>(null)
   // Set when the project is in the trash or deleted: nothing can change it, edits stay in memory.
   const [gone, setGone] = useState<Gone | null>(null)
@@ -782,8 +785,27 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
   }
 
   function askFor(a: Ask) {
+    if (askPending.current) return
     setAskValue(a.value)
     setAsk(a)
+  }
+
+  function saveAsTemplate() {
+    if (locked) return
+    askFor({
+      title: t('Save as template'),
+      description: t(
+        'Keep a private copy of this project to reuse later. Its history, chats and remote connection are not copied.',
+      ),
+      value: project?.name ?? '',
+      action: t('Save'),
+      onSubmit: async (name) => {
+        if (!name.trim()) throw new Error(t('Enter a name.'))
+        await autosave.flushAll()
+        await api(`/api/projects/${id}/template`, { method: 'POST', body: { name } })
+        toast.success(t('Saved template {name}', { name }))
+      },
+    })
   }
 
   function create(dir: string, kind: 'file' | 'folder') {
@@ -944,6 +966,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
     'ws:pull',
     'ws:history',
     'ws:cite',
+    'ws:template',
   ])
   useCommands(() =>
     [
@@ -986,6 +1009,13 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
         icon: ScrollText,
         keywords: 'refract.md assistant rules style remember',
         run: openInstructions,
+      },
+      {
+        id: 'ws:template',
+        group: 'Actions',
+        label: t('Save as template…'),
+        icon: LayoutTemplate,
+        run: saveAsTemplate,
       },
       {
         id: 'ws:git',
@@ -1176,6 +1206,9 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
                     <>
                       <DropdownMenuItem onClick={openInstructions}>
                         <ScrollText /> {t('Project instructions')}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={saveAsTemplate}>
+                        <LayoutTemplate /> {t('Save as template…')}
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => setGitOpen(true)}>
                         <GitBranch /> {t('Git remote…')}
@@ -1621,21 +1654,27 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
         )}
       </ResizablePanelGroup>
 
-      <Dialog open={!!ask} onOpenChange={(o) => !o && setAsk(null)}>
+      <Dialog open={!!ask} onOpenChange={(o) => !o && !askPending.current && setAsk(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{ask?.title}</DialogTitle>
             {ask?.description && <DialogDescription>{ask.description}</DialogDescription>}
           </DialogHeader>
           <form
+            aria-busy={asking}
             onSubmit={async (e) => {
               e.preventDefault()
-              if (!ask) return
+              if (!ask || askPending.current) return
+              askPending.current = true
+              setAsking(true)
               try {
                 await ask.onSubmit(askValue.trim())
                 setAsk(null)
               } catch (err) {
                 toast.error(errorText(err))
+              } finally {
+                askPending.current = false
+                setAsking(false)
               }
             }}
           >
@@ -1645,12 +1684,16 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
               onChange={(e) => setAskValue(e.target.value)}
               className="font-mono text-sm"
               aria-label={ask?.title}
+              disabled={asking}
             />
             <DialogFooter className="mt-4">
-              <Button type="button" variant="ghost" onClick={() => setAsk(null)}>
+              <Button type="button" variant="ghost" disabled={asking} onClick={() => setAsk(null)}>
                 {t('Cancel')}
               </Button>
-              <Button type="submit">{ask?.action}</Button>
+              <Button type="submit" disabled={asking}>
+                {asking && <Loader2 className="animate-spin" />}
+                {ask?.action}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
