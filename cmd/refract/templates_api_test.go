@@ -56,7 +56,11 @@ func TestTemplateAPIOwnershipAndCreation(t *testing.T) {
 		if err != nil || !strings.Contains(string(source), tc.want) {
 			t.Fatalf("language %s not forwarded: %v", tc.language, err)
 		}
-		section, err := os.ReadFile(filepath.Join(svc.Path(localized.ID), "sections", "abstract.tex"))
+		sectionPath := "sections/abstract.tex"
+		if tc.language == "es" {
+			sectionPath = "secciones/resumen.tex"
+		}
+		section, err := os.ReadFile(filepath.Join(svc.Path(localized.ID), sectionPath))
 		if err != nil || len(section) == 0 {
 			t.Fatalf("missing abstract: %v", err)
 		}

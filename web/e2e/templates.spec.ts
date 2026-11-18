@@ -153,12 +153,12 @@ for (const ui of ['en', 'es'] as const) {
     const id = page.url().split('/').pop()!
     const main = await (await request.get(`/api/projects/${id}/file?path=main.tex`, { headers })).text()
     expect(main).toContain(spanish ? 'Article title' : 'Título del artículo')
-    expect(main).toContain('\\input{sections/abstract}')
-    const abstract = await (
-      await request.get(`/api/projects/${id}/file?path=sections/abstract.tex`, { headers })
-    ).text()
+    const abstractPath = spanish ? 'sections/abstract' : 'secciones/resumen'
+    const methodsPath = spanish ? 'sections/methods' : 'secciones/metodos'
+    expect(main).toContain(`\\input{${abstractPath}}`)
+    const abstract = await (await request.get(`/api/projects/${id}/file?path=${abstractPath}.tex`, { headers })).text()
     expect(abstract).toContain(spanish ? '\\textbf{Abstract}' : '\\textbf{Resumen}')
-    const methods = await (await request.get(`/api/projects/${id}/file?path=sections/methods.tex`, { headers })).text()
+    const methods = await (await request.get(`/api/projects/${id}/file?path=${methodsPath}.tex`, { headers })).text()
     expect(methods).toContain(spanish ? '\\section{Methods}' : '\\section{Métodos}')
     await page.goto('/')
     await open()

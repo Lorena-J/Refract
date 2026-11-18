@@ -378,7 +378,19 @@ func TestBuiltinTemplateLanguagesAndSections(t *testing.T) {
 					t.Fatal(err)
 				}
 				text := string(main)
-				if !strings.Contains(text, `\input{sections/`) {
+				directory := "sections"
+				if language == "es" {
+					directory = "secciones"
+				}
+				if _, err := os.Stat(filepath.Join(s.Path(p.ID), directory)); err != nil {
+					t.Fatalf("missing localized folder: %v", err)
+				}
+				if language == "es" {
+					if _, err := os.Stat(filepath.Join(s.Path(p.ID), "sections")); !os.IsNotExist(err) {
+						t.Fatal("Spanish template contains English folder")
+					}
+				}
+				if !strings.Contains(text, `\input{`+directory+`/`) {
 					t.Fatal("main file does not assemble section files")
 				}
 				want, unwanted := "Your name", "Tu nombre"
@@ -400,17 +412,19 @@ func TestBuiltinTemplateLanguagesAndSections(t *testing.T) {
 					}
 				}
 				if template.ID == "article" || template.ID == "thesis" {
+					methods := "sections/methods.tex"
 					want := `\section{Methods}`
 					if template.ID == "thesis" {
 						want = `\chapter{Research design and methods}`
 					}
 					if language == "es" {
+						methods = "secciones/metodos.tex"
 						want = `\section{Métodos}`
 						if template.ID == "thesis" {
 							want = `\chapter{Diseño de la investigación y métodos}`
 						}
 					}
-					body, _, err := s.ReadFile(ownerCtx, p.ID, "sections/methods.tex")
+					body, _, err := s.ReadFile(ownerCtx, p.ID, methods)
 					if err != nil || !strings.Contains(string(body), want) {
 						t.Fatalf("methods language: %v %s", err, body)
 					}
@@ -442,7 +456,7 @@ func TestTemplateLanguageValidationAndSavedContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"main.tex", "sections/abstract.tex", "sections/methods.tex"} {
+	for _, path := range []string{"main.tex", "secciones/resumen.tex", "secciones/metodos.tex"} {
 		original, _, err := s.ReadFile(ownerCtx, p.ID, path)
 		if err != nil {
 			t.Fatal(err)
