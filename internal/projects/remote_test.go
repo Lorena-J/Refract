@@ -199,6 +199,7 @@ func TestRemoteActsAsItsUser(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	s.GitHubOrigin = "https://127.0.0.1:1" // nothing listens there
 	if err := s.SetRemote(ownerCtx, p.ID, Remote{URL: "https://127.0.0.1:1/paper.git", Branch: "main", GitHub: true}, false); err != nil {
 		t.Fatal(err)
 	}

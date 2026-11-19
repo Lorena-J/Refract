@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { SettingsSwitch } from '@/components/ui/chatcn/settings-panel'
 import { openSettings } from '@/lib/prefs'
 import { t, tn } from '@/lib/i18n'
+import { remoteHost, tokenLeftBehind } from '@/lib/remote'
 import { ago } from '@/lib/time'
 import { cn } from '@/lib/utils'
 
@@ -82,6 +83,13 @@ export default function GitDialog({ projectId, projectName, open, onClose, befor
     }
   }
 
+  // A token saved for another origin is never sent to this one: saving drops
+  // it unless a new one is typed, and the dialog says so before.
+  const savedToken = !!info?.has_token && !info.github
+  const leavesToken = (remote: { url: string; github: boolean }) =>
+    savedToken && !remote.github && !token && !!remote.url && tokenLeftBehind(info!.url, remote.url)
+  const tokenMoved = mode === 'url' && leavesToken({ url, github: false })
+
   const save = (remote: { url: string; github: boolean }) =>
     run('save', async () => {
       const r = await api<RemoteInfo>(`/api/projects/${projectId}/remote`, {
@@ -92,6 +100,7 @@ export default function GitDialog({ projectId, projectName, open, onClose, befor
           token: remote.github ? '' : token,
           branch,
           auto_push: autoPush,
+          clear_token: leavesToken(remote),
         },
       })
       setInfo(r)
@@ -242,15 +251,24 @@ export default function GitDialog({ projectId, projectName, open, onClose, befor
                       value={token}
                       onChange={(e) => setToken(e.target.value)}
                       placeholder={
-                        info.has_token && !info.github
+                        savedToken && !tokenMoved
                           ? t('Saved. Type a new one to replace it.')
                           : t('A personal access token with write access to the repository')
                       }
                       className="h-8 w-full rounded-lg border bg-transparent px-3 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                     />
-                    <span className="block text-xs text-muted-foreground">
-                      {t('Stored encrypted on the server and never shown again.')}
-                    </span>
+                    {tokenMoved ? (
+                      <span role="status" className="block text-xs text-chatcn-amber">
+                        {t(
+                          'The saved token only works with {host}. Type a token for the new host, or save without one.',
+                          { host: remoteHost(info.url) },
+                        )}
+                      </span>
+                    ) : (
+                      <span className="block text-xs text-muted-foreground">
+                        {t('Stored encrypted on the server and never shown again.')}
+                      </span>
+                    )}
                   </label>
                 </div>
               )}

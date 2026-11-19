@@ -52,6 +52,9 @@ type Service struct {
 	OnCommit func(ctx context.Context, id string) // called (in its own goroutine, as the committing user) after commits on the main branch
 	// GitHubToken returns the GitHub token of a user (a project's owner), for remotes that use their account.
 	GitHubToken func(ctx context.Context, owner string) (string, error)
+	// GitHubOrigin is the only origin the GitHub account's token is sent to
+	// (default https://github.com).
+	GitHubOrigin string
 
 	// PublicRemotes (the hosted service): git remotes must resolve to public
 	// addresses only, and git connects to the address that was checked.

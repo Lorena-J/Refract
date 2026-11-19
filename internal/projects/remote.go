@@ -22,13 +22,16 @@ import (
 
 // Remote is where a project's history is pushed and pulled. Token is sent as
 // HTTP basic auth (as GitHub, GitLab and Gitea accept personal access tokens);
-// it is stored sealed and never returned to the client.
+// it is stored sealed and never returned to the client. A typed token belongs
+// to the origin (scheme, host and port) it was saved for, TokenOrigin, and is
+// sent nowhere else.
 type Remote struct {
-	URL      string `json:"url"`
-	Branch   string `json:"branch"`
-	AutoPush bool   `json:"auto_push"`
-	GitHub   bool   `json:"github"` // authenticate with the connected GitHub account
-	Token    string `json:"token,omitempty"`
+	URL         string `json:"url"`
+	Branch      string `json:"branch"`
+	AutoPush    bool   `json:"auto_push"`
+	GitHub      bool   `json:"github"` // authenticate with the connected GitHub account
+	Token       string `json:"token,omitempty"`
+	TokenOrigin string `json:"token_origin,omitempty"`
 }
 
 var (
@@ -38,7 +41,36 @@ var (
 	branchName   = regexp.MustCompile(`^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$`)
 
 	ErrPrivateRemote = errors.New("the remote's address is on a private network, which the hosted service can't reach")
+	ErrTokenOrigin   = errors.New("the remote is on another host now, and the saved token only works with the old one: type an access token for the new host, or save without one")
+	ErrGitHubRemote  = errors.New("a remote that uses the GitHub account must be a repository on GitHub")
 )
+
+// remoteOrigin is the scheme, host and port a remote URL connects to, in one
+// form: https://Example.com/x and https://example.com:443/y are the same
+// origin. It is empty for a URL that doesn't parse.
+func remoteOrigin(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return ""
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme == "file" {
+		return "file://"
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "" {
+		return ""
+	}
+	port := u.Port()
+	if port == "" && scheme == "https" {
+		port = "443"
+	}
+	return scheme + "://" + net.JoinHostPort(host, port)
+}
+
+func (s *Service) githubOrigin() string {
+	return remoteOrigin(cmp.Or(s.GitHubOrigin, "https://github.com"))
+}
 
 // allowFileRemotes lets tests use local bare repositories.
 var allowFileRemotes = false
@@ -141,16 +173,29 @@ func (s *Service) Remote(ctx context.Context, id string) (*Remote, error) {
 	if err := json.Unmarshal(plain, &r); err != nil {
 		return nil, err
 	}
-	if r.GitHub && s.GitHubToken != nil {
-		if r.Token, err = s.GitHubToken(ctx, u.ID); err != nil {
-			return nil, err
+	switch {
+	case r.GitHub:
+		// The account's token goes to GitHub only; a remote saved before that
+		// was checked gets none, and gitRemote refuses it.
+		r.Token, r.TokenOrigin = "", ""
+		if s.GitHubToken != nil && remoteOrigin(r.URL) == s.githubOrigin() {
+			if r.Token, err = s.GitHubToken(ctx, u.ID); err != nil {
+				return nil, err
+			}
+			r.TokenOrigin = s.githubOrigin()
 		}
+	case r.Token != "" && r.TokenOrigin == "":
+		// Saved by a release that didn't record it: the token belongs to the
+		// URL it was last saved with.
+		r.TokenOrigin = remoteOrigin(r.URL)
 	}
 	return &r, nil
 }
 
 // SetRemote saves the remote; an empty URL removes it. An empty token keeps
-// the stored one (the client never sees it) unless keepToken is false.
+// the stored one (the client never sees it) unless keepToken is false; on a
+// different origin it returns ErrTokenOrigin instead, so a token never follows
+// the URL to another host.
 func (s *Service) SetRemote(ctx context.Context, id string, r Remote, keepToken bool) error {
 	if _, err := s.Get(ctx, id); err != nil {
 		return err
@@ -170,11 +215,23 @@ func (s *Service) SetRemote(ctx context.Context, id string, r Remote, keepToken 
 	if _, err := s.pinRemote(ctx, r.URL); errors.Is(err, ErrPrivateRemote) || errors.Is(err, ErrBadRemote) {
 		return err
 	}
-	if r.GitHub {
-		r.Token = "" // the account's token is looked up on use, never copied
-	} else if r.Token == "" && keepToken {
-		if old, err := s.Remote(ctx, id); err == nil && !old.GitHub {
-			r.Token = old.Token
+	switch {
+	case r.GitHub:
+		if remoteOrigin(r.URL) != s.githubOrigin() {
+			return ErrGitHubRemote
+		}
+		r.Token, r.TokenOrigin = "", "" // the account's token is looked up on use, never copied
+	case r.Token != "":
+		r.TokenOrigin = remoteOrigin(r.URL)
+	default:
+		// The stored token is kept only for the origin it was saved for: on
+		// another host or port, it must be typed again or dropped.
+		r.TokenOrigin = ""
+		if old, err := s.Remote(ctx, id); keepToken && err == nil && !old.GitHub && old.Token != "" {
+			if remoteOrigin(r.URL) != old.TokenOrigin {
+				return ErrTokenOrigin
+			}
+			r.Token, r.TokenOrigin = old.Token, old.TokenOrigin
 		}
 	}
 	plain, _ := json.Marshal(r)
@@ -183,6 +240,36 @@ func (s *Service) SetRemote(ctx context.Context, id string, r Remote, keepToken 
 		return err
 	}
 	return store.SetSetting(ctx, s.DB, remoteKey(id), sealed)
+}
+
+// remoteArgs returns the git options and environment for a network command
+// against r, after checking its credential belongs to r's origin: a typed
+// token to the origin it was saved for, the GitHub account's to GitHub.
+// With a credential, git doesn't follow redirects, which would carry it to
+// a host nobody chose.
+func (s *Service) remoteArgs(r *Remote, pin []string) (opts, env []string, err error) {
+	origin := remoteOrigin(r.URL)
+	switch {
+	case r.GitHub && origin != s.githubOrigin():
+		return nil, nil, ErrGitHubRemote
+	case r.Token != "" && (r.TokenOrigin == "" || origin != r.TokenOrigin):
+		return nil, nil, ErrTokenOrigin
+	}
+	opts = append(slices.Clone(pin), "-c", "protocol.allow=never", "-c", "protocol.https.allow=always")
+	if allowFileRemotes {
+		opts = append(opts, "-c", "protocol.file.allow=always")
+	}
+	if r.Token != "" {
+		if !slices.Contains(opts, "http.followRedirects=false") {
+			opts = append(opts, "-c", "http.followRedirects=false")
+		}
+		basic := base64.StdEncoding.EncodeToString([]byte("x-access-token:" + r.Token))
+		env = []string{"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=http.extraHeader", "GIT_CONFIG_VALUE_0=Authorization: Basic " + basic}
+	}
+	if s.PublicRemotes {
+		env = append(env, "NO_PROXY=*", "no_proxy=*")
+	}
+	return opts, env, nil
 }
 
 // gitRemote runs a network git command against r. The token travels in an
@@ -195,19 +282,11 @@ func (s *Service) gitRemote(ctx context.Context, dir string, r *Remote, args ...
 	if err != nil {
 		return "", err
 	}
-	allow := append(pin, "-c", "protocol.allow=never", "-c", "protocol.https.allow=always")
-	if allowFileRemotes {
-		allow = append(allow, "-c", "protocol.file.allow=always")
+	opts, env, err := s.remoteArgs(r, pin)
+	if err != nil {
+		return "", err
 	}
-	var env []string
-	if r.Token != "" {
-		basic := base64.StdEncoding.EncodeToString([]byte("x-access-token:" + r.Token))
-		env = []string{"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=http.extraHeader", "GIT_CONFIG_VALUE_0=Authorization: Basic " + basic}
-	}
-	if s.PublicRemotes {
-		env = append(env, "NO_PROXY=*", "no_proxy=*")
-	}
-	out, err := gitEnv(ctx, dir, env, append(allow, args...)...)
+	out, err := gitEnv(ctx, dir, env, append(opts, args...)...)
 	if err != nil && r.Token != "" {
 		err = errors.New(strings.ReplaceAll(err.Error(), r.Token, "***")) // never echo the token
 	}
