@@ -133,6 +133,24 @@ func run() error {
 	if err := checkSignup(deployment, authKind, signup, mailReady); err != nil {
 		return err
 	}
+	hosts, err := newHostPolicy(os.Getenv("REFRACT_PUBLIC_URL"), os.Getenv("REFRACT_ALLOWED_HOSTS"))
+	if err != nil {
+		return err
+	}
+	// Listen before opening anything, and judge the policy by the address
+	// bound: "localhost" in REFRACT_ADDR can resolve to any address.
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	defer ln.Close()
+	hostWarning, err := hosts.forListener(ln.Addr(), authKind)
+	if err != nil {
+		return err
+	}
+	if hostWarning != "" {
+		slog.Warn(hostWarning)
+	}
 	warnAccounts(authKind, signup, smtp != nil, base != "", os.Getenv("REFRACT_SIGNUP") != "")
 
 	key, err := store.ParseKey(os.Getenv("REFRACT_SECRET_KEY"))
@@ -293,11 +311,7 @@ func run() error {
 	}
 	mux.Handle("/", guard(people.Middleware(auth.RequireCSRFHeader(app))))
 
-	srv := &http.Server{Handler: securityHeaders(mux), ReadHeaderTimeout: 10 * time.Second}
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		return err
-	}
+	srv := newServer(mux, hosts)
 	slog.Info("listening", "addr", addr, "data_dir", dataDir)
 	err = serve(ctx, srv, ln, 10*time.Second, 5*time.Second)
 	// A purge in progress still uses the database: stop it and wait for its current step.

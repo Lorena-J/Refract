@@ -46,7 +46,7 @@ echo "synctex view/edit round trip on Tectonic output: ok (page 1, $x,$y -> line
 
 echo "== server"
 docker run -d --name "$VOL" $PLATFORM -p "127.0.0.1:$PORT:8080" -v "$VOL:/data" \
-	-e REFRACT_AUTH=none -e REFRACT_SECRET_KEY="$(openssl rand -base64 32)" "$IMAGE" >/dev/null
+	-e REFRACT_AUTH=none -e REFRACT_ALLOWED_HOSTS=localhost -e REFRACT_SECRET_KEY="$(openssl rand -base64 32)" "$IMAGE" >/dev/null
 curl -fsS --retry 15 --retry-connrefused --retry-delay 1 "http://127.0.0.1:$PORT/healthz" && echo
 curl -fsS "http://127.0.0.1:$PORT/" | grep -q '<div id="root">' && echo "UI served: ok"
 echo "== all ok"
