@@ -20,7 +20,11 @@ import (
 // project, which the sandbox mounts writable. Everything that touches the
 // folder afterwards goes through the returned handle, so replacing the path
 // with a symlink later (a git pull during the compile) changes nothing.
-func openOutDir(projectDir string) (*os.File, error) {
+func openOutDir(projectDir string) (*os.File, error) { return openBuildDir(projectDir, true) }
+
+// openBuildDir opens .refract/build as openOutDir does; with create false, a
+// missing part is an error matching os.ErrNotExist instead of being made.
+func openBuildDir(projectDir string, create bool) (*os.File, error) {
 	const flags = unix.O_RDONLY | unix.O_DIRECTORY | unix.O_NOFOLLOW | unix.O_CLOEXEC
 	fd, err := unix.Open(projectDir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
 	if err != nil {
@@ -30,7 +34,7 @@ func openOutDir(projectDir string) (*os.File, error) {
 	for _, part := range strings.Split(BuildDir, "/") {
 		rel = path.Join(rel, part)
 		next, err := unix.Openat(fd, part, flags, 0)
-		if errors.Is(err, unix.ENOENT) {
+		if create && errors.Is(err, unix.ENOENT) {
 			if err = unix.Mkdirat(fd, part, 0o755); err == nil || errors.Is(err, unix.EEXIST) {
 				next, err = unix.Openat(fd, part, flags, 0)
 			}
@@ -39,6 +43,7 @@ func openOutDir(projectDir string) (*os.File, error) {
 			defer unix.Close(fd)
 			var st unix.Stat_t
 			switch {
+			case errors.Is(err, unix.ENOENT):
 			case unix.Fstatat(fd, part, &st, unix.AT_SYMLINK_NOFOLLOW) != nil:
 			case st.Mode&unix.S_IFMT == unix.S_IFLNK:
 				return nil, fmt.Errorf("%w: %s is a symbolic link; delete it and compile again", ErrUnsafeBuildDir, rel)

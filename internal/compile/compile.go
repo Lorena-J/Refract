@@ -177,6 +177,23 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 // link or not a folder: the project has to be fixed before it can compile.
 var ErrUnsafeBuildDir = errors.New("refusing to compile")
 
+// OpenOutput opens name, a file the last compile wrote directly in the
+// project's build folder, for reading, with the same checks the compiler
+// applies: no part of the folder may be a symbolic link, and the file must be
+// a regular file, not a link. Nothing is created. When the folder or the file
+// doesn't exist, the error matches os.ErrNotExist.
+func OpenOutput(projectDir, name string) (*os.File, error) {
+	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, `/\`) {
+		return nil, &os.PathError{Op: "open", Path: name, Err: os.ErrInvalid}
+	}
+	dir, err := openBuildDir(projectDir, false)
+	if err != nil {
+		return nil, err
+	}
+	defer dir.Close()
+	return openIn(dir, name)
+}
+
 // testHookOutDirOpened, when set, runs once the build folder is open: tests
 // use it to swap the folder for a symlink, as a concurrent git pull could.
 var testHookOutDirOpened func(projectDir string)
