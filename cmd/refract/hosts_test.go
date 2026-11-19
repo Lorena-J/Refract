@@ -200,23 +200,36 @@ func TestHostPolicyServer(t *testing.T) {
 	}
 }
 
-// TestDefaultAddrIsLoopback: refract without REFRACT_ADDR serves this
-// computer only, and so starts even without sign-in or allowed hosts.
+// TestDefaultAddrIsLoopback: without REFRACT_ADDR, the address run listens on
+// is IPv4 loopback port 8080, so it serves this computer only and starts
+// without sign-in or allowed hosts.
 func TestDefaultAddrIsLoopback(t *testing.T) {
-	host, port, err := net.SplitHostPort(defaultAddr)
-	if err != nil || port != "8080" {
-		t.Fatalf("defaultAddr = %q", defaultAddr)
+	unset := func(string) string { return "" }
+	addr := listenAddr(unset)
+	if addr != "127.0.0.1:8080" {
+		t.Fatalf("default listen address = %q, want 127.0.0.1:8080", addr)
 	}
-	ln, err := net.Listen("tcp", net.JoinHostPort(host, "0")) // same interface, any free port
+	if got := listenAddr(func(k string) string {
+		if k == "REFRACT_ADDR" {
+			return ":9000"
+		}
+		return ""
+	}); got != ":9000" {
+		t.Fatalf("REFRACT_ADDR=:9000 gives %q", got)
+	}
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln, err := net.Listen("tcp", net.JoinHostPort(host, "0")) // same interface, a free port
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer ln.Close()
-	if ip := ln.Addr().(*net.TCPAddr).IP; !ip.IsLoopback() {
-		t.Fatalf("default listener bound to %s", ip)
+	if ip := ln.Addr().(*net.TCPAddr).IP; !ip.IsLoopback() || ip.To4() == nil {
+		t.Fatalf("default listener bound to %s, want IPv4 loopback", ip)
 	}
-	p := policy(t, ln.Addr(), "none", "", "")
-	if p.any {
+	if p := policy(t, ln.Addr(), "none", "", ""); p.any {
 		t.Fatal("the default listener accepts any host name")
 	}
 }
