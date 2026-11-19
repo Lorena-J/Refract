@@ -176,6 +176,35 @@ Each release publishes the image for amd64 and arm64 as `latest`, as `0.1` (the 
 
 **Keep `REFRACT_SECRET_KEY` safe and stable.** It encrypts the stored ChatGPT credentials, API keys and git tokens. With a different key, those can't be read back and users have to connect again.
 
+**Decide who you trust before you invite anyone.** By default (`REFRACT_PROFILE=personal`) Tectonic runs with the server's own permissions: a document can `\input` any file the server can read, including the database (accounts, sessions, encrypted credentials) and every other account's projects. That is fine for one person, or for people who would trust each other with all of that. If the people signing in don't, run the [team profile](#run-it-for-a-team): every compile is isolated, and Refract refuses to start if it can't be. Without it, Refract warns at startup when several accounts compile without isolation.
+
+### Run it for a team
+
+`REFRACT_PROFILE=team` is for people who must not read each other's files: a lab, a class, a department. It requires sign-in (`REFRACT_AUTH=builtin` or `cloudflare`), runs every compile in the [compile sandbox](#compile-sandbox), the editor's and the assistant's alike, and refuses to start, saying what is missing, without sign-in, with `REFRACT_SANDBOX=none`, or when the sandbox can't compile its self-test document. It runs on Linux hosts (amd64 and arm64) with Docker, or directly with the [systemd unit](packaging/server/refract.service). Verified end to end with Docker 29 on arm64 and, on every change to the sandbox and weekly, on GitHub's Ubuntu runners (amd64, `.github/workflows/team-sandbox.yml`).
+
+The sandbox has no network, so Tectonic needs the whole TeX bundle on disk (about 3 GB, prepared once):
+
+```sh
+# 1. The offline TeX bundle, into its own volume (downloads 2.7 GB).
+docker run --rm -v refract-tex:/opt/refract/tex --entrypoint refract-prepare-bundle \
+  ghcr.io/ponytojas/refract:0.1 /opt/refract/tex
+
+# 2. Refract, with the bundle read-only and the options bubblewrap needs.
+docker run -d --name refract --restart unless-stopped --stop-timeout 30 \
+  -p 127.0.0.1:8080:8080 -v refract-data:/data -v refract-tex:/opt/refract/tex:ro \
+  --security-opt seccomp=unconfined --security-opt apparmor=unconfined --security-opt systempaths=unconfined \
+  -e REFRACT_SECRET_KEY="<the output of: openssl rand -base64 32>" \
+  -e REFRACT_PROFILE=team -e REFRACT_AUTH=builtin \
+  -e REFRACT_TECTONIC_BUNDLE=/opt/refract/tex/bundle -e TECTONIC_CACHE_DIR=/opt/refract/tex/cache \
+  ghcr.io/ponytojas/refract:0.1
+```
+
+Then create the accounts (`docker exec refract refract users add <email>`), put it [behind a reverse proxy](#behind-a-reverse-proxy) with https, and [back it up](#data-backups-and-upgrades) with the key. When you upgrade to an image with another Tectonic or bundle, prepare a new volume.
+
+What the three `--security-opt` do, and why: bubblewrap builds each compile's sandbox from Linux user namespaces, which Docker's default seccomp and AppArmor profiles block, and mounts its own `/proc`, which Docker's masked `/proc` paths (`systempaths`) prevent. They loosen the container's own confinement, not the sandbox's: each compile still sees only its project, the bundle and a read-only system, with no network. Refract itself still runs as an unprivileged user (uid 10001). If your host restricts user namespaces (Ubuntu 24.04 and later: `kernel.apparmor_restrict_unprivileged_userns=1`), the startup check fails with a `uid map` or `Operation not permitted` error: see [Compile sandbox](#compile-sandbox).
+
+`scripts/smoke-team.sh <image>` checks a deployment like this one end to end: the refusals, a compile, and that one account's document can't see the database or another account's project (while the same probe sees both without the profile). Biber isn't available in the sandbox: bibliographies need BibTeX (`natbib`, or `biblatex` with `backend=bibtex`).
+
 ### Choose how people sign in
 
 Refract refuses to start until `REFRACT_AUTH` says how people get in.
@@ -258,7 +287,7 @@ location / {
 
 ### Compile sandbox
 
-Tectonic runs as the same user as the server, so a document could `\input` any file that user can read: the database, other accounts' projects, the server's environment. With `REFRACT_SANDBOX=bwrap` (Linux, [bubblewrap](https://github.com/containers/bubblewrap)) every compile runs in a sandbox instead: no network, a read-only view of the system, the TeX bundle and the one project being built (only `.refract/build` is writable), nothing else of the host, and limits of CPU time (the compile timeout plus a margin), 1 GiB of memory, 64 processes and 200 MiB per file. **`REFRACT_MODE=saas` requires it.** Whether or not it is on, compiles go through a queue: `REFRACT_COMPILE_WORKERS` at once, one per account (with `REFRACT_AUTH=none` everyone is the same account, so projects compile one after another), and a compile that waits longer than `REFRACT_COMPILE_MAX_WAIT` seconds is answered "the server is busy" (or, when only the account's own running compile is in the way, "another of your compiles is still running"). A newer compile replaces a waiting one of the same project; other projects of the account wait their turn. `REFRACT_COMPILE_MAX_WAIT=0` waits without limit, which `REFRACT_MODE=saas` refuses. The CPU limit is `REFRACT_COMPILE_TIMEOUT` plus 5 s, and a compile that hits it is reported as timed out. A project whose `.refract` or `.refract/build` is a symbolic link is not compiled, and the folder checked is the one mounted, even if the path changes during the compile (a `git pull`, for example).
+Tectonic runs as the same user as the server, so a document could `\input` any file that user can read: the database, other accounts' projects, the server's environment. With `REFRACT_SANDBOX=bwrap` (Linux, [bubblewrap](https://github.com/containers/bubblewrap)) every compile runs in a sandbox instead: no network, a read-only view of the system, the TeX bundle and the one project being built (only `.refract/build` is writable), nothing else of the host, and limits of CPU time (the compile timeout plus a margin), 1 GiB of memory, 64 processes and 200 MiB per file. **`REFRACT_PROFILE=team` and `REFRACT_MODE=saas` require it.** Whether or not it is on, compiles go through a queue: `REFRACT_COMPILE_WORKERS` at once, one per account (with `REFRACT_AUTH=none` everyone is the same account, so projects compile one after another), and a compile that waits longer than `REFRACT_COMPILE_MAX_WAIT` seconds is answered "the server is busy" (or, when only the account's own running compile is in the way, "another of your compiles is still running"). A newer compile replaces a waiting one of the same project; other projects of the account wait their turn. `REFRACT_COMPILE_MAX_WAIT=0` waits without limit, which `REFRACT_MODE=saas` refuses. The CPU limit is `REFRACT_COMPILE_TIMEOUT` plus 5 s, and a compile that hits it is reported as timed out. A project whose `.refract` or `.refract/build` is a symbolic link is not compiled, and the folder checked is the one mounted, even if the path changes during the compile (a `git pull`, for example).
 
 Because the sandbox has no network, Tectonic can't download packages: it needs the whole TeX bundle as a local folder, with its format file built once. On the server:
 
@@ -287,7 +316,7 @@ At startup Refract compiles a one-line document in the sandbox and refuses to st
 - **`Permission denied` reading the bundle.** The bundle's files must be readable by the server's user: `prepare-bundle.sh` sets them to `0444`.
 - **A format file error, or `Read-only file system` under the cache.** The cache has no format file for this Tectonic and bundle: run `prepare-bundle.sh` again with the Tectonic the server uses.
 
-The Docker image keeps `REFRACT_SANDBOX=none`: bubblewrap needs user namespaces, which the default container profile blocks, so using it in a container takes a host or privileged setup (`--security-opt seccomp=unconfined --security-opt apparmor=unconfined`) and the bundle on a volume. Biber isn't available inside the sandbox.
+The Docker image includes bubblewrap and prlimit but keeps `REFRACT_SANDBOX=none` unless you choose the team profile: in a container the sandbox needs `--security-opt seccomp=unconfined --security-opt apparmor=unconfined --security-opt systempaths=unconfined` and the bundle on a volume, as [Run it for a team](#run-it-for-a-team) shows. Biber isn't available inside the sandbox.
 
 ### Data, backups and upgrades
 
@@ -413,7 +442,8 @@ All settings are environment variables.
 | `REFRACT_MODEL_AGENT` | Default model for the assistant. |
 | `REFRACT_MODEL_QUICK` | Default model for quick actions and citations. |
 | `REFRACT_COMPILE_TIMEOUT` | Seconds per compile. Default 90. |
-| `REFRACT_SANDBOX` | `none` (default) or `bwrap`: run every compile in a [sandbox](#compile-sandbox). Required with `REFRACT_MODE=saas`. |
+| `REFRACT_PROFILE` | `personal` (default) or `team`: people who must not read each other's files. `team` requires sign-in and the [compile sandbox](#compile-sandbox) (it turns `REFRACT_SANDBOX=bwrap` on), and refuses to start without them. See [Run it for a team](#run-it-for-a-team). |
+| `REFRACT_SANDBOX` | `none` (default; `bwrap` with `REFRACT_PROFILE=team`) or `bwrap`: run every compile in a [sandbox](#compile-sandbox). Required with `REFRACT_PROFILE=team` and `REFRACT_MODE=saas`. |
 | `REFRACT_COMPILE_WORKERS` | Compiles running at once, across all accounts. Default: the number of CPUs minus one, at least 1. Each account runs one compile at a time. |
 | `REFRACT_COMPILE_MAX_WAIT` | Seconds a compile waits for its turn before the server answers "busy, try again". Default 20. With `REFRACT_MODE=saas`, this plus `REFRACT_COMPILE_TIMEOUT` must not exceed 95, because a proxy cuts a request with no response at about 100 s. |
 | `REFRACT_FONT_DOWNLOADS` | `0` disables Google Fonts requests; project, TeX bundle and cached fonts still work. Default: downloads enabled. |
