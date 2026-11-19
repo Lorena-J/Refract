@@ -29,7 +29,8 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags=
 FROM alpine:3.24.4 AS synctex
 # Tag 2023.4(TeXLive); the commit hash pins the content.
 ARG SYNCTEX_COMMIT=c3641da45b41cd61f9e625fe722d0a8d54cedaa9
-RUN apk add --no-cache build-base git zlib-dev zlib-static
+# Upgraded first: synctex embeds this zlib statically, where no scanner sees it.
+RUN apk upgrade --no-cache && apk add --no-cache build-base git zlib-dev zlib-static
 RUN git clone https://github.com/jlaurens/synctex.git /src \
  && git -C /src checkout --detach $SYNCTEX_COMMIT
 WORKDIR /src
@@ -56,7 +57,9 @@ RUN case "$TARGETARCH" in \
 # --- runtime ---
 FROM alpine:3.24.4
 # bubblewrap and prlimit (util-linux-misc) run the compile sandbox of the team profile.
-RUN apk add --no-cache ca-certificates git ripgrep bubblewrap util-linux-misc \
+# apk upgrade takes the release branch's security fixes published since the base image.
+RUN apk upgrade --no-cache \
+ && apk add --no-cache ca-certificates git ripgrep bubblewrap util-linux-misc \
  && adduser -D -u 10001 refract \
  && mkdir /data /opt/refract /opt/refract/tex && chown refract:refract /data /opt/refract/tex
 COPY --from=tectonic /usr/local/bin/tectonic /usr/local/bin/

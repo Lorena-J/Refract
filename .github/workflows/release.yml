@@ -122,8 +122,10 @@ jobs:
             refract login --help
           fi
 
+  # Waits for the image's scan, so a blocked image stops the whole release,
+  # and attaches each architecture's scan report.
   release:
-    needs: [build, metadata, cli-smoke]
+    needs: [build, metadata, cli-smoke, image]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7 # for CHANGELOG.md
@@ -174,28 +176,90 @@ jobs:
           git commit -m "Refract $GITHUB_REF_NAME"
           git push
 
+  # Each architecture on its own runner: build, smoke test, push by digest
+  # (no public tag yet), then scan exactly what was pushed. The public tags
+  # move only once every architecture passed (image-publish). A blocked scan
+  # leaves only an untagged digest behind.
   image:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
+    outputs:
+      digest-amd64: ${{ steps.digest.outputs.amd64 }}
+      digest-arm64: ${{ steps.digest.outputs.arm64 }}
     steps:
       - uses: actions/checkout@v7
-      - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
       # Test the image before anyone can pull it: tools, a compile, SyncTeX, the server.
       - name: Build for the smoke test
         uses: docker/build-push-action@v7
         with:
           context: .
-          platforms: linux/amd64
+          platforms: linux/${{ matrix.arch }}
           load: true
           tags: refract:smoke
           build-args: VERSION=${{ github.ref_name }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=image-${{ matrix.arch }}
+          cache-to: type=gha,scope=image-${{ matrix.arch }},mode=max
       - name: Smoke test
-        run: scripts/smoke-docker.sh refract:smoke linux/amd64
+        run: scripts/smoke-docker.sh refract:smoke linux/${{ matrix.arch }}
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/ponytojas/refract
+      - id: push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: VERSION=${{ github.ref_name }}
+          outputs: type=image,name=ghcr.io/ponytojas/refract,push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=image-${{ matrix.arch }}
+      - id: digest
+        run: echo "${{ matrix.arch }}=${{ steps.push.outputs.digest }}" >> "$GITHUB_OUTPUT"
+      - name: Scanners
+        run: |
+          scripts/install-scanners.sh "$RUNNER_TEMP/bin"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      # Blocks the release on Critical findings without a reviewed exception
+      # (security/image-scan-exceptions.json); the report is kept either way.
+      - name: Scan the pushed image
+        run: scripts/scan-image.sh "ghcr.io/ponytojas/refract@${{ steps.push.outputs.digest }}" "$RUNNER_TEMP/scan"
+      - name: Keep the report with the build
+        if: ${{ !cancelled() && steps.push.outputs.digest != '' }}
+        run: |
+          printf '%s\n' "ghcr.io/ponytojas/refract@${{ steps.push.outputs.digest }}" > "$RUNNER_TEMP/scan/image.txt"
+          tar -czf "$RUNNER_TEMP/refract-image-${GITHUB_REF_NAME}-${{ matrix.arch }}-scan.tar.gz" -C "$RUNNER_TEMP/scan" .
+      - uses: actions/upload-artifact@v6
+        if: ${{ !cancelled() && steps.push.outputs.digest != '' }}
+        with:
+          name: image-scan-${{ matrix.arch }}
+          path: ${{ runner.temp }}/refract-image-*-scan.tar.gz
+          retention-days: 90
+
+  # The public tags point at the digests that passed: both architectures in one list.
+  image-publish:
+    needs: image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -210,13 +274,18 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
-      - uses: docker/build-push-action@v7
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: VERSION=${{ github.ref_name }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Tag the scanned digests
+        env:
+          AMD64: ${{ needs.image.outputs.digest-amd64 }}
+          ARM64: ${{ needs.image.outputs.digest-arm64 }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          test -n "$AMD64" && test -n "$ARM64"
+          set --
+          while IFS= read -r tag; do
+            if [ -n "$tag" ]; then set -- "$@" -t "$tag"; fi
+          done <<EOF
+          $TAGS
+          EOF
+          docker buildx imagetools create "$@" "ghcr.io/ponytojas/refract@$AMD64" "ghcr.io/ponytojas/refract@$ARM64"
+          docker buildx imagetools inspect "$(printf '%s\n' "$TAGS" | head -1)"
