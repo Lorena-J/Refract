@@ -139,8 +139,8 @@ func TestOpenOutputRefusesLinksAndReplacements(t *testing.T) {
 	}
 }
 
-// A folder swapped in after the build folder was opened is not where the
-// output is read from: the handle is.
+// A folder swapped for a link after the build folder was opened is not
+// where the output is read from: the handle is, so the original file is read.
 func TestOpenOutputReadsThroughCheckedFolder(t *testing.T) {
 	proj, outside := outputFixture(t)
 	dir, err := openBuildDir(proj, false)
@@ -150,15 +150,15 @@ func TestOpenOutputReadsThroughCheckedFolder(t *testing.T) {
 	defer dir.Close()
 	build := filepath.Join(proj, filepath.FromSlash(BuildDir))
 	if err := os.Rename(build, build+".checked"); err != nil {
-		t.Skipf("can't move an open folder here: %v", err) // Windows
+		t.Skipf("this platform doesn't rename an open folder: %v", err)
 	}
 	symlink(t, outside, build)
 	f, err := openIn(dir, "main.pdf")
 	if err != nil {
-		return // refused: fine on platforms without openat
+		t.Fatalf("the checked folder's file can't be read any more: %v", err)
 	}
 	defer f.Close()
-	if b, _ := io.ReadAll(f); string(b) == secret {
-		t.Fatal("read the file outside the project")
+	if b, err := io.ReadAll(f); err != nil || string(b) != "%PDF built" {
+		t.Fatalf("read %q (%v), want the checked folder's file", b, err)
 	}
 }

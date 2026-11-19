@@ -70,29 +70,33 @@ func TestOutputDownloadsAreConfined(t *testing.T) {
 	(&compileAPI{svc: svc}).routes(&router{mux: mux, acc: &access.Checker{DB: db}})
 	ctx := auth.WithUser(context.Background(), auth.User{ID: "ana"})
 
-	const secret = "SECRET outside the project"
-	outside := t.TempDir()
-	for _, n := range []string{"main.pdf", "main.log"} {
-		if err := os.WriteFile(filepath.Join(outside, n), []byte(secret), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	// project returns a project with main.tex as its main file and its build folder.
-	project := func(t *testing.T) (string, string) {
-		p, err := svc.Create(ctx, "Paper")
+	must := func(t *testing.T, err error) {
+		t.Helper()
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := svc.WriteFile(ctx, p.ID, "main.tex", strings.NewReader(`\documentclass{article}`)); err != nil {
-			t.Fatal(err)
-		}
-		if err := svc.SetMainFile(ctx, p.ID, "main.tex"); err != nil {
-			t.Fatal(err)
-		}
+	}
+	write := func(t *testing.T, p, content string) { t.Helper(); must(t, os.WriteFile(p, []byte(content), 0o644)) }
+	const secret = "SECRET outside the project"
+	outside := t.TempDir()
+	write(t, filepath.Join(outside, "main.pdf"), secret)
+	write(t, filepath.Join(outside, "main.log"), secret)
+	must(t, os.Mkdir(filepath.Join(outside, "build"), 0o755))
+	write(t, filepath.Join(outside, "build", "main.pdf"), secret)
+	write(t, filepath.Join(outside, "build", "main.log"), secret)
+
+	// project makes a project with main.tex as its main file, built: it
+	// returns its id and its build folder holding main.pdf and main.log.
+	project := func(t *testing.T) (string, string) {
+		t.Helper()
+		p, err := svc.Create(ctx, "Paper")
+		must(t, err)
+		must(t, svc.WriteFile(ctx, p.ID, "main.tex", strings.NewReader(`\documentclass{article}`)))
+		must(t, svc.SetMainFile(ctx, p.ID, "main.tex"))
 		build := filepath.Join(svc.Path(p.ID), filepath.FromSlash(compile.BuildDir))
-		if err := os.MkdirAll(build, 0o755); err != nil {
-			t.Fatal(err)
-		}
+		must(t, os.MkdirAll(build, 0o755))
+		write(t, filepath.Join(build, "main.pdf"), "%PDF-1.7 built")
+		write(t, filepath.Join(build, "main.log"), "This is a log")
 		return p.ID, build
 	}
 	get := func(id, route, rng string) *httptest.ResponseRecorder {
@@ -105,15 +109,23 @@ func TestOutputDownloadsAreConfined(t *testing.T) {
 		return w
 	}
 	link := func(t *testing.T, target, at string) {
+		t.Helper()
 		if err := os.Symlink(target, at); err != nil {
 			t.Skipf("can't make symbolic links here: %v", err)
 		}
 	}
+	const notBuilt = `{"error":{"kind":"other","message":"not built yet"}}` + "\n"
+	refused := func(t *testing.T, id string) {
+		t.Helper()
+		for _, route := range []string{"pdf", "log"} {
+			if w := get(id, route, ""); w.Code != http.StatusNotFound || w.Body.String() != notBuilt {
+				t.Errorf("%s: %d %q; want 404 %q", route, w.Code, w.Body, notBuilt)
+			}
+		}
+	}
 
 	t.Run("normal files, ranges and headers", func(t *testing.T) {
-		id, build := project(t)
-		os.WriteFile(filepath.Join(build, "main.pdf"), []byte("%PDF-1.7 built"), 0o644)
-		os.WriteFile(filepath.Join(build, "main.log"), []byte("This is a log"), 0o644)
+		id, _ := project(t)
 		w := get(id, "pdf", "")
 		if w.Code != http.StatusOK || w.Body.String() != "%PDF-1.7 built" {
 			t.Fatalf("pdf: %d %q", w.Code, w.Body)
@@ -135,12 +147,8 @@ func TestOutputDownloadsAreConfined(t *testing.T) {
 
 	t.Run("missing output", func(t *testing.T) {
 		id, build := project(t)
-		os.RemoveAll(filepath.Dir(build))
-		for _, route := range []string{"pdf", "log"} {
-			if w := get(id, route, ""); w.Code != http.StatusNotFound {
-				t.Errorf("%s: %d", route, w.Code)
-			}
-		}
+		must(t, os.RemoveAll(filepath.Dir(build)))
+		refused(t, id)
 		if _, err := os.Stat(filepath.Dir(build)); !os.IsNotExist(err) {
 			t.Error("a download created the build folder")
 		}
@@ -151,34 +159,42 @@ func TestOutputDownloadsAreConfined(t *testing.T) {
 		setup func(t *testing.T, build string)
 	}{
 		{"outputs are links", func(t *testing.T, build string) {
-			link(t, filepath.Join(outside, "main.pdf"), filepath.Join(build, "main.pdf"))
-			link(t, filepath.Join(outside, "main.log"), filepath.Join(build, "main.log"))
+			for _, n := range []string{"main.pdf", "main.log"} {
+				must(t, os.Remove(filepath.Join(build, n)))
+				link(t, filepath.Join(outside, n), filepath.Join(build, n))
+			}
 		}},
 		{"build folder is a link", func(t *testing.T, build string) {
-			os.Remove(build)
+			must(t, os.RemoveAll(build))
 			link(t, outside, build)
 		}},
 		{".refract is a link", func(t *testing.T, build string) {
-			os.MkdirAll(filepath.Join(outside, "build"), 0o755)
-			os.WriteFile(filepath.Join(outside, "build", "main.pdf"), []byte(secret), 0o644)
-			os.WriteFile(filepath.Join(outside, "build", "main.log"), []byte(secret), 0o644)
-			os.RemoveAll(filepath.Dir(build))
+			must(t, os.RemoveAll(filepath.Dir(build)))
 			link(t, outside, filepath.Dir(build))
 		}},
 		{"outputs replaced by folders", func(t *testing.T, build string) {
-			os.Mkdir(filepath.Join(build, "main.pdf"), 0o755)
-			os.Mkdir(filepath.Join(build, "main.log"), 0o755)
+			for _, n := range []string{"main.pdf", "main.log"} {
+				must(t, os.Remove(filepath.Join(build, n)))
+				must(t, os.Mkdir(filepath.Join(build, n), 0o755))
+			}
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			id, build := project(t)
 			tc.setup(t, build)
-			for _, route := range []string{"pdf", "log"} {
-				w := get(id, route, "")
-				if w.Code != http.StatusNotFound || strings.Contains(w.Body.String(), "SECRET") {
-					t.Errorf("%s: %d %q; want 404 without outside data", route, w.Code, w.Body)
-				}
-			}
+			refused(t, id)
 		})
 	}
+
+	// The build folder replaced between two downloads: the second request
+	// checks again and serves nothing from outside.
+	t.Run("build folder replaced after a download", func(t *testing.T) {
+		id, build := project(t)
+		if w := get(id, "pdf", ""); w.Code != http.StatusOK || w.Body.String() != "%PDF-1.7 built" {
+			t.Fatalf("before: %d %q", w.Code, w.Body)
+		}
+		must(t, os.Rename(build, build+".old"))
+		link(t, outside, build)
+		refused(t, id)
+	})
 }

@@ -131,7 +131,11 @@ func (a *compileAPI) output(ext, contentType string) http.HandlerFunc {
 		f, err := compile.OpenOutput(a.svc.Path(p.ID), name)
 		if err != nil {
 			if !errors.Is(err, os.ErrNotExist) {
-				slog.Warn("refused to serve build output", "project", p.ID, "err", err)
+				reason := "output is not a regular file"
+				if errors.Is(err, compile.ErrUnsafeBuildDir) {
+					reason = "build folder is a link or not a folder"
+				}
+				slog.Warn("refused to serve build output", "project", p.ID, "output", ext, "reason", reason)
 			}
 			httpError(w, errors.New("not built yet"), http.StatusNotFound)
 			return

@@ -100,4 +100,6 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Confined build outputs
-        run: go test ./internal/compile/ -run 'OpenOutput|ReadsThroughChecked' -v
+        run: |
+          go test ./internal/compile/ -run 'OpenOutput|ReadsThroughChecked' -v
+          go test ./cmd/refract/ -run 'OutputDownloads' -v

@@ -105,7 +105,7 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 	if t.Sandbox != nil {
 		cmd, err = t.Sandbox.command(runCtx, sandboxJob{
 			Tectonic: cmp.Or(t.Bin, "tectonic"), Args: args, Bundle: t.Bundle, Cache: t.CacheDir,
-			Project: projectDir, OutDir: outDir, Out: out, WorkDir: workDir, Timeout: t.Timeout,
+			Project: projectDir, OutDir: outDir, Out: sandboxDir(out), WorkDir: workDir, Timeout: t.Timeout,
 		})
 		if err != nil {
 			return nil, err
@@ -199,7 +199,7 @@ func OpenOutput(projectDir, name string) (*os.File, error) {
 var testHookOutDirOpened func(projectDir string)
 
 // readIn reads name, a file directly in dir; a symlink is refused.
-func readIn(dir *os.File, name string) ([]byte, error) {
+func readIn(dir *dirHandle, name string) ([]byte, error) {
 	f, err := openIn(dir, name)
 	if err != nil {
 		return nil, err
@@ -209,7 +209,7 @@ func readIn(dir *os.File, name string) ([]byte, error) {
 }
 
 // statIn describes name, a file directly in dir; a symlink is refused.
-func statIn(dir *os.File, name string) (os.FileInfo, error) {
+func statIn(dir *dirHandle, name string) (os.FileInfo, error) {
 	f, err := openIn(dir, name)
 	if err != nil {
 		return nil, err
