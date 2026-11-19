@@ -31,6 +31,7 @@ Notable changes to Refract. The format follows [Keep a Changelog](https://keepac
 
 ### Changed
 
+- Refract listens on `127.0.0.1:8080` by default, so a server started without `REFRACT_ADDR` is reachable from this computer only. Set `REFRACT_ADDR=:8080` to listen on every interface; the container image already does, and the published port decides exposure there.
 - **Compile** and its main file menu moved from the editor's tab row to the preview's header, beside the compile status.
 - Changing the password moved from Settings → General to the new Settings → Account.
 - Until an address is confirmed, an account that signed up can sign in but can't create or import projects. Existing accounts, and those added with `refract users add`, count as confirmed.

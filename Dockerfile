@@ -60,7 +60,9 @@ COPY --from=tectonic /usr/local/bin/tectonic /usr/local/bin/
 COPY --from=synctex /out/synctex /usr/local/bin/
 COPY --from=go /out/refract /usr/local/bin/
 # The bundle is pinned for reproducible builds (the relay URL is a moving redirect).
-ENV REFRACT_DATA_DIR=/data \
+# Every interface inside the container: the published port (-p) decides exposure.
+ENV REFRACT_ADDR=:8080 \
+    REFRACT_DATA_DIR=/data \
     TECTONIC_CACHE_DIR=/data/tectonic-cache \
     REFRACT_TECTONIC_BUNDLE=https://data1b.fullyjustified.net/tlextras-2022.0r0.tar
 USER refract

@@ -199,3 +199,24 @@ func TestHostPolicyServer(t *testing.T) {
 		}
 	}
 }
+
+// TestDefaultAddrIsLoopback: refract without REFRACT_ADDR serves this
+// computer only, and so starts even without sign-in or allowed hosts.
+func TestDefaultAddrIsLoopback(t *testing.T) {
+	host, port, err := net.SplitHostPort(defaultAddr)
+	if err != nil || port != "8080" {
+		t.Fatalf("defaultAddr = %q", defaultAddr)
+	}
+	ln, err := net.Listen("tcp", net.JoinHostPort(host, "0")) // same interface, any free port
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	if ip := ln.Addr().(*net.TCPAddr).IP; !ip.IsLoopback() {
+		t.Fatalf("default listener bound to %s", ip)
+	}
+	p := policy(t, ln.Addr(), "none", "", "")
+	if p.any {
+		t.Fatal("the default listener accepts any host name")
+	}
+}

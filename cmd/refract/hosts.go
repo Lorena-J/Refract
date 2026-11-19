@@ -11,6 +11,11 @@ import (
 	"time"
 )
 
+// defaultAddr is where Refract listens without REFRACT_ADDR: this computer
+// only. The container image sets REFRACT_ADDR=:8080, where the published
+// port decides who can connect.
+const defaultAddr = "127.0.0.1:8080"
+
 // hostPolicy says which Host headers the server answers. A page on another
 // domain can make that domain resolve to 127.0.0.1 (DNS rebinding); the
 // browser then treats the local server as that domain's own and lets the page

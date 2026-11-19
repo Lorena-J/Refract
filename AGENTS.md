@@ -62,7 +62,7 @@ cd Refract
 make dev
 ```
 
-`make dev` installs the web dependencies on first run, creates a development key in `data/dev.key`, and starts the API on `:8080` and Vite on `:5173` with `REFRACT_AUTH=none` and data in `./data`. Leave it running in its own terminal.
+`make dev` installs the web dependencies on first run, creates a development key in `data/dev.key`, and starts the API on `127.0.0.1:8080` and Vite on `:5173` with `REFRACT_AUTH=none` and data in `./data`. Leave it running in its own terminal.
 
 Verify: `curl -s http://127.0.0.1:8080/healthz` prints `ok`, and <http://localhost:5173> shows the project list. Open that address (5173: Vite serves the app and forwards `/api` to 8080).
 
