@@ -10,8 +10,10 @@ import (
 	"net"
 	"net/netip"
 	"net/url"
+	"os"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -46,8 +48,10 @@ var (
 )
 
 // remoteOrigin is the scheme, host and port a remote URL connects to, in one
-// form: https://Example.com/x and https://example.com:443/y are the same
-// origin. It is empty for a URL that doesn't parse.
+// form, as a browser's URL parser writes it: https://Example.com/x,
+// https://example.com:0443/y and https://example.com:443/z are the same
+// origin, and so are two spellings of one IPv6 address. It is empty for a URL
+// that doesn't parse, or whose host checkRemote refuses (non-ASCII, zones).
 func remoteOrigin(raw string) string {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil {
@@ -58,14 +62,38 @@ func remoteOrigin(raw string) string {
 		return "file://"
 	}
 	host := strings.ToLower(u.Hostname())
-	if host == "" {
+	if host == "" || !asciiHost(host) {
 		return ""
 	}
+	if a, err := netip.ParseAddr(host); err == nil {
+		if a.Zone() != "" {
+			return ""
+		}
+		host = a.String()
+	}
 	port := u.Port()
+	if port != "" {
+		n, err := strconv.ParseUint(port, 10, 16)
+		if err != nil {
+			return ""
+		}
+		port = strconv.FormatUint(n, 10)
+	}
 	if port == "" && scheme == "https" {
 		port = "443"
 	}
 	return scheme + "://" + net.JoinHostPort(host, port)
+}
+
+// asciiHost: an international domain name must be written in its xn-- form,
+// so that the server and the browser compare the same name.
+func asciiHost(h string) bool {
+	for _, c := range h {
+		if c > 0x7e || c <= 0x20 {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Service) githubOrigin() string {
@@ -134,6 +162,9 @@ func checkRemote(r Remote) error {
 	}
 	if u.Scheme != "https" && !(allowFileRemotes && u.Scheme == "file") || u.User != nil || strings.ContainsAny(r.URL, " \n\t") {
 		return ErrBadRemote
+	}
+	if u.Scheme == "https" && (remoteOrigin(r.URL) == "" || u.RawQuery != "" || u.Fragment != "") {
+		return ErrBadRemote // a port out of range, an IPv6 zone, a non-ASCII host, a query
 	}
 	if !branchName.MatchString(r.Branch) || strings.Contains(r.Branch, "..") {
 		return fmt.Errorf("%q is not a valid branch name", r.Branch)
@@ -260,16 +291,80 @@ func (s *Service) remoteArgs(r *Remote, pin []string) (opts, env []string, err e
 		opts = append(opts, "-c", "protocol.file.allow=always")
 	}
 	if r.Token != "" {
-		if !slices.Contains(opts, "http.followRedirects=false") {
-			opts = append(opts, "-c", "http.followRedirects=false")
+		// The header is set for the remote's origin only (git's http.<url>.*
+		// matching), so a URL git rewrote, or redirected to, never gets it;
+		// and redirects aren't followed at all, for any URL.
+		scope := originURL(r.URL)
+		for _, o := range []string{"http.followRedirects=false", "http." + scope + ".followRedirects=false"} {
+			if !slices.Contains(opts, o) {
+				opts = append(opts, "-c", o)
+			}
 		}
-		basic := base64.StdEncoding.EncodeToString([]byte("x-access-token:" + r.Token))
-		env = []string{"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=http.extraHeader", "GIT_CONFIG_VALUE_0=Authorization: Basic " + basic}
+		env = []string{"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=http." + scope + ".extraHeader", "GIT_CONFIG_VALUE_0=Authorization: Basic " + basicAuth(r.Token)}
 	}
 	if s.PublicRemotes {
 		env = append(env, "NO_PROXY=*", "no_proxy=*")
 	}
 	return opts, env, nil
+}
+
+// originURL is the root of r's origin as written in the URL (scheme://host[:port]/),
+// the prefix git matches http.<url>.* settings against.
+func originURL(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host + "/"
+}
+
+func basicAuth(token string) string {
+	return base64.StdEncoding.EncodeToString([]byte("x-access-token:" + token))
+}
+
+// redact removes a token from git's output, in clear and as the Basic
+// credential it travels in.
+func redact(msg, token string) string {
+	if token == "" {
+		return msg
+	}
+	return strings.NewReplacer(basicAuth(token), "***", token, "***").Replace(msg)
+}
+
+// networkEnv is the environment of git network commands: the server's,
+// without anything that configures git (GIT_CONFIG_*, GIT_TRACE*, GIT_SSL_NO_VERIFY,
+// GIT_PROXY_*…), which could route the request elsewhere or print the header.
+// Only the locations of git's own programs and of extra CA certificates stay.
+func networkEnv() []string {
+	keep := []string{"GIT_EXEC_PATH", "GIT_SSL_CAINFO", "GIT_SSL_CAPATH"}
+	var env []string
+	for _, e := range os.Environ() {
+		name, _, _ := strings.Cut(e, "=")
+		if strings.HasPrefix(strings.ToUpper(name), "GIT_") && !slices.Contains(keep, name) {
+			continue
+		}
+		env = append(env, e)
+	}
+	return append(env, "GIT_TRACE_REDACT=1")
+}
+
+// ErrRepoConfig: the project's own git config has settings that change where
+// or how git connects. Refract never writes them; refuse rather than guess.
+var ErrRepoConfig = errors.New("the project's git configuration has url, http, include or credential settings, which Refract doesn't allow for remotes")
+
+func checkRepoConfig(ctx context.Context, dir string) error {
+	out, err := git(ctx, dir, "config", "--local", "--list", "--name-only")
+	if err != nil {
+		return err
+	}
+	for _, name := range strings.Fields(strings.ToLower(out)) {
+		for _, p := range []string{"url.", "http.", "include.", "includeif.", "credential."} {
+			if strings.HasPrefix(name, p) {
+				return ErrRepoConfig
+			}
+		}
+	}
+	return nil
 }
 
 // gitRemote runs a network git command against r. The token travels in an
@@ -286,9 +381,12 @@ func (s *Service) gitRemote(ctx context.Context, dir string, r *Remote, args ...
 	if err != nil {
 		return "", err
 	}
-	out, err := gitEnv(ctx, dir, env, append(opts, args...)...)
+	if err := checkRepoConfig(ctx, dir); err != nil {
+		return "", err
+	}
+	out, err := runGit(ctx, dir, networkEnv(), env, append(opts, args...)...)
 	if err != nil && r.Token != "" {
-		err = errors.New(strings.ReplaceAll(err.Error(), r.Token, "***")) // never echo the token
+		err = errors.New(redact(err.Error(), r.Token)) // never echo the token
 	}
 	return out, err
 }

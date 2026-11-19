@@ -1,23 +1,31 @@
 // Run with: node --test web/src/lib/remote.test.ts
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { remoteHost, remoteOrigin, tokenLeftBehind } from './remote.ts'
 
-test('origins compare scheme, host and port, not path or case', () => {
-  assert.equal(remoteOrigin('https://GitHub.com/a/b.git'), 'https://github.com:443')
-  assert.equal(remoteOrigin('https://github.com:443/c'), 'https://github.com:443')
-  assert.equal(remoteOrigin('https://git.lab.org:8443/x.git'), 'https://git.lab.org:8443')
-  assert.equal(remoteOrigin('git.lab.org/x'), '')
-  assert.equal(remoteOrigin(''), '')
+// The same pairs the server is tested with (internal/projects/remote_origin_test.go).
+const cases: { same: [string, string][]; different: [string, string][] } = JSON.parse(
+  readFileSync(new URL('./remote-origins.json', import.meta.url), 'utf8'),
+)
+
+test('agrees with the server on which URLs share an origin', () => {
+  for (const [a, b] of cases.same) {
+    assert.notEqual(remoteOrigin(a), '', a)
+    assert.equal(remoteOrigin(a), remoteOrigin(b), `${a} ~ ${b}`)
+    assert.equal(tokenLeftBehind(a, b), false, `${a} → ${b}`)
+  }
+  for (const [a, b] of cases.different) {
+    assert.notEqual(remoteOrigin(a), remoteOrigin(b), `${a} ≁ ${b}`)
+    assert.equal(tokenLeftBehind(a, b), true, `${a} → ${b}`)
+  }
 })
 
-test('a token is left behind on another host or port only', () => {
+test('no warning for something that is not an https URL yet', () => {
   const saved = 'https://git.lab.org/a/b.git'
-  assert.equal(tokenLeftBehind(saved, 'https://git.lab.org/a/c.git'), false)
-  assert.equal(tokenLeftBehind(saved, 'https://GIT.LAB.ORG:443/a/b.git'), false)
-  assert.equal(tokenLeftBehind(saved, 'https://git.lab.org:8443/a/b.git'), true)
-  assert.equal(tokenLeftBehind(saved, 'https://git.lab.org.evil.example/a/b.git'), true)
-  assert.equal(tokenLeftBehind(saved, 'https://evil.example/a/b.git'), true)
+  for (const typed of ['', 'git.lab.org/x', 'https://', 'http://evil.example/a.git', 'ssh://evil.example/a.git']) {
+    assert.equal(tokenLeftBehind(saved, typed), false, typed)
+  }
 })
 
 test('names the host for the person', () => {

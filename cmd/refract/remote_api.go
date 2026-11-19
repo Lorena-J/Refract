@@ -36,6 +36,8 @@ type syncStatus struct {
 	At    time.Time `json:"at"`
 	Auto  bool      `json:"auto"`
 	Error string    `json:"error,omitempty"`
+	// ErrorKind, when set, names an error the web app explains itself.
+	ErrorKind string `json:"error_kind,omitempty"`
 }
 
 func (a *remoteAPI) routes(rt *router) {
@@ -51,10 +53,24 @@ func (a *remoteAPI) routes(rt *router) {
 	rt.user("POST /api/github/repos", a.githubCreate)
 }
 
+// remoteErrorKind names the remote errors the web app explains in the
+// person's language; "" for the others.
+func remoteErrorKind(err error) string {
+	switch {
+	case errors.Is(err, projects.ErrTokenOrigin):
+		return "remote_token_origin"
+	case errors.Is(err, projects.ErrGitHubRemote):
+		return "remote_github_origin"
+	case errors.Is(err, projects.ErrRepoConfig):
+		return "remote_repo_config"
+	}
+	return ""
+}
+
 func (a *remoteAPI) record(id, op string, auto bool, err error) syncStatus {
 	st := syncStatus{Op: op, At: time.Now(), Auto: auto}
 	if err != nil {
-		st.Error = err.Error()
+		st.Error, st.ErrorKind = err.Error(), remoteErrorKind(err)
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()

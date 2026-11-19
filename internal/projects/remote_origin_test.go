@@ -2,6 +2,7 @@ package projects
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -17,15 +18,48 @@ func TestRemoteOrigin(t *testing.T) {
 		"https://github.com/a/b.git":         "https://github.com:443",
 		"https://GitHub.COM:443/c/d":         "https://github.com:443",
 		"https://git.lab.org:8443/x.git":     "https://git.lab.org:8443",
-		"https://[2001:db8::1]/x.git":        "https://[2001:db8::1]:443",
+		"https://git.lab.org:0443/x.git":     "https://git.lab.org:443",
+		"https://[2001:db8:0::1]/x.git":      "https://[2001:db8::1]:443",
 		"file:///tmp/remote.git":             "file://",
 		"https:///no-host":                   "",
+		"https://git.lab.org:99999/x":        "",
+		"https://[fe80::1%25en0]/x":          "",
+		"https://bücher.example/x":           "",
 		"https://git.lab.org.evil.example/x": "https://git.lab.org.evil.example:443",
 		" https://git.lab.org/padded.git\n":  "https://git.lab.org:443",
 	} {
 		if got := remoteOrigin(raw); got != want {
 			t.Errorf("remoteOrigin(%q) = %q, want %q", raw, got, want)
 		}
+	}
+}
+
+// The web app decides when to warn with the same pairs (web/src/lib/remote.test.ts).
+func TestRemoteOriginMatchesTheWebApp(t *testing.T) {
+	b, err := os.ReadFile("../../web/src/lib/remote-origins.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases struct{ Same, Different [][2]string }
+	if err := json.Unmarshal(b, &cases); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range cases.Same {
+		if a, b := remoteOrigin(c[0]), remoteOrigin(c[1]); a == "" || a != b {
+			t.Errorf("%q and %q: %q, %q, want the same origin", c[0], c[1], a, b)
+		}
+	}
+	for _, c := range cases.Different {
+		if a, b := remoteOrigin(c[0]), remoteOrigin(c[1]); a == "" || a == b {
+			t.Errorf("%q and %q: %q, %q, want different origins", c[0], c[1], a, b)
+		}
+	}
+}
+
+func TestRedact(t *testing.T) {
+	msg := "fatal: tok.lab > Authorization: Basic " + basicAuth("tok.lab") + " <"
+	if got := redact(msg, "tok.lab"); strings.Contains(got, "tok.lab") || strings.Contains(got, basicAuth("tok.lab")) {
+		t.Errorf("redact = %q", got)
 	}
 }
 

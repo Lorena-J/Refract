@@ -68,3 +68,40 @@ func TestDeviceFlowAndRepos(t *testing.T) {
 		t.Fatalf("create = %+v, %v", r, err)
 	}
 }
+
+// The token never follows a redirect to another origin, not even another port
+// of the same host, which Go's default policy would allow.
+func TestTokenStaysOnTheAPIOrigin(t *testing.T) {
+	var leaked string
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		leaked = r.Header.Get("Authorization")
+		w.Write([]byte(`[]`))
+	}))
+	defer other.Close()
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/user/repos":
+			http.Redirect(w, r, other.URL+"/user/repos", http.StatusFound) // same host, another port
+		case "/moved":
+			http.Redirect(w, r, "/user", http.StatusMovedPermanently)
+		case "/user":
+			if r.Header.Get("Authorization") != "Bearer gho_x" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			w.Write([]byte(`{"login":"octo"}`))
+		}
+	}))
+	defer api.Close()
+	c := &Client{HTTP: api.Client(), API: api.URL}
+	if _, err := c.Repos(context.Background(), "gho_x"); err == nil {
+		t.Error("followed a redirect to another origin")
+	}
+	if leaked != "" {
+		t.Errorf("another origin got %q", leaked)
+	}
+	var u struct{ Login string }
+	if err := c.api(context.Background(), "gho_x", "GET", "/moved", nil, &u); err != nil || u.Login != "octo" {
+		t.Errorf("same-origin redirect: %+v, %v", u, err)
+	}
+}

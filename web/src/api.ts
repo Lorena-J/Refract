@@ -142,6 +142,18 @@ export function describe(e: ApiError): string {
       return t('This model is not available. Pick another one.')
     case 'project_trashed':
       return t('This project is in the trash. Restore it to keep working.')
+    case 'remote_token_origin':
+      return t(
+        'The remote is on another host now, and the saved access token only works with the old one. Type a token for the new host, or save without one.',
+      )
+    case 'remote_github_origin':
+      return t(
+        'A remote that uses your GitHub account must be a repository on GitHub. Choose one, or use another remote with its own token.',
+      )
+    case 'remote_repo_config':
+      return t(
+        "This project's git configuration has url, http, include or credential settings, which Refract doesn't allow for remotes.",
+      )
     case 'project_busy':
       return t('The assistant is working on this project. Stop it or wait until it finishes, then try again.')
     case 'over_projects':

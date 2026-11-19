@@ -265,6 +265,12 @@ export default {
   'Deleted for good in {n} days': 'Se elimina para siempre en {n} días',
   'Deleted on {date}': 'Eliminado el {date}',
   'The trash is empty': 'La papelera está vacía',
+  'The remote is on another host now, and the saved access token only works with the old one. Type a token for the new host, or save without one.':
+    'El remoto está ahora en otro servidor, y el token de acceso guardado solo sirve para el anterior. Escribe un token para el nuevo servidor, o guarda sin token.',
+  'A remote that uses your GitHub account must be a repository on GitHub. Choose one, or use another remote with its own token.':
+    'Un remoto que usa tu cuenta de GitHub tiene que ser un repositorio de GitHub. Elige uno, o usa otro remoto con su propio token.',
+  "This project's git configuration has url, http, include or credential settings, which Refract doesn't allow for remotes.":
+    'La configuración git de este proyecto tiene ajustes url, http, include o credential, que Refract no permite para los remotos.',
   'The assistant is working on this project. Stop it or wait until it finishes, then try again.':
     'El asistente está trabajando en este proyecto. Deténlo o espera a que termine y vuelve a intentarlo.',
   'Your plan has reached its project limit, including projects in the trash. Delete one forever from the trash to add another.':

@@ -1,0 +1,22 @@
+{
+  "_comment": "Remote URL pairs that the server (internal/projects) and the web app (web/src/lib/remote.ts) must both treat as the same origin, or as different ones. Both test suites read this file.",
+  "same": [
+    ["https://git.example.test/a.git", "https://git.example.test/b/c.git"],
+    ["https://GIT.Example.TEST/a.git", "https://git.example.test/a.git"],
+    ["https://git.example.test/a.git", "https://git.example.test:443/a.git"],
+    ["https://git.example.test:0443/a.git", "https://git.example.test/b.git"],
+    ["https://git.example.test:08443/a.git", "https://git.example.test:8443/a.git"],
+    ["https://[2001:db8:0:0:0:0:0:1]/a.git", "https://[2001:db8::1]/b.git"],
+    ["https://[2001:DB8::1]:443/a.git", "https://[2001:db8::1]/a.git"],
+    ["https://xn--bcher-kva.example/a.git", "https://XN--BCHER-KVA.example/b.git"],
+    [" https://git.example.test/a.git\n", "https://git.example.test/a.git"]
+  ],
+  "different": [
+    ["https://git.example.test/a.git", "https://evil.example/a.git"],
+    ["https://git.example.test/a.git", "https://git.example.test:8443/a.git"],
+    ["https://git.example.test/a.git", "https://git.example.test.evil.example/a.git"],
+    ["https://git.example.test/a.git", "https://sub.git.example.test/a.git"],
+    ["https://[2001:db8::1]/a.git", "https://[2001:db8::2]/a.git"],
+    ["https://127.0.0.1/a.git", "https://[::ffff:127.0.0.1]/a.git"]
+  ]
+}
