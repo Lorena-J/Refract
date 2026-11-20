@@ -148,11 +148,14 @@ Try Refract on your own computer in a few minutes. You need [Docker](https://doc
 > **Using an AI coding agent?** Ask it to follow [AGENTS.md](AGENTS.md): a step-by-step guide for agents to get Refract running for you, whether you want to try it, work on the code or put it on a server.
 
 ```sh
+openssl rand -base64 32 > refract.key && chmod 600 refract.key   # once: keep this file
 docker run -d --name refract -p 127.0.0.1:8080:8080 -v refract-data:/data \
-  -e REFRACT_SECRET_KEY="$(openssl rand -base64 32)" \
+  -e REFRACT_SECRET_KEY="$(cat refract.key)" \
   -e REFRACT_AUTH=none \
   ghcr.io/ponytojas/refract
 ```
+
+The key encrypts the credentials you'll save (AI keys, git tokens), so use the same `refract.key` whenever you start the container again: with another key they can't be read back.
 
 Open <http://localhost:8080>, create a project or drop a Prism .zip on the page, and press <kbd>⌘↵</kbd> to compile. The first compile downloads the LaTeX packages it needs, so it takes longer than the next ones.
 
@@ -167,10 +170,12 @@ Refract is a single container: the Go server with the web app built in, Tectonic
 ```sh
 docker run -d --name refract --restart unless-stopped --stop-timeout 30 \
   -p 127.0.0.1:8080:8080 -v refract-data:/data \
-  -e REFRACT_SECRET_KEY="<the output of: openssl rand -base64 32>" \
+  -e REFRACT_SECRET_KEY="$(cat refract.key)" \
   -e REFRACT_AUTH=builtin \
   ghcr.io/ponytojas/refract:0.1
 ```
+
+`refract.key` holds the secret key: create it once with `openssl rand -base64 32 > refract.key && chmod 600 refract.key`, and keep it with your backups.
 
 Each release publishes the image for amd64 and arm64 as `latest`, as `0.1` (the newest 0.1.x, which only gets fixes) and as the exact version, such as `0.1.0`. To build it yourself instead, run `docker build -t refract .` in this repository, or `make docker`, which also tests it for both architectures.
 
@@ -193,7 +198,7 @@ docker run --rm -v refract-tex:/opt/refract/tex --entrypoint refract-prepare-bun
 docker run -d --name refract --restart unless-stopped --stop-timeout 30 \
   -p 127.0.0.1:8080:8080 -v refract-data:/data -v refract-tex:/opt/refract/tex:ro \
   --security-opt seccomp=unconfined --security-opt apparmor=unconfined --security-opt systempaths=unconfined \
-  -e REFRACT_SECRET_KEY="<the output of: openssl rand -base64 32>" \
+  -e REFRACT_SECRET_KEY="$(cat refract.key)" \
   -e REFRACT_PROFILE=team -e REFRACT_AUTH=builtin \
   -e REFRACT_TECTONIC_BUNDLE=/opt/refract/tex/bundle -e TECTONIC_CACHE_DIR=/opt/refract/tex/cache \
   ghcr.io/ponytojas/refract:0.1
@@ -203,7 +208,33 @@ Then create the accounts (`docker exec refract refract users add <email>`), put 
 
 What the three `--security-opt` do, and why: bubblewrap builds each compile's sandbox from Linux user namespaces, which Docker's default seccomp and AppArmor profiles block, and mounts its own `/proc`, which Docker's masked `/proc` paths (`systempaths`) prevent. They loosen the container's own confinement, not the sandbox's: each compile still sees only its project, the bundle and a read-only system, with no network. Refract itself still runs as an unprivileged user (uid 10001). If your host restricts user namespaces (Ubuntu 24.04 and later: `kernel.apparmor_restrict_unprivileged_userns=1`), the startup check fails with a `uid map` or `Operation not permitted` error: see [Compile sandbox](#compile-sandbox).
 
+To run it for a team without Docker, see [Run it without Docker](#run-it-without-docker).
+
 `scripts/smoke-team.sh <image>` checks a deployment like this one end to end: the refusals, a compile, and that one account's document can't see the database or another account's project (while the same probe sees both without the profile). Biber isn't available in the sandbox: bibliographies need BibTeX (`natbib`, or `biblatex` with `backend=bibtex`).
+
+### Run it without Docker
+
+The `refract` executable is the whole server: the release's `.deb` (Debian, Ubuntu) or `.tar.gz` (other Linux) has it, and it needs Tectonic, SyncTeX, git and ripgrep beside it. These steps set up a team server on Debian or Ubuntu with systemd, with the [team profile](#run-it-for-a-team)'s isolation. Run them as root, from a clone of this repository at the release's tag (for the scripts):
+
+```sh
+# 1. Refract, and the tools it runs.
+apt install ./refract_<version>_<arch>.deb git ripgrep bubblewrap curl build-essential zlib1g-dev
+scripts/install-tex-tools.sh /usr/local/bin          # Tectonic and SyncTeX, at the image's versions
+
+# 2. Its user, the offline TeX bundle (2.7 GB download) and the secret key.
+useradd --system --home-dir /var/lib/refract --shell /usr/sbin/nologin refract
+packaging/server/prepare-bundle.sh /opt/refract/tex
+mkdir -p /etc/refract && openssl rand -base64 32 > /etc/refract/refract.key && chmod 600 /etc/refract/refract.key
+
+# 3. The service: set REFRACT_PUBLIC_URL in the unit first.
+cp packaging/server/refract.service /etc/systemd/system/ && systemctl daemon-reload
+systemctl enable --now refract && journalctl -u refract -n 20
+
+# 4. Accounts, with the server's key and data folder (the key stays out of the command line).
+sh -c 'REFRACT_SECRET_KEY="$(cat /etc/refract/refract.key)" REFRACT_DATA_DIR=/var/lib/refract exec runuser -u refract -- refract users add you@example.com'
+```
+
+Then put it [behind a reverse proxy](#behind-a-reverse-proxy) with https: the unit listens on `127.0.0.1:8080` only. The unit keeps the data in `/var/lib/refract` and gives the key to the service through systemd's credentials, so it is never in the unit or a process listing. If Refract refuses to start, the journal says why: [Compile sandbox](#compile-sandbox) lists the usual causes (user namespaces on Ubuntu 24.04 and later, the bundle's permissions). For a single person on their own server, the sandbox is optional: remove the `REFRACT_PROFILE`, `REFRACT_TECTONIC_BUNDLE` and `TECTONIC_CACHE_DIR` lines from the unit and skip the bundle (Tectonic then downloads packages as it needs them).
 
 ### Choose how people sign in
 
@@ -296,7 +327,7 @@ sudo apt install bubblewrap                       # and util-linux's prlimit, al
 packaging/server/prepare-bundle.sh /opt/refract/tex   # downloads 2.7 GB, needs 3 GB; tectonic on the PATH
 ```
 
-then set `REFRACT_SANDBOX=bwrap`, `REFRACT_TECTONIC_BUNDLE=/opt/refract/tex/bundle` and `TECTONIC_CACHE_DIR=/opt/refract/tex/cache`. Run the script again when Tectonic or the bundle changes. [`packaging/server/refract.service`](packaging/server/refract.service) is a systemd unit for the hosted service, with the secret key given through `LoadCredential=`; its comments list what to prepare. The unit leaves out `RestrictNamespaces=`, `PrivateUsers=`, `ProtectKernelTunables=`, `ProtectProc=` and `ProcSubset=` because bubblewrap needs user namespaces and its own `/proc`.
+then set `REFRACT_SANDBOX=bwrap`, `REFRACT_TECTONIC_BUNDLE=/opt/refract/tex/bundle` and `TECTONIC_CACHE_DIR=/opt/refract/tex/cache`. Run the script again when Tectonic or the bundle changes. [`packaging/server/refract.service`](packaging/server/refract.service) is a systemd unit for a team server (see [Run it without Docker](#run-it-without-docker)), with the secret key given through `LoadCredential=`; its comments list what to prepare. The unit leaves out `RestrictNamespaces=`, `PrivateUsers=`, `ProtectKernelTunables=`, `ProtectProc=` and `ProcSubset=` because bubblewrap needs user namespaces and its own `/proc`.
 
 The sandbox needs bubblewrap 0.5 or later (for `--bind-fd`). The process limit needs Linux 5.14 or later (which counts processes per user namespace) and a `bwrap` that is not setuid; Refract refuses to start with a setuid one. Fontconfig's configuration (`/etc/fonts`) and the loader cache (`/etc/ld.so.cache`) are mounted read-only; nothing else of `/etc` is.
 
