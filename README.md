@@ -195,7 +195,7 @@ docker run -d --name refract --restart unless-stopped --stop-timeout 30 \
   -e REFRACT_SECRET_KEY="$(cat refract.key)" \
   -e REFRACT_AUTH=builtin \
   -e REFRACT_PUBLIC_URL=https://refract.example.com \
-  ghcr.io/ponytojas/refract:0.1
+  ghcr.io/ponytojas/refract:0.2
 ```
 
 `refract.key` holds the secret key: create it once with `openssl rand -base64 32 > refract.key && chmod 600 refract.key`, and keep it with your backups.
@@ -216,7 +216,7 @@ The sandbox has no network, so Tectonic needs the whole TeX bundle on disk (abou
 ```sh
 # 1. The offline TeX bundle, into its own volume (downloads 2.7 GB).
 docker run --rm -v refract-tex:/opt/refract/tex --entrypoint refract-prepare-bundle \
-  ghcr.io/ponytojas/refract:0.1 /opt/refract/tex
+  ghcr.io/ponytojas/refract:0.2 /opt/refract/tex
 
 # 2. Refract, with the bundle read-only and the options bubblewrap needs.
 docker run -d --name refract --restart unless-stopped --stop-timeout 30 \
@@ -225,7 +225,7 @@ docker run -d --name refract --restart unless-stopped --stop-timeout 30 \
   -e REFRACT_SECRET_KEY="$(cat refract.key)" \
   -e REFRACT_PROFILE=team -e REFRACT_AUTH=builtin \
   -e REFRACT_TECTONIC_BUNDLE=/opt/refract/tex/bundle -e TECTONIC_CACHE_DIR=/opt/refract/tex/cache \
-  ghcr.io/ponytojas/refract:0.1
+  ghcr.io/ponytojas/refract:0.2
 ```
 
 Then create the accounts (`docker exec refract refract users add <email>`), put it [behind a reverse proxy](#behind-a-reverse-proxy) with https, and [back it up](#data-backups-and-upgrades) with the key. When you upgrade to an image with another Tectonic or bundle, prepare a new volume.
@@ -388,7 +388,7 @@ Everything lives in the `/data` volume:
 
 To back up, stop the container, copy the volume, and keep `REFRACT_SECRET_KEY` with the copy.
 
-To upgrade, pull the new image (`docker pull ghcr.io/ponytojas/refract:0.1`, or a newer version's tag) and start a new container on the same volume. Database changes are applied automatically at startup.
+To upgrade, pull the new image (`docker pull ghcr.io/ponytojas/refract:0.2`, or a newer version's tag) and start a new container on the same volume. Database changes are applied automatically at startup.
 
 To go back to an older version after an upgrade:
 

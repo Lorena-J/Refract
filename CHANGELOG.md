@@ -4,10 +4,14 @@ Notable changes to Refract. The format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-20
+
 ### Added
 
 - `refract local` runs Refract on your own computer with no configuration: data in the per-user data folder (`REFRACT_DATA_DIR` still overrides it), a secret key created on first run as an owner-only `secret.key` in that folder and reused after (`REFRACT_SECRET_KEY` takes precedence), no sign-in, listening on loopback only (127.0.0.1:8080 by default, or a free port when it is taken; `--port`, or `REFRACT_ADDR` on 127.0.0.1 or ::1, chooses another), and it opens the browser once the server answers (`--no-browser` to skip). Logs are readable lines on a terminal.
 - Citation checks scoped to the selected main document, its included sources and loaded bibliographies, for missing keys, duplicate or incomplete bibliography entries, unused entries and optional online DOI verification; source metadata corrections from doi.org/arXiv are shown as editor proposals, with Spanish translations.
+- A word count for the current source or PDF selection (toggle **Word count** in the account menu) and word limits for sections, so you can keep each one within its budget.
+- `REFRACT_PROFILE=team` for people who must not read each other's files: it requires sign-in, runs every compile in the compile sandbox and refuses to start, saying what is missing, when it can't isolate them. The default, `REFRACT_PROFILE=personal`, warns at startup when several accounts compile without isolation.
 - Document and hierarchical section word counts in the outline, following included files and the existing counter/title preferences.
 - PDF search with highlighted matches, previous/next navigation, keyboard controls and parallel page indexing. Reading and zooming preserve your position, recompiling keeps the selected match number, and search buttons work with the keyboard.
 - Return links beside cited PDF bibliography entries, with a choice of occurrences for references cited multiple times.
@@ -59,6 +63,8 @@ Notable changes to Refract. The format follows [Keep a Changelog](https://keepac
 - Sign-up, password reset and resending a confirmation do their account work after answering, so the request takes the same path for addresses with and without an account.
 - With `REFRACT_MODE=saas`, Refract refuses to start without `REFRACT_SANDBOX=bwrap`, or if `REFRACT_COMPILE_MAX_WAIT` plus `REFRACT_COMPILE_TIMEOUT` is over 95 s.
 - Every API route that touches a project, chat, turn or file goes through one authorization check, declared with the route; without a signed-in user nothing is reachable. Auto-push and assistant turns check again, as the user who started them, before they write. Projects left without an owner after the first account was created stay unreachable.
+- A saved git token is only sent to the host and port it was saved for (changing the remote to another host asks for a new one), the GitHub account's token only to GitHub, and git follows no redirect while sending a token: a renamed or moved repository needs its new URL. Git network commands run without the server's `GIT_*` environment, and a project whose own git configuration (worktree and included files too) has `url`, `http`, `include` or `credential` settings is refused.
+- Release images are pushed by digest, scanned for vulnerabilities (Syft and Grype) and only then tagged; a Critical finding without a reviewed exception stops the release. Each release carries the scan report and SBOMs.
 - A failed request to OpenAlex no longer includes the server's OpenAlex key in the error shown to the user or sent to the assistant's model.
 - Built with Go 1.27.4, which fixes a crash of the HTTP server in Go's `net/http` (GO-2026-6859).
 - With `REFRACT_MODE=saas`, Refract refuses to start without sign-in (`REFRACT_AUTH=none`) or without an https `REFRACT_PUBLIC_URL`.
@@ -129,7 +135,8 @@ The first release: a self-hosted LaTeX workspace with an AI assistant.
 - `refract` binaries for macOS, Linux and Windows (amd64 and arm64).
 - A Docker image for amd64 and arm64 on GitHub Container Registry, with Tectonic and SyncTeX included.
 
-[Unreleased]: https://github.com/ponytojas/Refract/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/ponytojas/Refract/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/ponytojas/Refract/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/ponytojas/Refract/releases/tag/v0.1.2
 [0.1.1]: https://github.com/ponytojas/Refract/releases/tag/v0.1.1
 [0.1.0]: https://github.com/ponytojas/Refract/releases/tag/v0.1.0

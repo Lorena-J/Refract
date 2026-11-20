@@ -117,7 +117,7 @@ Follow the README's [Deploy](README.md#deploy) section. Decide these with the pe
 2. **The address and https**: a domain pointing at the server and a reverse proxy with TLS (the README has Caddy and nginx examples; the proxy must send `X-Forwarded-Proto` and must not buffer responses).
 3. **Where the secret key lives**: somewhere it survives reinstalls and is backed up with the data volume.
 
-Then start the container from the published image (`ghcr.io/ponytojas/refract:0.1`), create the first account (`docker exec refract refract users add <email>`), and verify `https://<domain>/healthz` prints `ok` and the sign-in page loads.
+Then start the container from the published image (`ghcr.io/ponytojas/refract:0.2`), create the first account (`docker exec refract refract users add <email>`), and verify `https://<domain>/healthz` prints `ok` and the sign-in page loads.
 
 ## When something goes wrong
 
