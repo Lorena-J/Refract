@@ -508,7 +508,10 @@ function Page({
   } | null>(null)
 
   useEffect(() => {
-    const io = new IntersectionObserver(([e]) => setVisible(e.isIntersecting), { rootMargin: '600px 0px' })
+    // A page can enter and leave the margin before the observer delivers its batch.
+    const io = new IntersectionObserver((entries) => setVisible(entries[entries.length - 1].isIntersecting), {
+      rootMargin: '600px 0px',
+    })
     io.observe(box.current!)
     return () => io.disconnect()
   }, [])
