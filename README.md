@@ -143,9 +143,29 @@ The paper in these screenshots is a made-up example, and the AI responses come f
 
 ## Quick start
 
-Try Refract on your own computer in a few minutes. You need [Docker](https://docs.docker.com/get-docker/).
+Try Refract on your own computer in a few minutes, either with the `refract` program or with Docker.
 
 > **Using an AI coding agent?** Ask it to follow [AGENTS.md](AGENTS.md): a step-by-step guide for agents to get Refract running for you, whether you want to try it, work on the code or put it on a server.
+
+### Run it on your computer
+
+[Install the `refract` program](#install-the-cli), plus [Tectonic](https://tectonic-typesetting.github.io/book/latest/installation/) to compile and git for project history, then run:
+
+```sh
+refract local
+```
+
+It needs no configuration. It opens Refract in your browser at <http://127.0.0.1:8080> (or another free port if 8080 is taken; `--port` chooses one, `--no-browser` doesn't open the browser) and keeps running until you press <kbd>Ctrl</kbd>+<kbd>C</kbd>.
+
+- **Your data** goes in your user folder: `~/Library/Application Support/Refract` on macOS, `~/.local/share/refract` on Linux (or `$XDG_DATA_HOME/refract`), `%LocalAppData%\Refract` on Windows. `REFRACT_DATA_DIR` chooses another folder.
+- **The secret key** that protects stored passwords and API keys is created on first run as `secret.key` in that folder, readable only by you. Back it up with the folder: without it, stored credentials can't be read back.
+- **There is no sign-in**, so Refract only listens on `127.0.0.1`: other computers can't reach it. It refuses a `REFRACT_ADDR` that isn't loopback. Other `REFRACT_*` variables work as for the server.
+
+Run one `refract local` per data folder at a time. To share Refract with other people, [deploy](#deploy) it with sign-in instead.
+
+### Run it with Docker
+
+You need [Docker](https://docs.docker.com/get-docker/).
 
 ```sh
 docker run -d --name refract -p 127.0.0.1:8080:8080 -v refract-data:/data \
@@ -438,6 +458,8 @@ Without this, any project can still push to and pull from an https git remote wi
 
 ```text
 refract                         run the server (configured with REFRACT_* variables)
+refract local                   run Refract on this computer with no configuration: data in your
+                                user folder, no sign-in, 127.0.0.1 only (--port, --no-browser)
 refract login                   sign in with ChatGPT on this computer and write a credential
                                 file to upload in Settings → Assistant (refract login -h)
 refract users add <email>       create a confirmed account or reset its password (REFRACT_AUTH=builtin)

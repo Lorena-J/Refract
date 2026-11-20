@@ -6,6 +6,7 @@ Notable changes to Refract. The format follows [Keep a Changelog](https://keepac
 
 ### Added
 
+- `refract local` runs Refract on your own computer with no configuration: data in the per-user data folder (`REFRACT_DATA_DIR` still overrides it), a secret key created on first run and reused after, no sign-in, listening on 127.0.0.1 only (port 8080, or a free one when it is taken; `--port` chooses it), and it opens the browser once the server answers (`--no-browser` to skip). Logs are readable lines on a terminal.
 - Citation checks scoped to the selected main document, its included sources and loaded bibliographies, for missing keys, duplicate or incomplete bibliography entries, unused entries and optional online DOI verification; source metadata corrections from doi.org/arXiv are shown as editor proposals, with Spanish translations.
 - Document and hierarchical section word counts in the outline, following included files and the existing counter/title preferences.
 - PDF search with highlighted matches, previous/next navigation, keyboard controls and parallel page indexing. Reading and zooming preserve your position, recompiling keeps the selected match number, and search buttons work with the keyboard.

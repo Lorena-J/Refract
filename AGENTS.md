@@ -8,7 +8,7 @@ Refract is a self-hosted LaTeX workspace with an AI assistant: a Go server with 
 
 Ask before doing anything, because the three paths need different tools:
 
-1. **Try it** on their computer → [Path A](#path-a-try-it-with-docker): only Docker needed.
+1. **Try it** on their computer → [Path A](#path-a-try-it-on-their-computer): the `refract` program and Tectonic, or only Docker.
 2. **Work on the code** → [Path B](#path-b-develop-locally): Go, Node.js and the LaTeX tools.
 3. **Run it on a server** for themselves or a team → [Path C](#path-c-run-it-on-a-server).
 
@@ -21,7 +21,21 @@ Also ask which AI they will use with the assistant: a ChatGPT subscription, an A
 - **Don't delete data.** `REFRACT_DATA_DIR` (`./data` in development, the `refract-data` volume in Docker) holds the person's projects. Ask before removing or resetting anything in it.
 - **Some steps are theirs.** Signing in to ChatGPT (`refract login` / `make login`) opens a browser on their computer, and creating OAuth apps happens on provider websites. Explain the step and wait for them.
 
-## Path A: try it with Docker
+## Path A: try it on their computer
+
+### Without Docker
+
+Needs the `refract` program (README, [Install the CLI](README.md#install-the-cli)), [Tectonic](https://tectonic-typesetting.github.io/book/latest/installation/) and git. Check with `refract version`, `tectonic --version` and `git --version`.
+
+```sh
+refract local
+```
+
+It needs no configuration: it creates the data folder and the secret key in the person's user folder (on macOS `~/Library/Application Support/Refract`; the README lists the others), listens only on `127.0.0.1` without sign-in, and opens the browser. It prints the address (8080, or a free port if that one is taken) and the data folder. Leave it running; <kbd>Ctrl</kbd>+<kbd>C</kbd> stops it. Tell them to keep `secret.key` in that folder: without it, stored credentials can't be read back.
+
+Verify: `curl -s http://127.0.0.1:8080/healthz` (with the printed port) prints `ok`. Then tell them to create a project and press ⌘↵ (Ctrl+Enter) to compile.
+
+### With Docker
 
 Needs [Docker](https://docs.docker.com/get-docker/). Check with `docker version`.
 
