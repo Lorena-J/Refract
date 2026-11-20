@@ -1,4 +1,6 @@
-# One image: refract + tectonic + synctex + git + ripgrep, non-root, data in /data.
+# One image: refract + tectonic + synctex + git + ripgrep + bubblewrap, non-root, data in /data.
+# It runs as REFRACT_PROFILE=personal by default; REFRACT_PROFILE=team isolates
+# compiles with bubblewrap (see "Run it for a team" in the README).
 # Build for one platform with `docker build .`, or both with `make docker`.
 
 # --- frontend (platform-independent output, built natively) ---
@@ -53,12 +55,15 @@ RUN case "$TARGETARCH" in \
 
 # --- runtime ---
 FROM alpine:3.24.4
-RUN apk add --no-cache ca-certificates git ripgrep \
+# bubblewrap and prlimit (util-linux-misc) run the compile sandbox of the team profile.
+RUN apk add --no-cache ca-certificates git ripgrep bubblewrap util-linux-misc \
  && adduser -D -u 10001 refract \
- && mkdir /data && chown refract:refract /data
+ && mkdir /data /opt/refract /opt/refract/tex && chown refract:refract /data /opt/refract/tex
 COPY --from=tectonic /usr/local/bin/tectonic /usr/local/bin/
 COPY --from=synctex /out/synctex /usr/local/bin/
 COPY --from=go /out/refract /usr/local/bin/
+# Prepares the offline TeX bundle the sandbox needs, into a volume at /opt/refract/tex.
+COPY packaging/server/prepare-bundle.sh /usr/local/bin/refract-prepare-bundle
 # The bundle is pinned for reproducible builds (the relay URL is a moving redirect).
 # Every interface inside the container: -p decides the mapping on the Docker host
 # (containers on a shared Docker network can still connect).
