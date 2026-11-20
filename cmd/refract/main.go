@@ -107,7 +107,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	addr := cmp.Or(os.Getenv("REFRACT_ADDR"), ":8080")
+	addr := listenAddr(os.Getenv)
 	deployment, err := mode.Parse(os.Getenv("REFRACT_MODE"))
 	if err != nil {
 		return err

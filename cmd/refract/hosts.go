@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"net"
@@ -10,6 +11,13 @@ import (
 	"strings"
 	"time"
 )
+
+// listenAddr is REFRACT_ADDR, or 127.0.0.1:8080 without it: this computer
+// only. The container image sets REFRACT_ADDR=:8080; there, publishing the
+// port with -p 127.0.0.1:… keeps the host-side mapping on loopback.
+func listenAddr(getenv func(string) string) string {
+	return cmp.Or(getenv("REFRACT_ADDR"), "127.0.0.1:8080")
+}
 
 // hostPolicy says which Host headers the server answers. A page on another
 // domain can make that domain resolve to 127.0.0.1 (DNS rebinding); the
