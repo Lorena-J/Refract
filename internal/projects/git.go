@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 )
@@ -21,6 +22,11 @@ func git(ctx context.Context, dir string, args ...string) (string, error) {
 
 // gitEnv is git with extra environment entries (secrets go here, not in args).
 func gitEnv(ctx context.Context, dir string, env []string, args ...string) (string, error) {
+	return runGit(ctx, dir, os.Environ(), env, args...)
+}
+
+// runGit runs git with base as the inherited environment, then env.
+func runGit(ctx context.Context, dir string, base0, env []string, args ...string) (string, error) {
 	base := []string{
 		"-c", "core.hooksPath=/dev/null",
 		"-c", "user.name=Refract",
@@ -35,7 +41,7 @@ func gitEnv(ctx context.Context, dir string, env []string, args ...string) (stri
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", append(base, args...)...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_TERMINAL_PROMPT=0")
+	cmd.Env = append(slices.Clone(base0), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_TERMINAL_PROMPT=0")
 	cmd.Env = append(cmd.Env, env...)
 	var out, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &stderr

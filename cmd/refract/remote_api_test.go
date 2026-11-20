@@ -2,8 +2,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ponytojas/Refract/internal/access"
@@ -46,5 +51,52 @@ func TestAutoPushRunsAsTheCommitter(t *testing.T) {
 	a.AutoPush(ana, p.ID)
 	if st, pushed := a.last[p.ID]; !pushed || st.Op != "push" || !st.Auto {
 		t.Fatalf("owner: %+v, %v", st, pushed)
+	}
+}
+
+// The owner can't keep a token across hosts by naming the new destination as
+// its origin, and the refusal has a kind the web app translates.
+func TestRemotePutIgnoresTokenOrigin(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	svc := &projects.Service{DB: db, Dir: filepath.Join(dir, "projects"), Limits: projects.DefaultLimits, Key: make([]byte, 32)}
+	ana := auth.WithUser(context.Background(), auth.User{ID: "ana"})
+	p, err := svc.Create(ana, "Paper")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := &remoteAPI{svc: svc, db: db, acc: &access.Checker{DB: db}}
+	put := func(body string) (int, map[string]any) {
+		r := httptest.NewRequestWithContext(ana, "PUT", "/api/projects/"+p.ID+"/remote", strings.NewReader(body))
+		r.SetPathValue("id", p.ID)
+		w := httptest.NewRecorder()
+		a.put(w, r)
+		var out map[string]any
+		json.Unmarshal(w.Body.Bytes(), &out)
+		return w.Code, out
+	}
+	if code, out := put(`{"url":"https://git.lab.example/a.git","token":"synthetic.tok"}`); code != 200 || out["has_token"] != true {
+		t.Fatalf("save = %d %v", code, out)
+	}
+	code, out := put(`{"url":"https://evil.example/a.git","token_origin":"https://evil.example:443"}`)
+	if e, _ := out["error"].(map[string]any); code != http.StatusBadRequest || e["kind"] != "remote_token_origin" {
+		t.Errorf("forged origin = %d %v", code, out)
+	}
+	if r, _ := svc.Remote(ana, p.ID); r.URL != "https://git.lab.example/a.git" || r.Token != "synthetic.tok" {
+		t.Errorf("remote after the refusal = %+v", r)
+	}
+	code, out = put(`{"url":"https://evil.example/a.git","github":true}`)
+	if e, _ := out["error"].(map[string]any); code != http.StatusBadRequest || e["kind"] != "remote_github_origin" {
+		t.Errorf("GitHub mode elsewhere = %d %v", code, out)
+	}
+	if st := a.record(p.ID, "push", true, projects.ErrTokenOrigin); st.ErrorKind != "remote_token_origin" {
+		t.Errorf("sync status = %+v", st)
+	}
+	if st := a.record(p.ID, "push", true, errors.New("other")); st.ErrorKind != "" {
+		t.Errorf("sync status = %+v", st)
 	}
 }

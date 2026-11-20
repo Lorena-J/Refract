@@ -220,6 +220,11 @@ export default {
   'A personal access token with write access to the repository':
     'Un token personal con permiso de escritura en el repositorio',
   'Stored encrypted on the server and never shown again.': 'Se guarda cifrado en el servidor y no se vuelve a mostrar.',
+  'Saving a GitHub repository removes the access token saved for {host}.':
+    'Al guardar un repositorio de GitHub se elimina el token de acceso guardado para {host}.',
+  'Remote and its access token removed': 'Remoto y su token de acceso eliminados',
+  'The saved token only works with {host}. Type a token for the new host, or save without one.':
+    'El token guardado solo sirve para {host}. Escribe un token para el nuevo servidor, o guarda sin token.',
   Branch: 'Rama',
   'Push after every saved version': 'Enviar tras cada versión guardada',
   'Last push': 'Último envío',

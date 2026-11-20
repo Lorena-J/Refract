@@ -4,6 +4,7 @@
 package github
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -140,9 +141,31 @@ func (c *Client) api(ctx context.Context, token, method, path string, body []byt
 	return c.do(req, out)
 }
 
+// sameOrigin is a copy of hc that follows a redirect only to the origin
+// (scheme, host and port) of the first request: Go's own policy keeps the
+// Authorization header for a subdomain or another port of the same host.
+func sameOrigin(hc *http.Client) *http.Client {
+	c := *cmp.Or(hc, http.DefaultClient)
+	next := c.CheckRedirect
+	c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		first := via[0].URL
+		if req.URL.Scheme != first.Scheme || !strings.EqualFold(req.URL.Host, first.Host) {
+			return http.ErrUseLastResponse
+		}
+		if next != nil {
+			return next(req, via)
+		}
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		return nil
+	}
+	return &c
+}
+
 func (c *Client) do(req *http.Request, out any) error {
 	req.Header.Set("User-Agent", "Refract")
-	resp, err := c.HTTP.Do(req)
+	resp, err := sameOrigin(c.HTTP).Do(req)
 	if err != nil {
 		return fmt.Errorf("GitHub is unreachable: %w", err)
 	}

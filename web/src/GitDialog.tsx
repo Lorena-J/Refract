@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react'
 import { ArrowDownToLine, ArrowUpFromLine, GitBranch, Loader2, Lock, Plus } from 'lucide-react'
 import { toast } from 'sonner'
-import { api, errorText } from './api'
+import { api, describe, errorText } from './api'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { SettingsSwitch } from '@/components/ui/chatcn/settings-panel'
 import { openSettings } from '@/lib/prefs'
 import { t, tn } from '@/lib/i18n'
+import { remoteHost, tokenLeftBehind } from '@/lib/remote'
 import { ago } from '@/lib/time'
 import { cn } from '@/lib/utils'
 
-type SyncStatus = { op: 'push' | 'pull'; at: string; auto: boolean; error?: string }
+type SyncStatus = { op: 'push' | 'pull'; at: string; auto: boolean; error?: string; error_kind?: string }
 type RemoteInfo = {
   url: string
   branch: string
@@ -82,6 +83,13 @@ export default function GitDialog({ projectId, projectName, open, onClose, befor
     }
   }
 
+  // A token saved for another origin is never sent to this one: saving drops
+  // it unless a new one is typed, and the dialog says so before.
+  const savedToken = !!info?.has_token && !info.github
+  const leavesToken = (remote: { url: string; github: boolean }) =>
+    savedToken && !token && !!remote.url && (remote.github || tokenLeftBehind(info!.url, remote.url))
+  const tokenMoved = mode === 'url' && leavesToken({ url, github: false })
+
   const save = (remote: { url: string; github: boolean }) =>
     run('save', async () => {
       const r = await api<RemoteInfo>(`/api/projects/${projectId}/remote`, {
@@ -92,12 +100,15 @@ export default function GitDialog({ projectId, projectName, open, onClose, befor
           token: remote.github ? '' : token,
           branch,
           auto_push: autoPush,
+          clear_token: leavesToken(remote),
         },
       })
       setInfo(r)
       setUrl(r.url)
       setToken('')
-      toast.success(r.url ? t('Remote saved') : t('Remote removed'))
+      toast.success(
+        r.url ? t('Remote saved') : savedToken ? t('Remote and its access token removed') : t('Remote removed'),
+      )
       return r
     })
 
@@ -187,6 +198,13 @@ export default function GitDialog({ projectId, projectName, open, onClose, befor
                   <p className="text-xs text-muted-foreground">
                     {t('Signed in as @{login}. Choose a repository or create one.', { login: gh.login ?? '' })}
                   </p>
+                  {savedToken && (
+                    <p role="status" className="text-xs text-chatcn-amber">
+                      {t('Saving a GitHub repository removes the access token saved for {host}.', {
+                        host: remoteHost(info.url),
+                      })}
+                    </p>
+                  )}
                   <div className="max-h-48 overflow-y-auto rounded-lg border">
                     {!repos && (
                       <p className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
@@ -242,15 +260,24 @@ export default function GitDialog({ projectId, projectName, open, onClose, befor
                       value={token}
                       onChange={(e) => setToken(e.target.value)}
                       placeholder={
-                        info.has_token && !info.github
+                        savedToken && !tokenMoved
                           ? t('Saved. Type a new one to replace it.')
                           : t('A personal access token with write access to the repository')
                       }
                       className="h-8 w-full rounded-lg border bg-transparent px-3 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                     />
-                    <span className="block text-xs text-muted-foreground">
-                      {t('Stored encrypted on the server and never shown again.')}
-                    </span>
+                    {tokenMoved ? (
+                      <span role="status" className="block text-xs text-chatcn-amber">
+                        {t(
+                          'The saved token only works with {host}. Type a token for the new host, or save without one.',
+                          { host: remoteHost(info.url) },
+                        )}
+                      </span>
+                    ) : (
+                      <span className="block text-xs text-muted-foreground">
+                        {t('Stored encrypted on the server and never shown again.')}
+                      </span>
+                    )}
                   </label>
                 </div>
               )}
@@ -279,7 +306,8 @@ export default function GitDialog({ projectId, projectName, open, onClose, befor
                 <p className={cn('text-xs', info.last.error ? 'text-destructive' : 'text-muted-foreground')}>
                   {info.last.op === 'push' ? t('Last push') : t('Last pull')} {info.last.auto && `(${t('automatic')})`}{' '}
                   · {ago(info.last.at)}
-                  {info.last.error && `: ${info.last.error}`}
+                  {info.last.error &&
+                    `: ${info.last.error_kind ? describe({ kind: info.last.error_kind, message: info.last.error }) : info.last.error}`}
                 </p>
               )}
             </>
