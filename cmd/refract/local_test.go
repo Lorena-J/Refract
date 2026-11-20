@@ -256,15 +256,17 @@ func TestListenLocal(t *testing.T) {
 	})
 }
 
-func TestLocalRefusesHostedMode(t *testing.T) {
-	err := startLocal(context.Background(), localOptions{
-		getenv:     func(k string) string { return map[string]string{"REFRACT_MODE": "saas"}[k] },
-		defaultDir: t.TempDir(),
-		out:        &bytes.Buffer{},
-		open:       func(string) {},
-	})
-	if err == nil || !strings.Contains(err.Error(), "REFRACT_MODE") {
-		t.Fatalf("err = %v", err)
+func TestLocalRefusesHostedAndTeamSetups(t *testing.T) {
+	for name, v := range map[string]string{"REFRACT_MODE": "saas", "REFRACT_PROFILE": "team"} {
+		err := startLocal(context.Background(), localOptions{
+			getenv:     func(k string) string { return map[string]string{name: v}[k] },
+			defaultDir: t.TempDir(),
+			out:        &bytes.Buffer{},
+			open:       func(string) {},
+		})
+		if err == nil || !strings.Contains(err.Error(), name) {
+			t.Errorf("%s=%s: err = %v", name, v, err)
+		}
 	}
 }
 

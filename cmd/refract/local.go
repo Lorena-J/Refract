@@ -98,6 +98,11 @@ func startLocal(ctx context.Context, o localOptions) error {
 	} else if m == mode.SaaS {
 		return errors.New("refract local runs Refract for yourself, not as the hosted service: unset REFRACT_MODE, or run the server with plain `refract`")
 	}
+	if p, err := parseProfile(o.getenv("REFRACT_PROFILE")); err != nil {
+		return err
+	} else if p == profileTeam {
+		return errors.New("refract local runs Refract for yourself, without sign-in, not for a team: unset REFRACT_PROFILE, or run the server with plain `refract`")
+	}
 	dataDir := o.getenv("REFRACT_DATA_DIR")
 	if dataDir == "" {
 		dataDir = o.defaultDir
