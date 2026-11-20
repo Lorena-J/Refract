@@ -153,6 +153,49 @@ Needle final page.
   await expect(input).toBeFocused()
 })
 
+test('PDF search uses the latest page visibility when intersection changes are delivered together', async ({
+  page,
+  request,
+}) => {
+  await page.addInitScript(() => {
+    const NativeObserver = window.IntersectionObserver
+    window.IntersectionObserver = class extends NativeObserver {
+      constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
+        super((entries, observer) => {
+          if (options?.rootMargin === '600px 0px') {
+            entries = entries.flatMap((entry) => [
+              { isIntersecting: !entry.isIntersecting } as IntersectionObserverEntry,
+              entry,
+            ])
+          }
+          callback(entries, observer)
+        }, options)
+      }
+    }
+  })
+  await project(page, request, {
+    'main.tex': String.raw`\documentclass{article}
+\begin{document}
+Needle first page.
+\newpage
+Needle second page.
+\newpage
+Needle third page.
+\end{document}`,
+  })
+  await page.getByRole('button', { name: 'Compile', exact: true }).click()
+  const viewer = page.getByRole('region', { name: 'PDF preview', exact: true })
+  const show = viewer.getByRole('button', { name: 'Search PDF', exact: true })
+  await expect(show).toBeEnabled({ timeout: 90_000 })
+  await show.click()
+  const input = viewer.getByRole('textbox', { name: 'Find in PDF', exact: true })
+  await input.fill('needle')
+  await expect(viewer.getByRole('status')).toHaveText('1 of 3')
+  await expect(viewer.locator('[data-page="1"] [data-pdf-search-hit][data-active="true"]').first()).toBeInViewport()
+  await input.press('Shift+Enter')
+  await expect(viewer.locator('[data-page="3"] [data-pdf-search-hit][data-active="true"]').first()).toBeInViewport()
+})
+
 test('search scrolls within a page once, without moving selection or zoom back', async ({ page, request }) => {
   await project(page, request, {
     'main.tex': String.raw`\documentclass{article}

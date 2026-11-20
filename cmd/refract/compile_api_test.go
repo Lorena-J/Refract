@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -53,4 +54,147 @@ func TestCompileBusyIs429(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || body.Error.Kind != "compile_busy" {
 		t.Fatalf("body %s (%v); want kind compile_busy", w.Body, err)
 	}
+}
+
+// Downloads of the PDF and the log serve only regular files inside the
+// project's build folder, and keep ranges and headers.
+func TestOutputDownloadsAreConfined(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	svc := &projects.Service{DB: db, Dir: filepath.Join(dir, "projects"), Limits: projects.DefaultLimits}
+	mux := http.NewServeMux()
+	(&compileAPI{svc: svc}).routes(&router{mux: mux, acc: &access.Checker{DB: db}})
+	ctx := auth.WithUser(context.Background(), auth.User{ID: "ana"})
+
+	must := func(t *testing.T, err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	write := func(t *testing.T, p, content string) { t.Helper(); must(t, os.WriteFile(p, []byte(content), 0o644)) }
+	const secret = "SECRET outside the project"
+	outside := t.TempDir()
+	write(t, filepath.Join(outside, "main.pdf"), secret)
+	write(t, filepath.Join(outside, "main.log"), secret)
+	must(t, os.Mkdir(filepath.Join(outside, "build"), 0o755))
+	write(t, filepath.Join(outside, "build", "main.pdf"), secret)
+	write(t, filepath.Join(outside, "build", "main.log"), secret)
+
+	// project makes a project with main.tex as its main file, built: it
+	// returns its id and its build folder holding main.pdf and main.log.
+	project := func(t *testing.T) (string, string) {
+		t.Helper()
+		p, err := svc.Create(ctx, "Paper")
+		must(t, err)
+		must(t, svc.WriteFile(ctx, p.ID, "main.tex", strings.NewReader(`\documentclass{article}`)))
+		must(t, svc.SetMainFile(ctx, p.ID, "main.tex"))
+		build := filepath.Join(svc.Path(p.ID), filepath.FromSlash(compile.BuildDir))
+		must(t, os.MkdirAll(build, 0o755))
+		write(t, filepath.Join(build, "main.pdf"), "%PDF-1.7 built")
+		write(t, filepath.Join(build, "main.log"), "This is a log")
+		return p.ID, build
+	}
+	get := func(id, route, rng string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", "/api/projects/"+id+"/"+route, nil).WithContext(ctx)
+		if rng != "" {
+			r.Header.Set("Range", rng)
+		}
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, r)
+		return w
+	}
+	link := func(t *testing.T, target, at string) {
+		t.Helper()
+		if err := os.Symlink(target, at); err != nil {
+			t.Skipf("can't make symbolic links here: %v", err)
+		}
+	}
+	const notBuilt = `{"error":{"kind":"other","message":"not built yet"}}` + "\n"
+	refused := func(t *testing.T, id string) {
+		t.Helper()
+		for _, route := range []string{"pdf", "log"} {
+			if w := get(id, route, ""); w.Code != http.StatusNotFound || w.Body.String() != notBuilt {
+				t.Errorf("%s: %d %q; want 404 %q", route, w.Code, w.Body, notBuilt)
+			}
+		}
+	}
+
+	t.Run("normal files, ranges and headers", func(t *testing.T) {
+		id, _ := project(t)
+		w := get(id, "pdf", "")
+		if w.Code != http.StatusOK || w.Body.String() != "%PDF-1.7 built" {
+			t.Fatalf("pdf: %d %q", w.Code, w.Body)
+		}
+		for k, v := range map[string]string{"Content-Type": "application/pdf", "Content-Security-Policy": "sandbox", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Accept-Ranges": "bytes"} {
+			if got := w.Header().Get(k); got != v {
+				t.Errorf("pdf %s = %q, want %q", k, got, v)
+			}
+		}
+		w = get(id, "pdf", "bytes=0-3")
+		if w.Code != http.StatusPartialContent || w.Body.String() != "%PDF" || w.Header().Get("Content-Range") != "bytes 0-3/14" {
+			t.Errorf("range: %d %q %q", w.Code, w.Body, w.Header().Get("Content-Range"))
+		}
+		w = get(id, "log", "")
+		if w.Code != http.StatusOK || w.Body.String() != "This is a log" || w.Header().Get("Content-Type") != "text/plain; charset=utf-8" {
+			t.Errorf("log: %d %q %q", w.Code, w.Body, w.Header().Get("Content-Type"))
+		}
+	})
+
+	t.Run("missing output", func(t *testing.T) {
+		id, build := project(t)
+		must(t, os.RemoveAll(filepath.Dir(build)))
+		refused(t, id)
+		if _, err := os.Stat(filepath.Dir(build)); !os.IsNotExist(err) {
+			t.Error("a download created the build folder")
+		}
+	})
+
+	for _, tc := range []struct {
+		name  string
+		setup func(t *testing.T, build string)
+	}{
+		{"outputs are links", func(t *testing.T, build string) {
+			for _, n := range []string{"main.pdf", "main.log"} {
+				must(t, os.Remove(filepath.Join(build, n)))
+				link(t, filepath.Join(outside, n), filepath.Join(build, n))
+			}
+		}},
+		{"build folder is a link", func(t *testing.T, build string) {
+			must(t, os.RemoveAll(build))
+			link(t, outside, build)
+		}},
+		{".refract is a link", func(t *testing.T, build string) {
+			must(t, os.RemoveAll(filepath.Dir(build)))
+			link(t, outside, filepath.Dir(build))
+		}},
+		{"outputs replaced by folders", func(t *testing.T, build string) {
+			for _, n := range []string{"main.pdf", "main.log"} {
+				must(t, os.Remove(filepath.Join(build, n)))
+				must(t, os.Mkdir(filepath.Join(build, n), 0o755))
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			id, build := project(t)
+			tc.setup(t, build)
+			refused(t, id)
+		})
+	}
+
+	// The build folder replaced between two downloads: the second request
+	// checks again and serves nothing from outside.
+	t.Run("build folder replaced after a download", func(t *testing.T) {
+		id, build := project(t)
+		if w := get(id, "pdf", ""); w.Code != http.StatusOK || w.Body.String() != "%PDF-1.7 built" {
+			t.Fatalf("before: %d %q", w.Code, w.Body)
+		}
+		must(t, os.Rename(build, build+".old"))
+		link(t, outside, build)
+		refused(t, id)
+	})
 }

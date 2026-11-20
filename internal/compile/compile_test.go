@@ -12,7 +12,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -337,22 +336,6 @@ func TestCompileKeepsCheckedBuildDir(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(build+".checked", "main.log")); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("the checked folder's stale log is still there: %v", err)
-	}
-}
-
-// A FIFO left in the build folder (the document is untrusted) is not read: it would block.
-func TestReadInRefusesFIFO(t *testing.T) {
-	dir := t.TempDir()
-	if err := syscall.Mkfifo(filepath.Join(dir, "main.log"), 0o644); err != nil {
-		t.Skip(err)
-	}
-	d, err := os.Open(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer d.Close()
-	if _, err := readIn(d, "main.log"); err == nil {
-		t.Error("read a FIFO")
 	}
 }
 

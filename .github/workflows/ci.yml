@@ -88,3 +88,18 @@ jobs:
           name: playwright-report
           path: web/playwright-report
           if-no-files-found: ignore
+
+  # Windows has no openat: build outputs are opened with checks that the file
+  # and folder opened are the ones checked. Run those tests where they apply.
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Confined build outputs
+        run: |
+          go test ./internal/compile/ -run 'OpenOutput|ReadsThroughChecked' -v
+          go test ./cmd/refract/ -run 'OutputDownloads' -v
