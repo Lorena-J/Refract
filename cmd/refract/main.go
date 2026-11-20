@@ -145,6 +145,16 @@ func run(ctx context.Context, opts runOptions) error {
 		return err
 	}
 	authKind := cmp.Or(opts.authKind, authMode(os.Getenv("REFRACT_AUTH")))
+	prof, err := parseProfile(os.Getenv("REFRACT_PROFILE"))
+	if err != nil {
+		return err
+	}
+	if err := applyProfile(prof, authKind, &cfg, os.Getenv("REFRACT_SANDBOX") != ""); err != nil {
+		return err
+	}
+	if w := unisolatedWarning(prof, authKind, cfg.sandbox); w != "" {
+		slog.Warn(w)
+	}
 	if err := checkDeployment(deployment, authKind, os.Getenv("REFRACT_PUBLIC_URL"), cfg.sandbox, cfg.maxWait, cfg.timeout); err != nil {
 		return err
 	}
@@ -244,6 +254,9 @@ func run(ctx context.Context, opts runOptions) error {
 	if cfg.sandbox == "bwrap" {
 		tectonic.Sandbox = &compile.Sandbox{}
 		if err := tectonic.Sandbox.Check(ctx, tectonic); err != nil {
+			if prof == profileTeam {
+				return fmt.Errorf("REFRACT_PROFILE=team: compiles can't be isolated, so Refract won't start. %w", err)
+			}
 			return err
 		}
 	}

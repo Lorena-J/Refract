@@ -411,3 +411,54 @@ ls /etc > "$out/etc"
 		}
 	}
 }
+
+// The assistant compiles its worktree (<project>/.refract/worktrees/<turn>)
+// through the same queue: the sandbox shows it that worktree alone, not the
+// project around it, other projects or the database.
+func TestSandboxAssistantSeesOnlyItsWorktree(t *testing.T) {
+	e := newSandboxEnv(t, "")
+	wt := filepath.Join(e.project, ".refract", "worktrees", "turn1")
+	os.MkdirAll(wt, 0o755)
+	os.WriteFile(filepath.Join(wt, "main.tex"), []byte("worktree"), 0o644)
+	script := fmt.Sprintf(`
+while [ $# -gt 0 ]; do case "$1" in --outdir) out=$2;; esac; shift; done
+r="$out/report.txt"; : > "$r"
+try() { name=$1; shift; if "$@" >/dev/null 2>&1; then echo "$name yes" >> "$r"; else echo "$name no" >> "$r"; fi; }
+try read-worktree grep -q worktree %[1]s/main.tex
+try read-project cat %[2]s/main.tex
+try database cat %[3]s/refract.db
+try other-project cat %[4]s/main.tex
+try write-project touch %[2]s/x
+try write-build touch "$out/ok"
+`, wt, e.project, e.data, e.other)
+	b, _ := os.ReadFile(e.tect.Bin)
+	os.WriteFile(e.tect.Bin, append(b, script...), 0o755)
+
+	q := &Queue{Next: e.tect, Workers: 1}
+	res, err := q.Compile(AsAssistant(context.Background()), wt, "main.tex")
+	if err != nil || res.TimedOut || res.Superseded {
+		t.Fatalf("result = %+v, %v", res, err)
+	}
+	rb, err := os.ReadFile(filepath.Join(wt, filepath.FromSlash(BuildDir), "report.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, l := range strings.Split(strings.TrimSpace(string(rb)), "\n") {
+		k, v, _ := strings.Cut(l, " ")
+		got[k] = v
+	}
+	for name, want := range map[string]string{
+		"read-worktree": "yes", "write-build": "yes",
+		"read-project": "no", "database": "no", "other-project": "no",
+	} {
+		if got[name] != want {
+			t.Errorf("%s: %q, want %q", name, got[name], want)
+		}
+	}
+	// Above the worktree, the sandbox has only the empty folders bubblewrap
+	// makes to mount it: a file written there stays in the sandbox.
+	if _, err := os.Stat(filepath.Join(e.project, "x")); err == nil {
+		t.Error("the assistant's compile wrote into the project")
+	}
+}

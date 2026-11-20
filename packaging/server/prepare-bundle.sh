@@ -6,7 +6,8 @@
 # changed), remove both folders first: chmod -R u+w <folder>/bundle <folder>/cache;
 # rm -rf <folder>/bundle <folder>/cache. It refuses to run if either exists.
 #
-# Usage: prepare-bundle.sh <folder>     (needs curl, tar and tectonic on the PATH)
+# Usage: prepare-bundle.sh <folder>     (needs curl or wget, tar and tectonic on the PATH)
+# In the Docker image it is refract-prepare-bundle: see "Run it for a team" in the README.
 #   <folder>/bundle   REFRACT_TECTONIC_BUNDLE=<folder>/bundle  (about 2.9 GB)
 #   <folder>/cache    TECTONIC_CACHE_DIR=<folder>/cache        (the format file, 24 MB)
 #
@@ -28,7 +29,11 @@ WORK=$(mktemp -d "$DEST/.work.XXXXXX")
 trap 'chmod -R u+w "$WORK" 2>/dev/null; rm -rf "$WORK"' EXIT
 
 # 1. Fetch and unpack the bundle. The tar is flat, and the tar stores every file with mode 000.
-curl -fsSL -o "$WORK/bundle.tar" "$BUNDLE_URL"
+if command -v curl >/dev/null; then
+  curl -fsSL -o "$WORK/bundle.tar" "$BUNDLE_URL"
+else
+  wget -qO "$WORK/bundle.tar" "$BUNDLE_URL"
+fi
 mkdir "$WORK/bundle"
 tar -xf "$WORK/bundle.tar" -C "$WORK/bundle"
 rm "$WORK/bundle.tar"

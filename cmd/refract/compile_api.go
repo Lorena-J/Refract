@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -127,8 +126,17 @@ func (a *compileAPI) output(ext, contentType string) http.HandlerFunc {
 		}
 		base := path.Base(p.MainFile)
 		name := strings.TrimSuffix(base, path.Ext(base)) + ext
-		f, err := os.Open(filepath.Join(a.svc.Path(p.ID), filepath.FromSlash(compile.BuildDir), name))
+		// Confined like the compiler: a symlinked build folder or output (a
+		// pulled repository can contain one) must not serve a file outside the project.
+		f, err := compile.OpenOutput(a.svc.Path(p.ID), name)
 		if err != nil {
+			if !errors.Is(err, os.ErrNotExist) {
+				reason := "output is not a regular file"
+				if errors.Is(err, compile.ErrUnsafeBuildDir) {
+					reason = "build folder is a link or not a folder"
+				}
+				slog.Warn("refused to serve build output", "project", p.ID, "output", ext, "reason", reason)
+			}
 			httpError(w, errors.New("not built yet"), http.StatusNotFound)
 			return
 		}

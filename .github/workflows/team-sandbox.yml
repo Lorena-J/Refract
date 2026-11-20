@@ -1,0 +1,68 @@
+# The team profile (REFRACT_PROFILE=team) end to end on the Docker image, on
+# amd64: it refuses to start without isolation, compiles with the offline TeX
+# bundle inside bubblewrap, and keeps one account's documents away from the
+# database and other accounts' projects (scripts/smoke-team.sh).
+# The bundle (about 3 GB) is prepared once and cached by its pin.
+name: team-sandbox
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - internal/compile/**
+      - cmd/refract/profile.go
+      - cmd/refract/main.go
+      - packaging/server/**
+      - scripts/smoke-team.sh
+      - .github/workflows/team-sandbox.yml
+  pull_request:
+    paths:
+      - Dockerfile
+      - internal/compile/**
+      - cmd/refract/profile.go
+      - cmd/refract/main.go
+      - packaging/server/**
+      - scripts/smoke-team.sh
+      - .github/workflows/team-sandbox.yml
+  schedule:
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: team-sandbox-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      # Ubuntu restricts unprivileged user namespaces through AppArmor, also
+      # for processes in containers started with apparmor=unconfined.
+      - name: Allow user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - uses: docker/setup-buildx-action@v4
+      - name: Build the image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: refract:team
+      # Keyed by what the format file depends on: the bundle (prepare-bundle.sh)
+      # and Tectonic's version (Dockerfile).
+      - id: pins
+        run: echo "tectonic=$(sed -n 's/^ARG TECTONIC_VERSION=//p' Dockerfile)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/tex
+          key: team-tex-${{ steps.pins.outputs.tectonic }}-${{ hashFiles('packaging/server/prepare-bundle.sh') }}
+      - name: Team profile end to end
+        run: |
+          mkdir -p "$RUNNER_TEMP/tex" && chmod 0777 "$RUNNER_TEMP/tex"
+          scripts/smoke-team.sh refract:team "$RUNNER_TEMP/tex"

@@ -114,7 +114,7 @@ func linkSource(source, dest string) error {
 
 // Restore original source paths before deleting the temporary snapshot. name
 // is a file directly in dir, the build folder, and is rewritten through it.
-func restoreSyncPaths(dir *os.File, name, stage, projectDir string) error {
+func restoreSyncPaths(dir *dirHandle, name, stage, projectDir string) error {
 	in, err := openIn(dir, name)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
