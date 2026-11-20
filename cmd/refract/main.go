@@ -131,9 +131,10 @@ func run(ctx context.Context, opts runOptions) error {
 	if err != nil {
 		return err
 	}
-	listen := opts.listen
+	listen, logAddr := opts.listen, ""
 	if listen == nil {
-		listen = func() (net.Listener, error) { return net.Listen("tcp", listenAddr(os.Getenv)) }
+		logAddr = listenAddr(os.Getenv) // logged as configured, as before
+		listen = func() (net.Listener, error) { return net.Listen("tcp", logAddr) }
 	}
 	deployment, err := mode.Parse(os.Getenv("REFRACT_MODE"))
 	if err != nil {
@@ -344,7 +345,7 @@ func run(ctx context.Context, opts runOptions) error {
 	mux.Handle("/", guard(people.Middleware(auth.RequireCSRFHeader(app))))
 
 	srv := newServer(mux, hosts)
-	slog.Info("listening", "addr", ln.Addr().String(), "data_dir", dataDir)
+	slog.Info("listening", "addr", cmp.Or(logAddr, ln.Addr().String()), "data_dir", dataDir)
 	if opts.ready != nil {
 		readyCtx, stopReady := context.WithCancel(ctx)
 		defer stopReady()

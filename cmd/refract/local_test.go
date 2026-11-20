@@ -3,19 +3,17 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/ponytojas/Refract/internal/providers"
-	"github.com/ponytojas/Refract/internal/store"
 )
 
 func TestLocalDataDir(t *testing.T) {
@@ -26,24 +24,29 @@ func TestLocalDataDir(t *testing.T) {
 		}
 		return func(k string) string { return m[k] }
 	}
-	home := filepath.FromSlash("/home/ana")
+	// Absolute paths in the syntax of the system running the test, which is
+	// what filepath.IsAbs and filepath.Join use: /… here, C:\… on Windows.
+	root := filepath.VolumeName(os.TempDir()) + string(filepath.Separator)
+	abs := func(parts ...string) string { return filepath.Join(append([]string{root}, parts...)...) }
+	home, xdg := abs("home", "ana"), abs("xdg")
+	appData := abs("Users", "ana", "AppData", "Local")
 	for _, tc := range []struct {
 		goos    string
 		env     func(string) string
 		home    string
-		want    string // slash-separated; empty means an error
+		want    string // empty means an error
 		wantErr string
 	}{
-		{"darwin", env(), home, "/home/ana/Library/Application Support/Refract", ""},
-		{"darwin", env("XDG_DATA_HOME", "/xdg"), home, "/home/ana/Library/Application Support/Refract", ""},
-		{"linux", env(), home, "/home/ana/.local/share/refract", ""},
-		{"linux", env("XDG_DATA_HOME", "/xdg"), home, "/xdg/refract", ""},
-		{"freebsd", env("XDG_DATA_HOME", "/xdg"), home, "/xdg/refract", ""},
+		{"darwin", env(), home, filepath.Join(home, "Library", "Application Support", "Refract"), ""},
+		{"darwin", env("XDG_DATA_HOME", xdg), home, filepath.Join(home, "Library", "Application Support", "Refract"), ""},
+		{"linux", env(), home, filepath.Join(home, ".local", "share", "refract"), ""},
+		{"linux", env("XDG_DATA_HOME", xdg), home, filepath.Join(xdg, "refract"), ""},
+		{"freebsd", env("XDG_DATA_HOME", xdg), home, filepath.Join(xdg, "refract"), ""},
 		// A relative XDG_DATA_HOME is invalid and ignored.
-		{"linux", env("XDG_DATA_HOME", "rel/xdg"), home, "/home/ana/.local/share/refract", ""},
+		{"linux", env("XDG_DATA_HOME", filepath.Join("rel", "xdg")), home, filepath.Join(home, ".local", "share", "refract"), ""},
 		{"linux", env(), "", "", "home folder"},
 		{"darwin", env(), "", "", "home folder"},
-		{"windows", env("LocalAppData", "/Users/ana/AppData/Local"), "", "/Users/ana/AppData/Local/Refract", ""},
+		{"windows", env("LocalAppData", appData), "", filepath.Join(appData, "Refract"), ""},
 		{"windows", env(), home, "", "LocalAppData"},
 	} {
 		got, err := localDataDir(tc.goos, tc.env, tc.home)
@@ -53,8 +56,8 @@ func TestLocalDataDir(t *testing.T) {
 			}
 			continue
 		}
-		if err != nil || got != filepath.FromSlash(tc.want) {
-			t.Errorf("%s: got %q, %v; want %q", tc.goos, got, err, filepath.FromSlash(tc.want))
+		if err != nil || got != tc.want {
+			t.Errorf("%s: got %q, %v; want %q", tc.goos, got, err, tc.want)
 		}
 	}
 }
@@ -80,15 +83,67 @@ func TestLoadOrCreateKey(t *testing.T) {
 	if left, _ := filepath.Glob(filepath.Join(filepath.Dir(path), ".tmp-*")); len(left) > 0 {
 		t.Errorf("temporary files left: %v", left)
 	}
+}
 
-	// An invalid file is reported, never replaced.
-	bad := filepath.Join(t.TempDir(), localKeyFile)
-	os.WriteFile(bad, []byte("not a key\n"), 0o600)
-	if _, err := loadOrCreateKey(bad); err == nil || !strings.Contains(err.Error(), bad) {
-		t.Fatalf("invalid key: err = %v, want one naming the file", err)
+// A key file Refract can't use is reported and left exactly as it is.
+func TestLoadOrCreateKeyRefuses(t *testing.T) {
+	unchanged := func(t *testing.T, path, want string) {
+		t.Helper()
+		if b, _ := os.ReadFile(path); string(b) != want {
+			t.Fatalf("the key file was changed: %q", b)
+		}
 	}
-	if b, _ := os.ReadFile(bad); string(b) != "not a key\n" {
-		t.Fatalf("invalid key file was changed: %q", b)
+	t.Run("invalid", func(t *testing.T) {
+		for _, content := range []string{"", "not a key\n"} {
+			path := filepath.Join(t.TempDir(), localKeyFile)
+			os.WriteFile(path, []byte(content), 0o600)
+			if _, err := loadOrCreateKey(path); err == nil || !strings.Contains(err.Error(), path) {
+				t.Fatalf("%q: err = %v, want one naming the file", content, err)
+			}
+			unchanged(t, path, content)
+		}
+	})
+	t.Run("readable by others", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("Windows has no permission bits")
+		}
+		path := filepath.Join(t.TempDir(), localKeyFile)
+		content := "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=\n"
+		os.WriteFile(path, []byte(content), 0o644)
+		os.Chmod(path, 0o644) // past the umask
+		if _, err := loadOrCreateKey(path); err == nil || !strings.Contains(err.Error(), "chmod 600") {
+			t.Fatalf("err = %v, want one asking for chmod 600", err)
+		}
+		unchanged(t, path, content)
+		if fi, _ := os.Stat(path); fi.Mode().Perm() != 0o644 {
+			t.Fatalf("mode changed to %v", fi.Mode().Perm())
+		}
+	})
+	t.Run("not a regular file", func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), localKeyFile)
+		os.Mkdir(dir, 0o700)
+		if _, err := loadOrCreateKey(dir); err == nil || !strings.Contains(err.Error(), "regular file") {
+			t.Fatalf("directory: err = %v", err)
+		}
+	})
+}
+
+func TestLoadOrCreateKeyWithoutHardLinks(t *testing.T) {
+	linkFile = func(string, string) error { return &os.LinkError{Op: "link", Err: errors.ErrUnsupported} }
+	t.Cleanup(func() { linkFile = os.Link })
+	path := filepath.Join(t.TempDir(), localKeyFile)
+	first, err := loadOrCreateKey(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" {
+		if fi, _ := os.Stat(path); fi.Mode().Perm() != 0o600 {
+			t.Fatalf("mode = %v", fi.Mode().Perm())
+		}
+	}
+	again, err := loadOrCreateKey(path)
+	if err != nil || !bytes.Equal(first, again) {
+		t.Fatalf("second load: %v", err)
 	}
 }
 
@@ -114,85 +169,108 @@ func TestLoadOrCreateKeyConcurrent(t *testing.T) {
 }
 
 func TestListenLocal(t *testing.T) {
-	port := func(ln net.Listener) int { return ln.Addr().(*net.TCPAddr).Port }
-	loopback := func(t *testing.T, ln net.Listener) {
-		t.Helper()
-		if !ln.Addr().(*net.TCPAddr).IP.IsLoopback() {
-			t.Fatalf("listens on %s", ln.Addr())
-		}
+	// asked records the addresses listenLocal tries to listen on.
+	var asked []*net.TCPAddr
+	record := func(a *net.TCPAddr) (net.Listener, error) {
+		asked = append(asked, a)
+		return listenTCP(a)
 	}
+	port := func(ln net.Listener) int { return ln.Addr().(*net.TCPAddr).Port }
 
 	t.Run("default port, or a free one when taken", func(t *testing.T) {
-		ln, err := listenLocal("", 0, false)
+		ln, err := listenLocal("", 0, false, listenTCP)
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer ln.Close()
-		loopback(t, ln)
 		if port(ln) != localPort {
 			// Something else on this machine has 8080: that already is the fallback.
 			t.Logf("port %d was taken; got %d", localPort, port(ln))
 			return
 		}
-		// 8080 is now ours, so a second start falls back to another port.
-		other, err := listenLocal("", 0, false)
+		other, err := listenLocal("", 0, false, listenTCP)
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer other.Close()
-		loopback(t, other)
-		if port(other) == localPort || port(other) == 0 {
-			t.Fatalf("fallback port = %d", port(other))
+		if p := port(other); p == localPort || p == 0 || !other.Addr().(*net.TCPAddr).IP.Equal(net.IPv4(127, 0, 0, 1)) {
+			t.Fatalf("fallback listens on %s", other.Addr())
 		}
 	})
 
-	t.Run("--port is used as given and not replaced when taken", func(t *testing.T) {
+	t.Run("--port listens on 127.0.0.1 at that port", func(t *testing.T) {
+		asked = nil
+		taken := errors.New("taken")
+		_, err := listenLocal("", 4321, true, func(a *net.TCPAddr) (net.Listener, error) {
+			asked = append(asked, a)
+			return nil, taken
+		})
+		if !errors.Is(err, taken) {
+			t.Fatalf("err = %v", err)
+		}
+		// Asked once, for exactly that address: a taken --port isn't replaced.
+		if len(asked) != 1 || asked[0].String() != "127.0.0.1:4321" {
+			t.Fatalf("asked for %v", asked)
+		}
 		busy, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer busy.Close()
-		if _, err := listenLocal("", port(busy), true); err == nil {
-			t.Fatal("a taken --port was replaced by another")
-		}
-		busy.Close()
-		ln, err := listenLocal("", port(busy), true)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer ln.Close()
-		loopback(t, ln)
-		if port(ln) != port(busy) {
-			t.Fatalf("port = %d, want %d", port(ln), port(busy))
+		if ln, err := listenLocal("", port(busy), true, listenTCP); err == nil {
+			ln.Close()
+			t.Fatal("a taken --port was accepted")
 		}
 	})
 
-	t.Run("REFRACT_ADDR must be loopback", func(t *testing.T) {
-		for _, addr := range []string{"0.0.0.0:0", ":0", "[::]:0"} {
-			ln, err := listenLocal(addr, 0, false)
+	t.Run("REFRACT_ADDR is refused before listening unless 127.0.0.1 or ::1", func(t *testing.T) {
+		for _, addr := range []string{"0.0.0.0:0", ":0", "[::]:0", "127.0.0.2:0", "192.168.1.20:0", "not a host:0"} {
+			asked = nil
+			ln, err := listenLocal(addr, 0, false, record)
 			if err == nil {
 				ln.Close()
-				t.Errorf("REFRACT_ADDR=%s accepted", addr)
-				continue
 			}
-			if !strings.Contains(err.Error(), "other computers") {
-				t.Errorf("REFRACT_ADDR=%s: %v", addr, err)
+			if err == nil || len(asked) > 0 || !strings.Contains(err.Error(), "REFRACT_ADDR") {
+				t.Errorf("REFRACT_ADDR=%s: err = %v, listened on %v", addr, err, asked)
 			}
 		}
-		ln, err := listenLocal("127.0.0.1:0", 0, false)
-		if err != nil {
-			t.Fatal(err)
+		for _, addr := range []string{"127.0.0.1:0", "localhost:0", "[::1]:0"} {
+			asked = nil
+			ln, err := listenLocal(addr, 0, false, record)
+			if err != nil {
+				if strings.Contains(addr, "::1") {
+					t.Logf("no IPv6 loopback here: %v", err)
+					continue
+				}
+				t.Fatalf("REFRACT_ADDR=%s: %v", addr, err)
+			}
+			ln.Close()
+			if ip := asked[0].IP; !ip.Equal(net.IPv4(127, 0, 0, 1)) && !ip.Equal(net.IPv6loopback) {
+				t.Errorf("REFRACT_ADDR=%s listened on %v", addr, asked[0])
+			}
 		}
-		ln.Close()
-		if _, err := listenLocal("127.0.0.1:0", 9000, true); err == nil {
+		asked = nil
+		if _, err := listenLocal("127.0.0.1:0", 9000, true, record); err == nil || len(asked) > 0 {
 			t.Error("REFRACT_ADDR and --port together were accepted")
 		}
 	})
 }
 
+func TestLocalRefusesHostedMode(t *testing.T) {
+	err := startLocal(context.Background(), localOptions{
+		getenv:     func(k string) string { return map[string]string{"REFRACT_MODE": "saas"}[k] },
+		defaultDir: t.TempDir(),
+		out:        &bytes.Buffer{},
+		open:       func(string) {},
+	})
+	if err == nil || !strings.Contains(err.Error(), "REFRACT_MODE") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 // TestLocalStartsAndReopens runs refract local twice on the same data folder
-// with no REFRACT_* variables: the second run uses the key the first made, so
-// a credential stored in between is still readable.
+// with no REFRACT_* variables. An API key saved through the first server is
+// read back through the second, so the second uses the key the first made.
 func TestLocalStartsAndReopens(t *testing.T) {
 	for _, kv := range os.Environ() {
 		if name, _, _ := strings.Cut(kv, "="); strings.HasPrefix(name, "REFRACT_") {
@@ -201,7 +279,24 @@ func TestLocalStartsAndReopens(t *testing.T) {
 	}
 	dataDir := filepath.Join(t.TempDir(), "Refract")
 
-	start := func() (stop func()) {
+	call := func(method, u, body string) *http.Response {
+		t.Helper()
+		req, _ := http.NewRequest(method, u, strings.NewReader(body))
+		req.Header.Set("X-Refract", "1")
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			t.Fatalf("%s %s: %s", method, u, resp.Status)
+		}
+		return resp
+	}
+
+	// start runs refract local until the returned stop is called.
+	start := func() (u string, stop func()) {
 		t.Helper()
 		ctx, cancel := context.WithCancel(context.Background())
 		opened := make(chan string, 1)
@@ -210,14 +305,11 @@ func TestLocalStartsAndReopens(t *testing.T) {
 		go func() {
 			done <- startLocal(ctx, localOptions{
 				getenv:     os.Getenv,
-				port:       0,
-				portSet:    false,
 				out:        &out,
 				open:       func(u string) { opened <- u },
 				defaultDir: dataDir,
 			})
 		}()
-		var u string
 		select {
 		case u = <-opened:
 		case err := <-done:
@@ -227,22 +319,13 @@ func TestLocalStartsAndReopens(t *testing.T) {
 			cancel()
 			t.Fatal("the browser was never opened")
 		}
-		host, p, _ := net.SplitHostPort(strings.TrimPrefix(u, "http://"))
-		if n, _ := strconv.Atoi(p); host != "127.0.0.1" || n == 0 {
+		if host, _, _ := net.SplitHostPort(strings.TrimPrefix(u, "http://")); host != "127.0.0.1" {
 			t.Errorf("opened %s, want a 127.0.0.1 address", u)
 		}
 		if !strings.Contains(out.String(), u) || !strings.Contains(out.String(), dataDir) {
 			t.Errorf("printed %q, want the address and the data folder", out.String())
 		}
-		// No sign-in: the API answers as the local user.
-		req, _ := http.NewRequest(http.MethodGet, u+"/api/projects", nil)
-		req.Header.Set("X-Refract", "1")
-		if resp, err := http.DefaultClient.Do(req); err != nil || resp.StatusCode != http.StatusOK {
-			t.Errorf("GET /api/projects: %v %v", resp, err)
-		} else {
-			resp.Body.Close()
-		}
-		return func() {
+		return u, func() {
 			cancel()
 			select {
 			case err := <-done:
@@ -255,43 +338,31 @@ func TestLocalStartsAndReopens(t *testing.T) {
 		}
 	}
 
-	start()()
-	keyPath := filepath.Join(dataDir, localKeyFile)
-	key, err := loadOrCreateKey(keyPath)
+	u, stop := start()
+	call(http.MethodPut, u+"/api/providers/p1", `{"kind":"openai","name":"OpenAI","api_key":"sk-test"}`).Body.Close()
+	stop()
+	keyFile, err := os.ReadFile(filepath.Join(dataDir, localKeyFile))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dataDir, "refract.db")); err != nil {
+
+	u, stop = start()
+	defer stop()
+	resp := call(http.MethodGet, u+"/api/providers", "")
+	defer resp.Body.Close()
+	var got struct {
+		Configured []struct {
+			ID     string `json:"id"`
+			HasKey bool   `json:"has_key"`
+		} `json:"configured"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
-	cred := providers.Config{ID: "p1", Kind: "openai", Name: "OpenAI", APIKey: "sk-test"}
-	withDB(t, dataDir, func(db *providers.Store) {
-		db.Key = key
-		if err := db.Save(context.Background(), "local", cred); err != nil {
-			t.Fatal(err)
-		}
-	})
-
-	start()()
-	again, err := loadOrCreateKey(keyPath)
-	if err != nil || !bytes.Equal(again, key) {
-		t.Fatalf("the key changed between runs: %v", err)
+	if len(got.Configured) != 1 || got.Configured[0].ID != "p1" || !got.Configured[0].HasKey {
+		t.Fatalf("providers after restart: %+v", got.Configured)
 	}
-	withDB(t, dataDir, func(db *providers.Store) {
-		db.Key = again
-		cs, err := db.List(context.Background(), "local")
-		if err != nil || len(cs) != 1 || cs[0].APIKey != cred.APIKey {
-			t.Fatalf("stored credential after restart: %+v, %v", cs, err)
-		}
-	})
-}
-
-func withDB(t *testing.T, dataDir string, f func(*providers.Store)) {
-	t.Helper()
-	db, err := store.Open(filepath.Join(dataDir, "refract.db"))
-	if err != nil {
-		t.Fatal(err)
+	if again, _ := os.ReadFile(filepath.Join(dataDir, localKeyFile)); !bytes.Equal(again, keyFile) {
+		t.Fatal("the key file changed between runs")
 	}
-	defer db.Close()
-	f(&providers.Store{DB: db})
 }

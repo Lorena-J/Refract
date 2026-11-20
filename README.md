@@ -155,11 +155,11 @@ Try Refract on your own computer in a few minutes, either with the `refract` pro
 refract local
 ```
 
-It needs no configuration. It opens Refract in your browser at <http://127.0.0.1:8080> (or another free port if 8080 is taken; `--port` chooses one, `--no-browser` doesn't open the browser) and keeps running until you press <kbd>Ctrl</kbd>+<kbd>C</kbd>.
+It needs no configuration. It opens Refract in your browser and keeps running until you press <kbd>Ctrl</kbd>+<kbd>C</kbd>. By default the address is <http://127.0.0.1:8080>, or another free port if 8080 is taken; it prints the one it uses. `--port` chooses the port and fails if it is taken; `--no-browser` doesn't open the browser.
 
 - **Your data** goes in your user folder: `~/Library/Application Support/Refract` on macOS, `~/.local/share/refract` on Linux (or `$XDG_DATA_HOME/refract`), `%LocalAppData%\Refract` on Windows. `REFRACT_DATA_DIR` chooses another folder.
-- **The secret key** that protects stored passwords and API keys is created on first run as `secret.key` in that folder, readable only by you. Back it up with the folder: without it, stored credentials can't be read back.
-- **There is no sign-in**, so Refract only listens on `127.0.0.1`: other computers can't reach it. It refuses a `REFRACT_ADDR` that isn't loopback. Other `REFRACT_*` variables work as for the server.
+- **The secret key** that protects stored passwords and API keys is created on first run as `secret.key` in that folder, readable only by you (Refract refuses to start if other users can read it). Back it up with the folder: without it, stored credentials can't be read back. If `REFRACT_SECRET_KEY` is set, Refract uses it instead and doesn't create the file. On Windows the file has the folder's permissions; `%LocalAppData%` is private to your account, so choose an equally private folder if you set `REFRACT_DATA_DIR`.
+- **There is no sign-in**, so Refract only listens on this computer's loopback address: other computers can't reach it. `REFRACT_ADDR` may choose another address on `127.0.0.1` or `[::1]` instead of `--port` (not both); any other address is refused before anything listens. `REFRACT_AUTH` is ignored, and `REFRACT_MODE=saas` is refused: that is for the server, `refract` without `local`. Other `REFRACT_*` variables work as for the server.
 
 Run one `refract local` per data folder at a time. To share Refract with other people, [deploy](#deploy) it with sign-in instead.
 
@@ -459,7 +459,7 @@ Without this, any project can still push to and pull from an https git remote wi
 ```text
 refract                         run the server (configured with REFRACT_* variables)
 refract local                   run Refract on this computer with no configuration: data in your
-                                user folder, no sign-in, 127.0.0.1 only (--port, --no-browser)
+                                user folder, no sign-in, loopback only (--port, --no-browser)
 refract login                   sign in with ChatGPT on this computer and write a credential
                                 file to upload in Settings → Assistant (refract login -h)
 refract users add <email>       create a confirmed account or reset its password (REFRACT_AUTH=builtin)
