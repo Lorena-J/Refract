@@ -150,7 +150,7 @@ Try Refract on your own computer in a few minutes. You need [Docker](https://doc
 ```sh
 docker run -d --name refract -p 127.0.0.1:8080:8080 -v refract-data:/data \
   -e REFRACT_SECRET_KEY="$(openssl rand -base64 32)" \
-  -e REFRACT_AUTH=none \
+  -e REFRACT_AUTH=none -e REFRACT_ALLOWED_HOSTS=localhost \
   ghcr.io/ponytojas/refract
 ```
 
@@ -158,7 +158,7 @@ Open <http://localhost:8080>, create a project or drop a Prism .zip on the page,
 
 To use the assistant, connect an AI in **Settings → Assistant** (see [AI models](#ai-models)).
 
-`REFRACT_AUTH=none` means no sign-in at all: keep it to your own machine (the `127.0.0.1:` above makes sure of that). To put Refract on a server, read [Deploy](#deploy).
+`REFRACT_AUTH=none` means no sign-in at all: keep it to your own machine (the `127.0.0.1:` above makes sure of that). Inside the container Refract can't see that limit, so it refuses to start without sign-in unless you name the hosts you open it at: that is what `REFRACT_ALLOWED_HOSTS=localhost` says. To put Refract on a server, read [Deploy](#deploy).
 
 ## Deploy
 
@@ -169,8 +169,11 @@ docker run -d --name refract --restart unless-stopped --stop-timeout 30 \
   -p 127.0.0.1:8080:8080 -v refract-data:/data \
   -e REFRACT_SECRET_KEY="<the output of: openssl rand -base64 32>" \
   -e REFRACT_AUTH=builtin \
+  -e REFRACT_PUBLIC_URL=https://refract.example.com \
   ghcr.io/ponytojas/refract:0.1
 ```
+
+Set `REFRACT_PUBLIC_URL` to the address people open Refract at: Refract then refuses requests for other host names (see [Security](#security)). Add LAN names or IP addresses with `REFRACT_ALLOWED_HOSTS`.
 
 Each release publishes the image for amd64 and arm64 as `latest`, as `0.1` (the newest 0.1.x, which only gets fixes) and as the exact version, such as `0.1.0`. To build it yourself instead, run `docker build -t refract .` in this repository, or `make docker`, which also tests it for both architectures.
 
@@ -232,6 +235,7 @@ By default nobody can create an account: you add them with `refract users add`. 
 Put Refract behind a proxy that terminates https. Two things matter:
 
 - **Send `X-Forwarded-Proto` and `X-Forwarded-For`.** Refract marks its session cookie `Secure` when the request came over https, and limits sign-in attempts per client address. It reads that address from `X-Forwarded-For` only when the request comes from the same machine or a private network, where your proxy is; otherwise anyone could forge it.
+- **Keep the `Host` header**, or set `REFRACT_PUBLIC_URL`. Refract checks the host name of every request (see [Security](#security)) and the `Origin` of every change. Caddy and the nginx example below pass the public name through; if your proxy rewrites `Host` to the upstream address (`127.0.0.1:8080`), set `REFRACT_PUBLIC_URL` to the public address, or changes are refused with `403`.
 - **Don't buffer responses.** The assistant streams its answer (server-sent events); a buffering proxy holds it back until the end.
 
 [Caddy](https://caddyserver.com) does all of this by default:
@@ -400,9 +404,10 @@ All settings are environment variables.
 | `REFRACT_AUTH` | `cloudflare` (default), `builtin` (Refract's own sign-in; `password` still works) or `none`. See [Choose how people sign in](#choose-how-people-sign-in). |
 | `REFRACT_DATA_DIR` | Where projects, the database and caches live. Default `/data`. |
 | `REFRACT_ADDR` | Listen address. Default `:8080`. |
+| `REFRACT_ALLOWED_HOSTS` | Extra host names or IP addresses people open Refract at, separated by commas, e.g. `refract.lan,192.168.1.20` (a port is ignored). `localhost`, `127.0.0.1`, `[::1]`, `*.localhost` and the host of `REFRACT_PUBLIC_URL` are always allowed; requests for other names get `421`. When Refract listens on an address other computers can reach (judged by the address it actually binds) and neither this nor `REFRACT_PUBLIC_URL` is set, any name is accepted, with a warning in the log, and `REFRACT_AUTH=none` refuses to start. An invalid entry, or an invalid `REFRACT_PUBLIC_URL`, stops startup. |
 | `REFRACT_MODE` | `selfhost` (default) or `saas`, for the hosted service. With `saas`, the ChatGPT plan is off (OpenAI's plan usage covers self-hosted apps): people use the assistant with API providers only. Refract refuses to start with `REFRACT_AUTH=none` or without an https `REFRACT_PUBLIC_URL`. AI providers and git remotes must be public https addresses (no loopback, private or metadata addresses, no local models), and proxy settings are ignored for them. Needs git 2.37 or later. With `saas`, each account has a plan (`free` by default) that limits its projects, storage and assistant turns; self-hosted installs have no limits. Storage counts a project's files, git history and the assistant's pending-review worktrees (full copies of the project until you accept or reject the turn), but not build output or caches; trashed projects count until deleted forever. A pull, an accepted assistant turn and a restore of an older version are only measured after they ran, so each of these can take an account past its limit once; it stands, and further growth is refused until the account is back under. A save that grows a file is refused once the account is at or over its limit, whether saves arrive one by one or in parallel; the save that crosses the line is the last, and it can't exceed the file size limit. Saves that keep a file the same size or make it smaller always work. |
 | `REFRACT_CF_TEAM_DOMAIN`, `REFRACT_CF_AUD` | Cloudflare Access team domain and application AUD tag. |
-| `REFRACT_PUBLIC_URL` | The address users open Refract at, e.g. `https://refract.example.com`. Needed for OpenID Connect and for the links in emails, and required with `REFRACT_MODE=saas`. |
+| `REFRACT_PUBLIC_URL` | The address users open Refract at, e.g. `https://refract.example.com`. Its host is allowed by the host check (see `REFRACT_ALLOWED_HOSTS`). Needed for OpenID Connect and for the links in emails, and required with `REFRACT_MODE=saas`. |
 | `REFRACT_SIGNUP` | `open` or `closed` (default): whether people can create their own account. Only with `REFRACT_AUTH=builtin`; needs the three mail settings. See [Let people sign up](#let-people-sign-up). |
 | `REFRACT_SMTP_URL` | The mail server, `smtp://user:pass@host:587` (URL-encode special characters). STARTTLS is required except to `localhost`, `127.0.0.1` and `::1`. |
 | `REFRACT_MAIL_FROM` | The sender, e.g. `Refract <no-reply@refract.example.com>`. Set both mail variables or neither. |
@@ -466,7 +471,7 @@ On Windows and Linux, read <kbd>Ctrl</kbd> for <kbd>⌘</kbd>. Hold <kbd>⌘</kb
 
 - **Sign-in:** Cloudflare Access tokens are verified on every request. Passwords are hashed with PBKDF2-SHA256 (600,000 iterations). Repeated failures for an account, or from one address, are refused for 15 minutes; the counts survive restarts. Sessions are random tokens stored only as hashes, in `HttpOnly`, `SameSite=Lax` cookies (named `__Host-refract_session` over https). A session ends 30 days after signing in, or after 7 days without use; Settings → Account lists where you're signed in and signs out one device or all the others. Changing the password signs out every other device.
 - **Account links:** confirmation and reset links are random, expire, work once and are stored only as hashes. Setting a password by any means cancels reset links. Sign-up and reset answer the same for addresses with and without an account, email goes out after the answer, and emails are limited per address and per network address.
-- **Requests:** every API call must carry a custom header that browsers can't add cross-site, which blocks cross-site request forgery.
+- **Requests:** every API call must carry a custom header that browsers can't add cross-site, which blocks cross-site request forgery. Refract answers only to the host names it expects (`localhost` and the loopback addresses, the host of `REFRACT_PUBLIC_URL` and `REFRACT_ALLOWED_HOSTS`) and refuses others with `421`, so a website can't use DNS rebinding to reach a Refract running on your computer. The exception is a server that listens on an address other computers can reach with neither setting: it accepts any name and warns in the log, and with `REFRACT_AUTH=none` it refuses to start. Changes (anything but `GET`, `HEAD` and `OPTIONS`) must carry no `Origin` or exactly one from an allowed host (in that exception, the host asked for); others get `403`. The host check doesn't limit who can connect: the listen address, a firewall and sign-in do that.
 - **Browser:** a strict Content-Security-Policy lets the app run only its own scripts and connect only to its own server. Refract can't be embedded in other sites, and over https it sends `Strict-Transport-Security`.
 - **Secrets at rest:** ChatGPT credentials, API keys and git tokens are encrypted with AES-GCM under `REFRACT_SECRET_KEY`, each bound to its owner.
 - **Isolation between users:** projects, chats and connections are checked against their owner on every access.
@@ -480,7 +485,7 @@ Found a vulnerability? Please report it privately through the repository's **Sec
 You need Go, Node.js, git, ripgrep, Tectonic and `synctex` (and Google Chrome for the browser test). The image bundles all of them. Packaging tests also use Python 3.11+; `dpkg-deb` is optional locally and required in Linux CI to verify Debian packages. [AGENTS.md](AGENTS.md) lists how to check and install the development tools, and the conventions to follow when changing the code.
 
 ```sh
-make dev                                  # API on :8080 and Vite on :5173; open http://localhost:5173
+make dev                                  # API on 127.0.0.1:8080 (REFRACT_ADDR overrides) and Vite on :5173; open http://localhost:5173
 make dev AUTH=builtin                     # the same, with the sign-in page
 make users ARGS="add you@example.com"     # accounts in the development data
 make login                                # refract login, for ChatGPT
