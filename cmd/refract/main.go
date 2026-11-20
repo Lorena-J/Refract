@@ -46,6 +46,9 @@ const helpText = `Refract, a private AI-assisted LaTeX workspace.
 
 Usage:
   refract            run the server (configured with REFRACT_* environment variables)
+  refract local      run Refract on this computer with no configuration: data in your
+                     user folder, no sign-in, 127.0.0.1 only, opens the browser
+                     (run "refract local -h" for options)
   refract login      sign in with ChatGPT on this computer and write a credential file
                      to upload in Settings → Assistant (run "refract login -h" for options)
   refract users add <email>
@@ -84,6 +87,13 @@ func main() {
 		}
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "local" {
+		if err := runLocal(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "refract local:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "login" {
 		if err := runLogin(os.Args[2:]); err != nil {
 			fmt.Fprintln(os.Stderr, "login failed:", err)
@@ -92,22 +102,40 @@ func main() {
 		return
 	}
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
-	if err := run(); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	err := run(ctx, runOptions{})
+	stop()
+	if err != nil {
 		slog.Error("fatal", "err", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+// runOptions lets a caller other than the environment decide parts of the
+// server's setup (refract local). Zero values mean "read the environment".
+type runOptions struct {
+	dataDir  string // instead of REFRACT_DATA_DIR
+	key      []byte // instead of REFRACT_SECRET_KEY
+	authKind string // instead of REFRACT_AUTH, after authMode
+	// listen opens the listener instead of REFRACT_ADDR.
+	listen func() (net.Listener, error)
+	// ready runs in its own goroutine once the server is about to accept
+	// connections on addr; ctx ends when the server stops.
+	ready func(ctx context.Context, addr net.Addr)
+}
 
+// run serves Refract until ctx ends, then shuts down gracefully.
+func run(ctx context.Context, opts runOptions) error {
 	// Absolute: tectonic and synctex run in other working directories.
-	dataDir, err := filepath.Abs(cmp.Or(os.Getenv("REFRACT_DATA_DIR"), "/data"))
+	dataDir, err := filepath.Abs(cmp.Or(opts.dataDir, os.Getenv("REFRACT_DATA_DIR"), "/data"))
 	if err != nil {
 		return err
 	}
-	addr := listenAddr(os.Getenv)
+	listen, logAddr := opts.listen, ""
+	if listen == nil {
+		logAddr = listenAddr(os.Getenv) // logged as configured, as before
+		listen = func() (net.Listener, error) { return net.Listen("tcp", logAddr) }
+	}
 	deployment, err := mode.Parse(os.Getenv("REFRACT_MODE"))
 	if err != nil {
 		return err
@@ -116,7 +144,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	authKind := authMode(os.Getenv("REFRACT_AUTH"))
+	authKind := cmp.Or(opts.authKind, authMode(os.Getenv("REFRACT_AUTH")))
 	prof, err := parseProfile(os.Getenv("REFRACT_PROFILE"))
 	if err != nil {
 		return err
@@ -149,7 +177,7 @@ func run() error {
 	}
 	// Listen before opening anything, and judge the policy by the address
 	// bound: "localhost" in REFRACT_ADDR can resolve to any address.
-	ln, err := net.Listen("tcp", addr)
+	ln, err := listen()
 	if err != nil {
 		return err
 	}
@@ -163,9 +191,11 @@ func run() error {
 	}
 	warnAccounts(authKind, signup, smtp != nil, base != "", os.Getenv("REFRACT_SIGNUP") != "")
 
-	key, err := store.ParseKey(os.Getenv("REFRACT_SECRET_KEY"))
-	if err != nil {
-		return err
+	key := opts.key
+	if key == nil {
+		if key, err = store.ParseKey(os.Getenv("REFRACT_SECRET_KEY")); err != nil {
+			return err
+		}
 	}
 
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
@@ -181,6 +211,9 @@ func run() error {
 	guard, login, err := authMiddleware(people, authKind)
 	if err != nil {
 		return err
+	}
+	if authKind == "none" && opts.authKind == "" { // refract local says so itself
+		slog.Warn("REFRACT_AUTH=none: the web UI is unprotected; only use this locally or behind your own auth")
 	}
 
 	// The session also keeps per-user settings (the welcome flag), so it
@@ -325,7 +358,12 @@ func run() error {
 	mux.Handle("/", guard(people.Middleware(auth.RequireCSRFHeader(app))))
 
 	srv := newServer(mux, hosts)
-	slog.Info("listening", "addr", addr, "data_dir", dataDir)
+	slog.Info("listening", "addr", cmp.Or(logAddr, ln.Addr().String()), "data_dir", dataDir)
+	if opts.ready != nil {
+		readyCtx, stopReady := context.WithCancel(ctx)
+		defer stopReady()
+		go opts.ready(readyCtx, ln.Addr())
+	}
 	err = serve(ctx, srv, ln, 10*time.Second, 5*time.Second)
 	// A purge in progress still uses the database: stop it and wait for its current step.
 	stopPurge()
@@ -435,7 +473,6 @@ func authMiddleware(people *users.Service, kind string) (guard func(http.Handler
 		}
 		return people.SessionGuard(web.Handler()), login, nil
 	case "none":
-		slog.Warn("REFRACT_AUTH=none: the web UI is unprotected; only use this locally or behind your own auth")
 		return auth.Unauthenticated, nil, nil // one local user
 	default:
 		return nil, nil, fmt.Errorf("REFRACT_AUTH=%q: want cloudflare, builtin or none", kind)

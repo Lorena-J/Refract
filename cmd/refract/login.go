@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -121,5 +122,9 @@ func openBrowser(u string) {
 	default:
 		cmd = exec.Command("xdg-open", u)
 	}
-	cmd.Start()
+	if err := cmd.Start(); err != nil {
+		slog.Warn("couldn't open the browser", "url", u, "err", err)
+		return
+	}
+	go cmd.Wait() // reap the launcher, which exits once the browser has the URL
 }
