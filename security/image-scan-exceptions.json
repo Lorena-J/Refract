@@ -1,0 +1,4 @@
+{
+  "_comment": "Reviewed exceptions to the image scan's publication gate (scripts/scan_gate.py). A Critical finding blocks a release unless it is listed here. Each entry needs: id (CVE or GHSA, as Grype reports it), package (the affected package's name), reason (why it can't be exploited in Refract, or why waiting is acceptable), reviewed_by (a GitHub login), reviewed_on and expires (YYYY-MM-DD, at most 90 days apart). An expired entry blocks the gate until it is reviewed again. See \"Release image scanning\" in the README.",
+  "exceptions": []
+}
