@@ -7,9 +7,11 @@ dev:
 # Set REFRACT_ALLOWED_SUBJECT (printed by `make login`) and optionally REFRACT_MODEL_AGENT in your shell.
 # With a sign-in page: make dev AUTH=builtin (accounts: make users ARGS="add you@example.com").
 AUTH ?= none
+# Loopback only by default; REFRACT_ADDR in the environment overrides it.
+REFRACT_ADDR ?= 127.0.0.1:8080
 DEV_ENV = REFRACT_DATA_DIR=./data REFRACT_SECRET_KEY=$$(cat data/dev.key)
 dev-api: data/dev.key
-	REFRACT_AUTH=$(AUTH) $(DEV_ENV) go run ./cmd/refract
+	REFRACT_AUTH=$(AUTH) REFRACT_ADDR=$(REFRACT_ADDR) $(DEV_ENV) go run ./cmd/refract
 
 # Accounts in the dev data: make users ARGS="list" | ARGS="add you@example.com" | ARGS="rename local you@example.com"
 users: data/dev.key

@@ -28,7 +28,8 @@ Needs [Docker](https://docs.docker.com/get-docker/). Check with `docker version`
 ```sh
 openssl rand -base64 32 > refract.key && chmod 600 refract.key
 docker run -d --name refract -p 127.0.0.1:8080:8080 -v refract-data:/data \
-  -e REFRACT_SECRET_KEY="$(cat refract.key)" -e REFRACT_AUTH=none ghcr.io/ponytojas/refract
+  -e REFRACT_SECRET_KEY="$(cat refract.key)" -e REFRACT_AUTH=none -e REFRACT_ALLOWED_HOSTS=localhost \
+  ghcr.io/ponytojas/refract
 ```
 
 The image is published for amd64 and arm64. To build it from the source instead: `git clone https://github.com/ponytojas/Refract.git && cd Refract && docker build -t refract .`, then use `refract` as the image name.
@@ -61,7 +62,7 @@ cd Refract
 make dev
 ```
 
-`make dev` installs the web dependencies on first run, creates a development key in `data/dev.key`, and starts the API on `:8080` and Vite on `:5173` with `REFRACT_AUTH=none` and data in `./data`. Leave it running in its own terminal.
+`make dev` installs the web dependencies on first run, creates a development key in `data/dev.key`, and starts the API on `127.0.0.1:8080` and Vite on `:5173` with `REFRACT_AUTH=none` and data in `./data`. Leave it running in its own terminal.
 
 Verify: `curl -s http://127.0.0.1:8080/healthz` prints `ok`, and <http://localhost:5173> shows the project list. Open that address (5173: Vite serves the app and forwards `/api` to 8080).
 
@@ -111,6 +112,8 @@ Then start the container from the published image (`ghcr.io/ponytojas/refract:0.
 | `mkdir /data: read-only file system` (or permission denied) | `REFRACT_DATA_DIR` isn't set, so the default `/data` is used outside Docker. Use `make dev`, or set `REFRACT_DATA_DIR=./data`. |
 | `REFRACT_SECRET_KEY must be 32 bytes, base64-encoded` | Generate one with `openssl rand -base64 32`. Commands like `refract users` need the same key as the server. |
 | `REFRACT_AUTH=cloudflare needs REFRACT_CF_TEAM_DOMAIN…` | Refract won't start without a sign-in mode. Set `REFRACT_AUTH` (see the README). |
+| `REFRACT_AUTH=none listens on …, which other computers can reach` | Without sign-in, Refract starts only on a loopback address or with allowed hosts named. Set `REFRACT_ADDR=127.0.0.1:8080`, or in Docker (published on `127.0.0.1:` only) add `-e REFRACT_ALLOWED_HOSTS=localhost`. Allowed hosts don't stop other computers from connecting: keep the port on `127.0.0.1`. |
+| The page says `Refract doesn't answer to the host name …` | Add that name to `REFRACT_ALLOWED_HOSTS`, or set `REFRACT_PUBLIC_URL` to the address people open. |
 | Compiling fails with `executable file not found` for `tectonic` | Tectonic isn't installed, or isn't on the server's `PATH`. |
 | Jumping between source and PDF does nothing | `synctex` is missing (see Prerequisites). |
 | The first compile is slow or fails offline | Tectonic downloads packages on first use; it needs internet once per package. |
