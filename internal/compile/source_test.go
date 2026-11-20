@@ -68,12 +68,7 @@ func TestRestoreSyncPaths(t *testing.T) {
 	}
 	z.Close()
 	f.Close()
-	build, err := os.Open(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer build.Close()
-	if err := restoreSyncPaths(build, "main.synctex.gz", stage, dir); err != nil {
+	if err := restoreSyncPaths(openTestDir(t, dir), "main.synctex.gz", stage, dir); err != nil {
 		t.Fatal(err)
 	}
 	f, err = os.Open(file)
