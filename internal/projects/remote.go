@@ -348,16 +348,24 @@ func networkEnv() []string {
 	return append(env, "GIT_TRACE_REDACT=1")
 }
 
-// ErrRepoConfig: the project's own git config has settings that change where
-// or how git connects. Refract never writes them; refuse rather than guess.
+// ErrRepoConfig: the project's git configuration has settings that change
+// where or how git connects. Refract never writes them; refuse rather than guess.
 var ErrRepoConfig = errors.New("the project's git configuration has url, http, include or credential settings, which Refract doesn't allow for remotes")
 
+// checkRepoConfig reads the configuration the network command will see — with
+// its environment, so every file git reads (.git/config, .git/config.worktree
+// with extensions.worktreeConfig, anything included) — and refuses routing
+// settings from anywhere but Refract's own command-line values.
 func checkRepoConfig(ctx context.Context, dir string) error {
-	out, err := git(ctx, dir, "config", "--local", "--list", "--name-only")
+	out, err := runGit(ctx, dir, networkEnv(), nil, "config", "--list", "--includes", "--show-scope", "--name-only")
 	if err != nil {
 		return err
 	}
-	for _, name := range strings.Fields(strings.ToLower(out)) {
+	for _, line := range strings.Split(strings.ToLower(out), "\n") {
+		scope, name, ok := strings.Cut(strings.TrimSpace(line), "\t")
+		if !ok || scope == "command" {
+			continue
+		}
 		for _, p := range []string{"url.", "http.", "include.", "includeif.", "credential."} {
 			if strings.HasPrefix(name, p) {
 				return ErrRepoConfig

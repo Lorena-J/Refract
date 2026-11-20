@@ -2,6 +2,7 @@ package projects
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/pem"
 	"errors"
 	"net/http"
@@ -60,7 +61,8 @@ func httpsProject(t *testing.T, target string) (*Service, string) {
 	return s, id
 }
 
-const wantAuth = "Basic eC1hY2Nlc3MtdG9rZW46c3ludGhldGljLnRvaw==" // x-access-token:synthetic.tok
+// wantAuth is spelled out here rather than taken from basicAuth, which it checks.
+var wantAuth = "Basic " + base64.StdEncoding.EncodeToString([]byte("x-access-token:"+"synthetic.tok"))
 
 func noSecret(t *testing.T, err error) {
 	t.Helper()
@@ -135,6 +137,30 @@ func TestHTTPSIgnoresRoutingConfig(t *testing.T) {
 		t.Errorf("pull with http settings in the project: %v", err)
 	}
 	git(ownerCtx, s.Path(id), "config", "--local", "--unset", "http.sslVerify")
+
+	// The same settings in the worktree's config file, which git reads once
+	// extensions.worktreeConfig is on, and in a file the config includes.
+	if _, err := git(ownerCtx, s.Path(id), "config", "--local", "extensions.worktreeConfig", "true"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git(ownerCtx, s.Path(id), "config", "--worktree", "http.sslVerify", "false"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Push(ownerCtx, id); !errors.Is(err, ErrRepoConfig) {
+		t.Errorf("push with http settings in the worktree config: %v", err)
+	}
+	git(ownerCtx, s.Path(id), "config", "--worktree", "--unset", "http.sslVerify")
+	inc := filepath.Join(t.TempDir(), "inc")
+	if err := os.WriteFile(inc, []byte("[http]\n\tsslVerify = false\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git(ownerCtx, s.Path(id), "config", "--worktree", "include.path", inc); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Pull(ownerCtx, id); !errors.Is(err, ErrRepoConfig) {
+		t.Errorf("pull with an included config: %v", err)
+	}
+	git(ownerCtx, s.Path(id), "config", "--worktree", "--unset", "include.path")
 
 	t.Setenv("GIT_CONFIG_PARAMETERS", "'url."+other.URL+"/.insteadof'='"+srv.URL+"/'")
 	t.Setenv("GIT_TRACE_CURL", "1")
