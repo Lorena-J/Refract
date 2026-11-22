@@ -78,6 +78,7 @@ mac-release: mac-release-check web
 
 mac-release-check:
 	@test -n "$$REFRACT_SIGN_IDENTITY" && test "$$REFRACT_SIGN_IDENTITY" != "-" || { echo "set REFRACT_SIGN_IDENTITY to your Developer ID Application identity" >&2; exit 2; }
+	@test -n "$$REFRACT_NOTARY_PROFILE" || { test -n "$$REFRACT_NOTARY_KEY_PATH" && test -n "$$REFRACT_NOTARY_KEY_ID" && test -n "$$REFRACT_NOTARY_ISSUER"; } || { echo "set REFRACT_NOTARY_PROFILE (or REFRACT_NOTARY_KEY_PATH, REFRACT_NOTARY_KEY_ID and REFRACT_NOTARY_ISSUER)" >&2; exit 2; }
 
 # The app's lifecycle tests (macOS only).
 mac-test:
