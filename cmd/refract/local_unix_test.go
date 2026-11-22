@@ -3,6 +3,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -25,5 +26,20 @@ func TestLoadOrCreateKeyFIFO(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("reading a fifo as the key blocked")
+	}
+}
+
+func TestReadEmbedTokenFromFD(t *testing.T) {
+	r, w, _ := os.Pipe()
+	w.WriteString(testEmbedToken + "\n")
+	w.Close()
+	t.Setenv(embedTokenEnv, "ignored-ignored-ignored")
+	fd, err := syscall.Dup(int(r.Fd()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok, err := readEmbedToken(fd, os.Getenv, os.Unsetenv)
+	if err != nil || tok != testEmbedToken {
+		t.Fatal(tok, err)
 	}
 }
