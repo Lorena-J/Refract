@@ -60,6 +60,13 @@ async function abstractLimit(page: Page, max = '3') {
     .click({ position: { x: 10, y: 8 } })
 }
 
+// WebKit (like macOS) selects the word under a right-click, and the quick actions toolbar for that
+// selection can cover the next line (#102). Collapse it with the keyboard, as a person would.
+async function collapseRightClickSelection(page: Page) {
+  await expect(page.getByRole('dialog')).not.toBeVisible()
+  await page.keyboard.press('ArrowRight')
+}
+
 const shorter = (page: Page) => page.getByRole('button', { name: /^Suggest a shorter version:/ })
 
 async function openWordCountSettings(page: Page) {
@@ -412,15 +419,7 @@ test('outside-budget cursors show no limit selector or shortening action', async
   await expect(shorter(page)).toBeVisible()
 })
 
-test('multiple budgets target the innermost section from headings and bodies', async ({
-  page,
-  request,
-  browserName,
-}) => {
-  test.skip(
-    browserName === 'webkit',
-    'right-click selects the word, and the toolbar covers the next line: https://github.com/ponytojas/Refract/issues/102',
-  )
+test('multiple budgets target the innermost section from headings and bodies', async ({ page, request }) => {
   const nested = String.raw`\documentclass{article}
 \begin{document}
 \section{Main}
@@ -435,6 +434,7 @@ Other prose here.
     await openLimit(page, heading)
     await page.getByLabel('Maximum words').fill('1')
     await page.getByRole('button', { name: 'Set limit', exact: true }).click()
+    await collapseRightClickSelection(page)
   }
   for (const [line, name] of [
     ['\\section{Main}', 'Main'],
@@ -465,15 +465,7 @@ Other prose here.
   await expect(page.getByText('3 → 1 words', { exact: true })).toBeVisible()
 })
 
-test('selecting a subsection up to the next heading keeps its own shortening target', async ({
-  page,
-  request,
-  browserName,
-}) => {
-  test.skip(
-    browserName === 'webkit',
-    'right-click selects the word, and the toolbar covers the next line: https://github.com/ponytojas/Refract/issues/102',
-  )
+test('selecting a subsection up to the next heading keeps its own shortening target', async ({ page, request }) => {
   const nested = String.raw`\section{Main}
 Outer prose here.
 \subsection{Child}
@@ -485,6 +477,7 @@ Other prose here.`
     await openLimit(page, heading)
     await page.getByLabel('Maximum words').fill('1')
     await page.getByRole('button', { name: 'Set limit', exact: true }).click()
+    await collapseRightClickSelection(page)
   }
   await page
     .locator('.cm-line')
