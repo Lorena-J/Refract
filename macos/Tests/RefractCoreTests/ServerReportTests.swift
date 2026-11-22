@@ -73,6 +73,22 @@ final class LogStoreTests: XCTestCase {
         XCTAssertEqual(lines.count, 3)
         XCTAssertTrue(lines.last!.hasSuffix("line 30"))
     }
+
+    func testTailOfTheCurrentRunStartsAtTheLastStart() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("refract-log-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = LogStore(directory: dir)
+        let fd = try store.open()
+        store.note("starting refract (first)", fd: fd)
+        store.note("old failure", fd: fd)
+        store.note("starting refract (second)", fd: fd)
+        store.note("new failure", fd: fd)
+        close(fd)
+        let tail = store.tail(currentRun: true)
+        XCTAssertTrue(tail.contains("second") && tail.contains("new failure"))
+        XCTAssertFalse(tail.contains("old failure"))
+        XCTAssertTrue(store.tail().contains("old failure"))
+    }
 }
 
 final class BundleLayoutTests: XCTestCase {

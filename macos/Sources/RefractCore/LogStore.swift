@@ -44,6 +44,9 @@ public struct LogStore {
         try? fm.moveItem(at: file, to: old(1))
     }
 
+    /// What the app's line before each start of the server contains.
+    static let startMarker = "[app] starting "
+
     /// A line of the app's own, written between the server's.
     public func note(_ text: String, fd: Int32) {
         let stamp = ISO8601DateFormatter().string(from: Date())
@@ -51,15 +54,20 @@ public struct LogStore {
         line.withCString { _ = Darwin.write(fd, $0, strlen($0)) }
     }
 
-    /// The last `lines` lines of the log (empty when there is none).
-    public func tail(lines: Int = 20) -> String {
+    /// The last `lines` lines of the log (empty when there is none). With `currentRun`,
+    /// only those since the app last started the server: an error view shows why this
+    /// run failed, not what an earlier one printed.
+    public func tail(lines: Int = 20, currentRun: Bool = false) -> String {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return "" }
         defer { try? handle.close() }
         let size = (try? handle.seekToEnd()) ?? 0
         let start = size > 64_000 ? size - 64_000 : 0
         try? handle.seek(toOffset: start)
         let data = (try? handle.readToEnd()) ?? Data()
-        let all = String(decoding: data, as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: true)
+        var all = String(decoding: data, as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: true)
+        if currentRun, let start = all.lastIndex(where: { $0.contains(Self.startMarker) }) {
+            all = Array(all[start...])
+        }
         return all.suffix(lines).joined(separator: "\n")
     }
 }

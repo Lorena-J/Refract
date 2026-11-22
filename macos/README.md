@@ -65,7 +65,8 @@ used last (`--port`) and, if it is taken, goes back to a free one.
   `running` with `embedded`, `unresponsive`, `error` or no line: the error view.
 - Quit (also `osascript -e 'quit app "Refract"'`): `window.refractFlush()`; if it answers
   false the person is asked; then standard input is closed, a progress view shows after one second,
-  and the server is killed after 30 seconds. If the app itself dies, the pipe closes and the
+  and the server's process group is killed after 30 seconds (a compile in flight runs in a group
+  of its own, which the server stops when it shuts down normally but a kill doesn't reach). If the app itself dies, the pipe closes and the
   server stops by itself.
 - The server exits after it was ready: the error view with the end of the log, Restart (stops what is
   left, starts again with a new token) and Show Logs. Projects and the database are not touched.
