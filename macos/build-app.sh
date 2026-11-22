@@ -100,6 +100,11 @@ if [ -n "$SPARKLE_KEY" ]; then
   # One feed per architecture: Sparkle doesn't choose by architecture, and each app updates to its own.
   /usr/libexec/PlistBuddy -c "Add :SUFeedURL string $FEED_BASE/appcast-$ARCH.xml" \
     -c "Add :SUPublicEDKey string $SPARKLE_KEY" -c "Add :SUVerifyUpdateBeforeExtraction bool true" "$PLIST"
+  # Only a development (ad hoc) build lets REFRACT_APP_UPDATE_FEED point it at a test feed;
+  # a release reads its own feed, whatever the environment says (verify-app.sh --release).
+  if [ "${REFRACT_SIGN_IDENTITY:--}" = "-" ]; then
+    /usr/libexec/PlistBuddy -c "Add :RefractAllowsUpdateFeedOverride bool true" "$PLIST"
+  fi
 else
   echo "==> no REFRACT_SPARKLE_PUBLIC_KEY: this build has updates turned off"
 fi

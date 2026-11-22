@@ -32,6 +32,9 @@ FEED=$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$PLIST" 2>/dev/null || tru
 [ ! -e "$FW/Versions/B/XPCServices" ] || fail "Sparkle's XPC services are shipped but unused (the app is not sandboxed)"
 codesign --verify --strict "$FW" || fail "Sparkle.framework is not validly signed"
 codesign --verify --strict "$FW/Versions/B/Updater.app" || fail "Sparkle's Updater.app is not validly signed"
+if [ "$RELEASE" = 1 ] && /usr/libexec/PlistBuddy -c 'Print :RefractAllowsUpdateFeedOverride' "$PLIST" >/dev/null 2>&1; then
+  fail "RefractAllowsUpdateFeedOverride is set: a release must not let the environment move its update feed"
+fi
 if [ -n "$KEY" ]; then
   [ "$(printf '%s' "$KEY" | base64 -D 2>/dev/null | wc -c | tr -d ' ')" = 32 ] || fail "SUPublicEDKey is not a 32-byte Ed25519 public key"
   case "$FEED" in https://*) ;; *) fail "SUFeedURL must be an https URL, got: ${FEED:-nothing}" ;; esac

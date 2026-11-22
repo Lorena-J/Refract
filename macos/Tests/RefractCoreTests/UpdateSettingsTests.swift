@@ -5,10 +5,11 @@ final class UpdateSettingsTests: XCTestCase {
     private let key = Data(repeating: 7, count: 32).base64EncodedString()
     private let feed = "https://github.com/ponytojas/Refract/releases/latest/download/appcast-arm64.xml"
 
-    private func info(key: String? = nil, feed: String? = nil) -> [String: Any] {
+    private func info(key: String? = nil, feed: String? = nil, overridable: Bool = false) -> [String: Any] {
         var d: [String: Any] = [:]
         if let key { d["SUPublicEDKey"] = key }
         if let feed { d["SUFeedURL"] = feed }
+        if overridable { d[UpdateSettings.feedOverrideKey] = true }
         return d
     }
 
@@ -40,13 +41,26 @@ final class UpdateSettingsTests: XCTestCase {
     func testEnvironmentOverrideAllowsLoopbackHTTPOnly() {
         let name = UpdateSettings.feedOverrideVariable
         let local = "http://127.0.0.1:8099/appcast.xml"
-        XCTAssertEqual(UpdateSettings.resolve(info: info(key: key, feed: feed), environment: [name: local]),
+        XCTAssertEqual(UpdateSettings.resolve(info: info(key: key, feed: feed, overridable: true), environment: [name: local]),
                        .enabled(feedURL: URL(string: local)!, publicKey: key))
-        XCTAssertEqual(UpdateSettings.resolve(info: info(key: key, feed: feed), environment: [name: "http://evil.example/a.xml"]),
+        XCTAssertEqual(UpdateSettings.resolve(info: info(key: key, feed: feed, overridable: true), environment: [name: "http://evil.example/a.xml"]),
                        .disabled(.insecureFeed("http://evil.example/a.xml")))
         // An empty override is no override; it never turns updates on without a key.
-        XCTAssertEqual(UpdateSettings.resolve(info: info(key: key, feed: feed), environment: [name: ""]),
+        XCTAssertEqual(UpdateSettings.resolve(info: info(key: key, feed: feed, overridable: true), environment: [name: ""]),
                        .enabled(feedURL: URL(string: feed)!, publicKey: key))
-        XCTAssertEqual(UpdateSettings.resolve(info: info(feed: feed), environment: [name: local]), .disabled(.noPublicKey))
+        XCTAssertEqual(UpdateSettings.resolve(info: info(feed: feed, overridable: true), environment: [name: local]), .disabled(.noPublicKey))
+    }
+
+    func testReleaseBuildIgnoresTheOverride() {
+        // Without the ad hoc build's Info.plist flag (a release), the environment can't move the feed.
+        let name = UpdateSettings.feedOverrideVariable
+        for other in ["http://127.0.0.1:8099/appcast.xml", "https://example.com/appcast.xml"] {
+            XCTAssertEqual(UpdateSettings.resolve(info: info(key: key, feed: feed), environment: [name: other]),
+                           .enabled(feedURL: URL(string: feed)!, publicKey: key))
+        }
+        var flagNotTrue = info(key: key, feed: feed)
+        flagNotTrue[UpdateSettings.feedOverrideKey] = "YES"
+        XCTAssertEqual(UpdateSettings.resolve(info: flagNotTrue, environment: [name: "https://example.com/appcast.xml"]),
+                       .enabled(feedURL: URL(string: feed)!, publicKey: key))
     }
 }

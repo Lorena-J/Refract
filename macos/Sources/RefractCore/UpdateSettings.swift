@@ -20,15 +20,19 @@ public enum UpdateSettings: Equatable {
     }
 
     /// `REFRACT_APP_UPDATE_FEED` points the updater at another appcast, for tests of the
-    /// update path. It cannot weaken anything: the archive still has to carry a valid
-    /// signature of the baked-in key.
+    /// update path. It cannot weaken the archive check (the archive still has to carry a valid
+    /// signature of the baked-in key), and it is honoured only by builds whose Info.plist has
+    /// `feedOverrideKey`, which `build-app.sh` adds to ad hoc builds only (`verify-app.sh
+    /// --release` refuses it): a release always reads its own https feed.
     public static let feedOverrideVariable = "REFRACT_APP_UPDATE_FEED"
+    public static let feedOverrideKey = "RefractAllowsUpdateFeedOverride"
 
     public static func resolve(info: [String: Any], environment: [String: String] = [:]) -> UpdateSettings {
         let key = (info["SUPublicEDKey"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !key.isEmpty else { return .disabled(.noPublicKey) }
         guard let raw = Data(base64Encoded: key), raw.count == 32 else { return .disabled(.invalidPublicKey) }
-        let override = environment[feedOverrideVariable]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let overridable = info[feedOverrideKey] as? Bool ?? false
+        let override = overridable ? environment[feedOverrideVariable]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "" : ""
         let feed = override.isEmpty
             ? ((info["SUFeedURL"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "")
             : override
