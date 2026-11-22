@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ponytojas/Refract/internal/tools"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -223,7 +224,7 @@ func (t *Tools) search(ctx context.Context, query string, glob *string) (string,
 	if glob != nil && *glob != "" {
 		args = append(args, "--glob="+*glob)
 	}
-	cmd := exec.CommandContext(ctx, "rg", append(args, "--", query, ".")...)
+	cmd := exec.CommandContext(ctx, tools.Path("rg"), append(args, "--", query, ".")...)
 	cmd.Dir = t.Dir
 	out, err := cmd.Output()
 	var exit *exec.ExitError
