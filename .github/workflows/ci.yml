@@ -88,12 +88,12 @@ jobs:
       - name: Browser tests
         run: make e2e BROWSER=all
 
-      - name: Browser test report
+      - name: Browser test artifacts
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report
-          path: web/playwright-report
+          name: playwright-results
+          path: web/test-results
           if-no-files-found: ignore
 
   # Windows has no openat: build outputs are opened with checks that the file
