@@ -210,13 +210,21 @@ public final class ServerSupervisor {
             guard let self, let run else { return }
             if !self.readStdout(run) { run.source?.cancel(); run.source = nil }
         }
+        // A descriptor watched by a source is closed only once the source is cancelled.
+        let stdoutFD = run.stdout
+        source.setCancelHandler { [weak run] in
+            close(stdoutFD)
+            run?.stdout = -1
+        }
         run.source = source
         source.resume()
 
+        // Waits without reaping: until didExit reaps it on the main queue, the pid (and its
+        // process group) can't be reused, so the kills that target them hit nothing else.
         DispatchQueue.global().async { [weak self] in
-            var status: Int32 = 0
-            while waitpid(pid, &status, 0) < 0 && errno == EINTR {}
-            DispatchQueue.main.async { self?.didExit(run, status: status) }
+            var info = siginfo_t()
+            while waitid(P_PID, id_t(pid), &info, WEXITED | WNOWAIT) < 0 && errno == EINTR {}
+            DispatchQueue.main.async { self?.didExit(run) }
         }
     }
 
@@ -261,7 +269,7 @@ public final class ServerSupervisor {
             note("unreadable status line from the server: \(line)")
             run.superseded = true
             kill(run)
-            state = .failed(.startFailed(config.log.tail()))
+            state = .failed(.startFailed(config.log.tail(currentRun: true)))
             return
         }
         run.report = report
@@ -293,19 +301,21 @@ public final class ServerSupervisor {
 
     // MARK: Exit
 
-    private func didExit(_ run: Run, status: Int32) {
-        run.exited = true
+    private func didExit(_ run: Run) {
         run.timeout?.cancel()
         run.killTimer?.cancel()
-        // Whatever it started (a compile in flight) goes with it.
+        // Whatever it left in its process group goes with it (compiles run in groups of
+        // their own, which the server stops itself), then the zombie is reaped.
         Darwin.kill(-run.pid, SIGKILL)
+        var status: Int32 = 0
+        while waitpid(run.pid, &status, 0) < 0 && errno == EINTR {}
+        run.exited = true
         if run.stdin >= 0 { close(run.stdin); run.stdin = -1 }
         if run.source != nil {
             _ = readStdout(run)
-            run.source?.cancel()
+            run.source?.cancel()  // its cancel handler closes standard output
             run.source = nil
         }
-        if run.stdout >= 0 { close(run.stdout); run.stdout = -1 }
 
         let signaled = (status & 0x7f) != 0
         let code = signaled ? status & 0x7f : (status >> 8) & 0xff
@@ -323,9 +333,9 @@ public final class ServerSupervisor {
         switch run.report {
         case nil:
             // It left without a line: the end of its log says why (exit code 2 is a crash).
-            state = .failed(.startFailed(config.log.tail()))
+            state = .failed(.startFailed(config.log.tail(currentRun: true)))
         case .ready:
-            state = .failed(.exited(status: code, signaled: signaled, logTail: config.log.tail()))
+            state = .failed(.exited(status: code, signaled: signaled, logTail: config.log.tail(currentRun: true)))
         default:
             break  // running, unresponsive, error: the line already decided the state
         }
