@@ -7,7 +7,9 @@ import { randomBytes } from 'node:crypto'
 // Browser tests against the real binary (run `make build` first; needs tectonic on PATH),
 // with a scripted model (e2e/fake-model.mjs) for the assistant.
 // Uses the installed Google Chrome, so no browser download is needed.
-const port = 18090
+// REFRACT_E2E_PORT and REFRACT_E2E_MODEL_PORT move the app and the scripted model when the defaults are taken.
+const port = Number(process.env.REFRACT_E2E_PORT || 18090)
+const modelPort = Number(process.env.REFRACT_E2E_MODEL_PORT || 18091)
 const dataDir = mkdtempSync(join(tmpdir(), 'refract-e2e-'))
 
 export default defineConfig({
@@ -17,7 +19,11 @@ export default defineConfig({
   reporter: process.env.GITHUB_ACTIONS ? [['github'], ['list']] : 'list',
   use: { baseURL: `http://127.0.0.1:${port}`, channel: 'chrome', viewport: { width: 1500, height: 850 } },
   webServer: [
-    { command: 'node e2e/fake-model.mjs', url: 'http://127.0.0.1:18091/api/v1/models' },
+    {
+      command: 'node e2e/fake-model.mjs',
+      url: `http://127.0.0.1:${modelPort}/api/v1/models`,
+      env: { REFRACT_E2E_MODEL_PORT: String(modelPort) },
+    },
     {
       command: '../refract',
       url: `http://127.0.0.1:${port}/healthz`,
