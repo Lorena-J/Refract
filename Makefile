@@ -25,9 +25,17 @@ data/dev.key:
 # Browser tests against the built binary (needs tectonic). BROWSER=chrome (default, needs Google
 # Chrome), webkit (the macOS app's engine; first `cd web && npx playwright install webkit`) or all.
 BROWSER ?= chrome
-# Each browser gets its own server and data folder, so one run's projects and templates don't leak into the next.
+ifeq ($(filter $(BROWSER),chrome webkit all),)
+ifneq ($(filter e2e,$(MAKECMDGOALS)),)
+$(error BROWSER must be chrome, webkit or all, not "$(BROWSER)")
+endif
+endif
+E2E_BROWSERS = $(if $(filter all,$(BROWSER)),chrome webkit,$(BROWSER))
+# Each browser gets its own server and data folder, so one run's projects and templates don't leak
+# into the next. With BROWSER=all both run even if the first fails, and the target fails if either did.
 e2e: build
-	cd web && $(foreach b,$(if $(filter all,$(BROWSER)),chrome webkit,$(BROWSER)),npx playwright test --project=$(b) &&) true
+	cd web && failed=; for b in $(E2E_BROWSERS); do npx playwright test --project=$$b || failed="$$failed $$b"; done; \
+	if [ -n "$$failed" ]; then echo "Browser tests failed in:$$failed" >&2; exit 1; fi
 
 login:
 	go run ./cmd/refract login
