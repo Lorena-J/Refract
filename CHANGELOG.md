@@ -4,6 +4,10 @@ Notable changes to Refract. The format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Fixed
+
+- A compile that produces the PDF despite TeX errors now saves a version in the history too. Documents imported from Prism often keep a recoverable error on every build, and until now their history never grew.
+
 ## [0.2.0] - 2026-11-20
 
 ### Added
