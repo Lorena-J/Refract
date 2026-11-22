@@ -412,7 +412,15 @@ test('outside-budget cursors show no limit selector or shortening action', async
   await expect(shorter(page)).toBeVisible()
 })
 
-test('multiple budgets target the innermost section from headings and bodies', async ({ page, request }) => {
+test('multiple budgets target the innermost section from headings and bodies', async ({
+  page,
+  request,
+  browserName,
+}) => {
+  test.skip(
+    browserName === 'webkit',
+    'right-click selects the word, and the toolbar covers the next line: https://github.com/ponytojas/Refract/issues/102',
+  )
   const nested = String.raw`\documentclass{article}
 \begin{document}
 \section{Main}
@@ -457,7 +465,15 @@ Other prose here.
   await expect(page.getByText('3 → 1 words', { exact: true })).toBeVisible()
 })
 
-test('selecting a subsection up to the next heading keeps its own shortening target', async ({ page, request }) => {
+test('selecting a subsection up to the next heading keeps its own shortening target', async ({
+  page,
+  request,
+  browserName,
+}) => {
+  test.skip(
+    browserName === 'webkit',
+    'right-click selects the word, and the toolbar covers the next line: https://github.com/ponytojas/Refract/issues/102',
+  )
   const nested = String.raw`\section{Main}
 Outer prose here.
 \subsection{Child}

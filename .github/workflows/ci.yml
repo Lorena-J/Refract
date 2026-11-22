@@ -78,8 +78,15 @@ jobs:
           npx tsc --noEmit
           node --test src/*.test.ts src/lib/*.test.ts
 
+      # Every spec runs in Chrome and in WebKit, the engine of the macOS app's WKWebView.
+      # Playwright's WebKit build runs on Linux, which is enough to catch engine differences
+      # (layout, events, APIs) and keeps one job; WKWebView itself is tested separately (#66).
+      - name: WebKit
+        run: npx playwright install --with-deps webkit
+        working-directory: web
+
       - name: Browser tests
-        run: make e2e
+        run: make e2e BROWSER=all
 
       - name: Browser test report
         if: failure()

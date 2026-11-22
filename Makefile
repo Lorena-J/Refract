@@ -22,9 +22,12 @@ data/dev.key:
 	mkdir -p data
 	umask 077 && openssl rand -base64 32 > $@
 
-# Browser smoke test against the built binary (needs tectonic and Google Chrome).
+# Browser tests against the built binary (needs tectonic). BROWSER=chrome (default, needs Google
+# Chrome), webkit (the macOS app's engine; first `cd web && npx playwright install webkit`) or all.
+BROWSER ?= chrome
+# Each browser gets its own server and data folder, so one run's projects and templates don't leak into the next.
 e2e: build
-	cd web && npx playwright test
+	cd web && $(foreach b,$(if $(filter all,$(BROWSER)),chrome webkit,$(BROWSER)),npx playwright test --project=$(b) &&) true
 
 login:
 	go run ./cmd/refract login

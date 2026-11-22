@@ -566,7 +566,7 @@ Found a vulnerability? Please report it privately through the repository's **Sec
 
 ## Development
 
-You need Go, Node.js, git, ripgrep, Tectonic and `synctex` (and Google Chrome for the browser test). The image bundles all of them. Packaging tests also use Python 3.11+; `dpkg-deb` is optional locally and required in Linux CI to verify Debian packages. [AGENTS.md](AGENTS.md) lists how to check and install the development tools, and the conventions to follow when changing the code.
+You need Go, Node.js, git, ripgrep, Tectonic and `synctex` (and Google Chrome for the browser tests). The image bundles all of them. Packaging tests also use Python 3.11+; `dpkg-deb` is optional locally and required in Linux CI to verify Debian packages. [AGENTS.md](AGENTS.md) lists how to check and install the development tools, and the conventions to follow when changing the code.
 
 ```sh
 make dev                                  # API on 127.0.0.1:8080 (REFRACT_ADDR overrides) and Vite on :5173; open http://localhost:5173
@@ -574,7 +574,9 @@ make dev AUTH=builtin                     # the same, with the sign-in page
 make users ARGS="add you@example.com"     # accounts in the development data
 make login                                # refract login, for ChatGPT
 make test                                 # go vet, Go tests and web unit tests
-make e2e                                  # build, then a Playwright smoke test
+make e2e                                  # build, then the Playwright browser tests in Chrome
+make e2e BROWSER=webkit                   # the same in WebKit (once: cd web && npx playwright install webkit)
+make e2e BROWSER=all                      # both, as CI does
 make docker                               # images for amd64 and arm64, each smoke-tested
 ```
 
