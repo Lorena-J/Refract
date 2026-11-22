@@ -3,6 +3,7 @@
 import hashlib
 import io
 import os
+import re
 from pathlib import Path
 import runpy
 import shutil
@@ -46,7 +47,6 @@ class PackagingTests(unittest.TestCase):
         generate("v1.2.3", self.archives, self.output)
         formula = (self.output / "homebrew/refract.rb").read_text()
         self.assertIn("/releases/download/v1.2.3/", formula)
-        self.assertNotIn("service do", formula)
         self.assertNotIn('depends_on "', formula)
         winget = self.output / "winget/manifests/p/ponytojas/Refract/1.2.3"
         self.assertEqual(len(list(winget.glob("*.yaml"))), 3)
@@ -97,6 +97,8 @@ class PackagingTests(unittest.TestCase):
                 self.assertEqual({m.name for m in files}, {"./usr/bin/refract",
                                  "./usr/share/doc/refract/copyright", "./usr/share/doc/refract/README.md"})
                 self.assertTrue(all(m.uid == 0 and m.gid == 0 for m in files))
+                # No setuid, setgid or world-writable entries.
+                self.assertFalse([m.name for m in archive.getmembers() if m.mode & 0o6002 and not m.issym()])
                 self.assertEqual(archive.getmember("./usr/bin/refract").mode, 0o755)
                 self.assertEqual(archive.extractfile("./usr/bin/refract").read(), binary.read_bytes())
             scripts = subprocess.check_output(["dpkg-deb", "--ctrl-tarfile", str(package)])
@@ -105,21 +107,25 @@ class PackagingTests(unittest.TestCase):
 
     def test_policy_documented_and_no_install_time_side_effects(self):
         policy = (ROOT / "packaging/README.md").read_text()
-        for phrase in ("## What a package may contain", "## What a package must not do",
-                       "## Server deployments", "../libexec/refract/", "#53", "#55", "#57"):
-            self.assertIn(phrase, policy)
-        for stale in ("not a running server", "Do not add server", "never include a server"):
-            self.assertNotIn(stale, policy)
-            self.assertNotIn(stale, (ROOT / "README.md").read_text())
+        for heading in ("## What a package may contain", "## What a package must not do",
+                        "## Server deployments"):
+            self.assertIn(heading, policy)
+        self.assertIn("../libexec/refract/", policy)
+        readme = (ROOT / "README.md").read_text()
+        for stale in ("not a running server", "Do not add server", "does not start a server"):
+            self.assertNotIn(stale, policy + readme)
         deb = (ROOT / "scripts/package-deb.sh").read_text()
-        for script in ("postinst", "preinst", "prerm", "postrm"):
-            self.assertNotIn(script, deb)
-        for marker in ("systemctl", "enable", "useradd", "/var/lib", "/etc/refract"):
+        # The only control file the script may write is DEBIAN/control: no maintainer scripts.
+        self.assertEqual(set(re.findall(r"DEBIAN/([\w.-]+)", deb)), {"control"})
+        # Nothing enabled or installed system-wide, and no data or configuration paths.
+        for marker in ("systemctl", "lib/systemd/system", "/etc/", "/var/"):
             self.assertNotIn(marker, deb)
-        # Service units live only under packaging/server, never in package inputs.
-        formula_source = (ROOT / "scripts/package-metadata.py").read_text()
-        self.assertNotIn("systemd", deb + formula_source)
-        self.assertTrue((ROOT / "packaging/server/refract.service").exists())
+        # Homebrew install-time hooks: a formula may declare a service, never run code at install.
+        self.archives_for("v1.2.3")
+        generate("v1.2.3", self.archives, self.output)
+        for formula in (self.output / "homebrew").rglob("*.rb"):
+            for marker in ("post_install", "postflight", "systemctl", "launchctl"):
+                self.assertNotIn(marker, formula.read_text())
 
     def prepare_bundle(self, dest):
         """Runs prepare-bundle.sh with a fake curl (serves a tiny bundle) and tectonic."""

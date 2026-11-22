@@ -21,15 +21,19 @@ WinGet's nested executable paths depend on that layout.
 - A desktop entry and icons for graphical installs.
 - Versions, checksums and redistribution terms (licences) of every bundled tool must be
   recorded with the release. #55 implements that record.
+- A per-user service definition that is not enabled: a Homebrew `service` block for
+  `brew services`, or a systemd user unit in `/usr/lib/systemd/user/`. It runs
+  `refract local` as the person, and only once they start it.
 
-CLI-only packages (Homebrew formula, WinGet, portable archives) contain only the binary
-and documentation until the desktop installers replace them.
+Today's packages (Homebrew formula, WinGet, `.deb`, portable archives) contain only the
+binary and documentation; #58–#60 add the bundled tools to them.
 
 ## What a package must not do
 
-- Enable or start a service. A per-user background service is created only when the
-  person asks for it (#57), never by an installer, maintainer script or Homebrew
-  `service` block.
+- Enable or start a service, or install a system-wide one. A per-user service runs only
+  when the person starts it (`refract service install` (#57), `brew services start` or
+  `systemctl --user enable`), never from an installer, maintainer script, Homebrew
+  `post_install` or cask `postflight`.
 - Create keys, databases, projects or any data folder at install time. `refract local`
   creates them on first run, in per-user locations.
 - Store data, the key or caches inside the application directory: they live in
@@ -40,15 +44,16 @@ and documentation until the desktop installers replace them.
 - Add server configuration (secrets, listening addresses or sign-in settings).
 
 The packaging tests (`scripts/test_packaging.py`) enforce the rules that can be
-checked: no maintainer scripts, no service in the Homebrew formula, and a payload that
-contains only the allowed paths.
+checked: no Debian maintainer scripts, no Homebrew `post_install` or cask `postflight`,
+no system-wide service or data paths, no setuid or world-writable files, and a payload
+that contains only the allowed paths.
 
 ## Server deployments
 
 Server deployments are a distinct path: `server/` (a systemd unit and
 `prepare-bundle.sh` for the compile sandbox) and the Docker image, configured with
 `REFRACT_*` variables as described in "Deploy" in the top-level README. Desktop and CLI
-packages never include or enable them, and server files are never added to packages.
+packages never include `server/` files or the server's system-wide unit.
 
 ## Release artifacts
 
