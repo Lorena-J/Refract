@@ -6,8 +6,9 @@ Notable changes to Refract. The format follows [Keep a Changelog](https://keepac
 
 ### Added
 
-- `refract local --embedded` for programs that embed Refract (the desktop app): no browser, a free loopback port, one JSON line on standard output when ready (or when another instance runs, or when starting fails), a per-launch token (`--token-fd` or `REFRACT_EMBED_TOKEN`, never logged and removed from the environment) required as the `refract_embed` cookie on every request except `/healthz`, and a graceful stop when standard input closes. See "For packagers" in the README.
+- `refract local --embedded` for programs that embed Refract (the desktop app): no browser, a free loopback port, one JSON line on standard output when ready (or when another instance runs, or when starting fails), a per-launch token (`--token-fd` or `REFRACT_EMBED_TOKEN`, never logged and removed from the environment) required as the `refract_embed` cookie on every request except `/healthz`, and a graceful stop when standard input closes. `local.lock`, `--status` and the `running` line say `"embedded":true` for such an instance, and a terminal `refract local` that finds one doesn't open the browser on it. See "For packagers" in the README.
 - `refract local --status` prints a JSON `error` line when it fails, instead of nothing.
+- `window.refractFlush()` in the web app saves pending edits and tells whether everything was saved, for the desktop app to call before it stops the server.
 
 ### Changed
 
