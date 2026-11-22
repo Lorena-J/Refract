@@ -215,7 +215,7 @@ stopped, the server is started again.
   with the same identity, the hardened runtime and a secure timestamp. `verify-app.sh` (and `--release`)
   checks the framework like every other Mach-O and also that it is there whole, that the XPC services
   are not, that `SUPublicEDKey` is a 32-byte key and `SUFeedURL` an https URL, and with `--release` that a
-  key is present at all.
+  key is present at all and that the feed can't be overridden (see "Testing updates without the real key").
 - **Ad hoc builds get one entitlement.** The hardened runtime's library validation only loads libraries
   from the same team, and an ad hoc app has none, so an embedded `Sparkle.framework` can't load (checked:
   dyld says "different Team IDs"). `sign-app.sh` gives the app executable of an *ad hoc* build
@@ -318,13 +318,20 @@ REFRACT_APP_UPDATE_FEED=http://127.0.0.1:8099/appcast-arm64.xml REFRACT_APP_LOG_
 
 `REFRACT_APP_UPDATE_FEED` (not passed to the server) replaces the feed for the run; only https and
 loopback http are accepted, and it can't weaken the check, since the archive still has to be signed by
-the key baked into the app. Run the app with a scratch `HOME` (the data folder is under it), a
+the key baked into the app. Only ad hoc builds honour it: `build-app.sh` adds
+`RefractAllowsUpdateFeedOverride` to their Info.plist, a release never has it (`verify-app.sh --release`
+fails on it), so a release always reads its own https feed. Run the app with a scratch `HOME` (the data folder is under it), a
 `secret.key` made beforehand in `$HOME/Library/Application Support/Refract` (otherwise the key goes into
 the real login keychain), a bundle id of its own (`PlistBuddy` the copy, then `sign-app.sh`) so its
 preferences and caches are separate, `REFRACT_APP_LOG_DIR` and `REFRACT_APP_DEFAULTS_SUITE`. Setting
 `SUEnableAutomaticChecks` and `SUAutomaticallyUpdate` in that bundle id's defaults makes Sparkle check
 and install on quit with no window to click, so the run can be scripted with `osascript -e 'tell
 application id "..." to quit'`.
+
+**Install and Relaunch loses that isolation.** Sparkle relaunches the new version through Launch
+Services, which starts it without the test environment: the relaunched app has the real `HOME`, so
+its server opens the real data folder and it logs to the real log folder. Install on quit doesn't
+relaunch, so it is safe to script; test the relaunch path in a separate macOS user account.
 
 ## Testing without touching real state
 
