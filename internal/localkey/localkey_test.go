@@ -3,6 +3,8 @@ package localkey
 import (
 	"bytes"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -84,5 +86,16 @@ func TestLoadInvalidItemIsAnError(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "not-a-key") {
 		t.Fatalf("error %q leaks the stored value", err)
+	}
+}
+
+func TestAccountResolvesSymlinks(t *testing.T) {
+	dir := t.TempDir()
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(dir, link); err != nil {
+		t.Skip(err)
+	}
+	if Account(dir) != Account(link) {
+		t.Fatal("one folder through a symbolic link got another account")
 	}
 }

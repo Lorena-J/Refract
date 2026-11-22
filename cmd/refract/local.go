@@ -202,16 +202,24 @@ func resolveLocalKey(ks localkey.Store, dataDir string) ([]byte, error) {
 	case errors.Is(err, localkey.ErrInvalid):
 		return nil, err
 	case err != nil:
+		if usedBefore(dataDir) {
+			// The key of a folder used before, without a secret.key, is most
+			// likely in the store that didn't answer (locked, or a prompt
+			// left waiting). A new key would make the stored credentials
+			// unreadable for good, so don't make one without being asked.
+			return nil, fmt.Errorf("can't read the secret key of %s from the system credential store (%v). Unlock it and start Refract again. If the key is lost, create a new one as %s (openssl rand -base64 32 > %q; chmod 600 %q): stored ChatGPT sign-ins, API keys and git tokens then can't be read", dataDir, err, localKeyFile, path, path)
+		}
 		slog.Warn("the system credential store is not available; keeping the secret key in an owner-only file instead", "file", path, "err", err)
-		warnIfCredentialsLost(dataDir, "the secret key file is missing")
 		return loadOrCreateKey(path)
 	}
 	warnIfCredentialsLost(dataDir, "the secret key is not in the system credential store")
 	key = make([]byte, 32)
 	rand.Read(key)
 	if err := localkey.Save(ks, dataDir, key); err != nil {
+		// Save the same key: a store call that timed out may still succeed
+		// later, and its item must then match the file.
 		slog.Warn("can't save the secret key in the system credential store; keeping it in an owner-only file instead", "file", path, "err", err)
-		return loadOrCreateKey(path)
+		return loadOrSaveKey(path, key)
 	}
 	slog.Info("created the secret key in the system credential store", "service", localkey.Service, "account", localkey.Account(dataDir))
 	return key, nil
@@ -221,22 +229,35 @@ func resolveLocalKey(ks localkey.Store, dataDir string) ([]byte, error) {
 // folder that has been used before, so credentials stored with the old one
 // (ChatGPT sign-in, API keys, git tokens) can't be read back.
 func warnIfCredentialsLost(dataDir, why string) {
-	if _, err := os.Stat(filepath.Join(dataDir, "refract.db")); err == nil {
+	if usedBefore(dataDir) {
 		slog.Warn("this data folder was used before: "+why+", so a new key is made and stored ChatGPT sign-ins, API keys and git tokens can't be read; add them again in Settings, or restore the old key (see the README)", "data", dataDir)
 	}
+}
+
+// usedBefore reports whether dataDir already has a database.
+func usedBefore(dataDir string) bool {
+	_, err := os.Stat(filepath.Join(dataDir, "refract.db"))
+	return err == nil
 }
 
 // loadOrCreateKey reads the secret key at path, or creates it with a new
 // random key on first run. It never replaces an existing file, even an
 // invalid one: credentials stored with that key would be lost.
-func loadOrCreateKey(path string) ([]byte, error) {
+func loadOrCreateKey(path string) ([]byte, error) { return loadOrSaveKey(path, nil) }
+
+// loadOrSaveKey is loadOrCreateKey saving newKey, or a random key when it is
+// nil, when there is no file yet.
+func loadOrSaveKey(path string, newKey []byte) ([]byte, error) {
 	for range 2 {
 		key, err := readKeyFile(path)
 		if !errors.Is(err, fs.ErrNotExist) {
 			return key, err
 		}
-		key = make([]byte, 32)
-		rand.Read(key)
+		key = newKey
+		if key == nil {
+			key = make([]byte, 32)
+			rand.Read(key)
+		}
 		switch err := createExclusive(path, []byte(base64.StdEncoding.EncodeToString(key)+"\n")); {
 		case err == nil:
 			return key, nil

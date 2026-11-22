@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -34,9 +35,13 @@ type Store interface {
 	Set(service, account, secret string) error
 }
 
-// Account is the item name for a data folder: a hash of its absolute path, so
-// two folders keep two keys and the path itself isn't exposed.
+// Account is the item name for a data folder: a hash of its absolute path,
+// with symbolic links resolved so one folder reached through two paths keeps
+// one key, and two folders keep two keys; the path itself isn't exposed.
 func Account(dataDir string) string {
+	if real, err := filepath.EvalSymlinks(dataDir); err == nil {
+		dataDir = real
+	}
 	sum := sha256.Sum256([]byte(dataDir))
 	return "data-" + hex.EncodeToString(sum[:8])
 }

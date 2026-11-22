@@ -2,9 +2,11 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ponytojas/Refract/internal/localkey"
@@ -133,5 +135,38 @@ func TestResolveLocalKeyInvalidItemIsKept(t *testing.T) {
 	}
 	if ks.items[localkey.Account(dir)] != "junk" {
 		t.Fatal("the invalid item was replaced")
+	}
+}
+
+func TestResolveLocalKeyUnreachableStoreKeepsUsedFolder(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "refract.db"), nil, 0o600)
+	ks := &fakeKeys{err: errors.New("the credential store did not answer")}
+	if _, err := resolveLocalKey(ks, dir); err == nil || !strings.Contains(err.Error(), "Unlock it") {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, localKeyFile)); !os.IsNotExist(err) {
+		t.Fatalf("a new secret.key replaced the key in the store: %v", err)
+	}
+}
+
+// lateKeys fails Set as a timed-out call does, though the item may still land.
+type lateKeys struct{ saved string }
+
+func (*lateKeys) Get(string, string) (string, error) { return "", localkey.ErrNotFound }
+func (l *lateKeys) Set(_, _, secret string) error {
+	l.saved = secret
+	return errors.New("the credential store did not answer")
+}
+
+func TestResolveLocalKeyFailedSaveWritesTheSameKey(t *testing.T) {
+	dir := t.TempDir()
+	ks := &lateKeys{}
+	k, err := resolveLocalKey(ks, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := base64.StdEncoding.EncodeToString(k); got != ks.saved {
+		t.Fatal("the file and the store item hold different keys")
 	}
 }
