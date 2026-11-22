@@ -103,6 +103,24 @@ class PackagingTests(unittest.TestCase):
             with tarfile.open(fileobj=io.BytesIO(scripts)) as archive:
                 self.assertEqual([m.name for m in archive.getmembers() if m.isfile()], ["./control"])
 
+    def test_policy_documented_and_no_install_time_side_effects(self):
+        policy = (ROOT / "packaging/README.md").read_text()
+        for phrase in ("## What a package may contain", "## What a package must not do",
+                       "## Server deployments", "../libexec/refract/", "#53", "#55", "#57"):
+            self.assertIn(phrase, policy)
+        for stale in ("not a running server", "Do not add server", "never include a server"):
+            self.assertNotIn(stale, policy)
+            self.assertNotIn(stale, (ROOT / "README.md").read_text())
+        deb = (ROOT / "scripts/package-deb.sh").read_text()
+        for script in ("postinst", "preinst", "prerm", "postrm"):
+            self.assertNotIn(script, deb)
+        for marker in ("systemctl", "enable", "useradd", "/var/lib", "/etc/refract"):
+            self.assertNotIn(marker, deb)
+        # Service units live only under packaging/server, never in package inputs.
+        formula_source = (ROOT / "scripts/package-metadata.py").read_text()
+        self.assertNotIn("systemd", deb + formula_source)
+        self.assertTrue((ROOT / "packaging/server/refract.service").exists())
+
     def prepare_bundle(self, dest):
         """Runs prepare-bundle.sh with a fake curl (serves a tiny bundle) and tectonic."""
         fake = self.root / "fakebin"
