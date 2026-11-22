@@ -166,6 +166,7 @@ export default {
   'Import a Prism export (.zip)': 'Importar una exportación de Prism (.zip)',
   'Import a folder': 'Importar una carpeta',
   'Drop .zip files or folders to import them.': 'Suelta archivos .zip o carpetas para importarlos.',
+  'The folder {name} has too many files to import.': 'La carpeta {name} tiene demasiados archivos para importarla.',
   'Imported {name}': 'Importado {name}',
   'Imported {n} projects': '{n} proyectos importados',
   Search: 'Buscar',

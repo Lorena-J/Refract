@@ -321,9 +321,21 @@ function ProjectList({ status }: { status: ChatGPTStatus | null }) {
   async function onDrop(e: DragEvent) {
     e.preventDefault()
     setDragging(false)
-    const dropped = await readDropped([...e.dataTransfer.items])
+    let dropped
+    setBusy(true)
+    try {
+      // readDropped takes the items before its first await, while the event still holds them.
+      dropped = await readDropped([...e.dataTransfer.items])
+    } catch (err) {
+      return toast.error(errorText(err))
+    } finally {
+      setBusy(false)
+    }
     if (dropped.folders.length === 0) return importZips(dropped.files)
-    for (const f of dropped.folders) if (f.files.length) await uploadFolder(f.name, f.files)
+    for (const f of dropped.folders) {
+      if (f.tooBig) toast.error(t('The folder {name} has too many files to import.', { name: f.name }))
+      else if (f.files.length) await uploadFolder(f.name, f.files)
+    }
     if (dropped.files.some((f) => f.name.toLowerCase().endsWith('.zip'))) importZips(dropped.files)
   }
 

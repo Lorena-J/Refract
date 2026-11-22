@@ -2,7 +2,8 @@
 // universal) FileSystemEntry API. Entries must be taken from the event synchronously.
 
 export type DroppedFile = { file: File; path: string }
-export type DroppedFolder = { name: string; files: DroppedFile[] }
+// tooBig: the walk stopped at the guard below (a huge tree, or a symlink loop).
+export type DroppedFolder = { name: string; files: DroppedFile[]; tooBig?: boolean }
 export type Dropped = { files: File[]; folders: DroppedFolder[] }
 
 type Entry = {
@@ -26,13 +27,21 @@ async function readAll(dir: Entry): Promise<Entry[]> {
   }
 }
 
-async function walk(entry: Entry, prefix: string, out: DroppedFile[]) {
+// Far above what an import takes (the server counts files after skipping .git, so the
+// real limit stays there), low enough that a loop or a dropped home folder ends.
+export const maxEntries = 50_000
+const maxDepth = 64
+
+class TooBig extends Error {}
+
+async function walk(entry: Entry, prefix: string, out: DroppedFile[], seen: { n: number }, depth: number) {
+  if (++seen.n > maxEntries || depth > maxDepth) throw new TooBig()
   const path = prefix + entry.name
   if (entry.isFile) {
     const file = await new Promise<File>((ok, fail) => entry.file!(ok, fail))
     out.push({ file, path })
   } else if (entry.isDirectory) {
-    for (const child of await readAll(entry)) await walk(child, path + '/', out)
+    for (const child of await readAll(entry)) await walk(child, path + '/', out, seen, depth + 1)
   }
 }
 
@@ -45,8 +54,13 @@ export async function readDropped(items: Item[]): Promise<Dropped> {
   for (const { entry, file } of taken) {
     if (entry?.isDirectory) {
       const files: DroppedFile[] = []
-      await walk(entry, '', files)
-      result.folders.push({ name: entry.name, files })
+      try {
+        await walk(entry, '', files, { n: 0 }, 0)
+        result.folders.push({ name: entry.name, files })
+      } catch (e) {
+        if (!(e instanceof TooBig)) throw e
+        result.folders.push({ name: entry.name, files: [], tooBig: true })
+      }
     } else if (file) {
       result.files.push(file)
     }
