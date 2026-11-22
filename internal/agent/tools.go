@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/ponytojas/Refract/internal/tools"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -22,6 +21,7 @@ import (
 	"github.com/ponytojas/Refract/internal/compile"
 	"github.com/ponytojas/Refract/internal/projects"
 	"github.com/ponytojas/Refract/internal/refs"
+	"github.com/ponytojas/Refract/internal/tools"
 )
 
 const (

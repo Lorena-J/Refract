@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/ponytojas/Refract/internal/tools"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -13,6 +12,8 @@ import (
 	"slices"
 	"sync"
 	"time"
+
+	"github.com/ponytojas/Refract/internal/tools"
 )
 
 // git runs the git CLI in dir, isolated from any system/global config and

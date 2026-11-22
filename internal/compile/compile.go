@@ -7,7 +7,6 @@ import (
 	"cmp"
 	"context"
 	"errors"
-	"github.com/ponytojas/Refract/internal/tools"
 	"io"
 	"os"
 	"os/exec"
@@ -18,6 +17,7 @@ import (
 	"time"
 
 	"github.com/ponytojas/Refract/internal/fonts"
+	"github.com/ponytojas/Refract/internal/tools"
 )
 
 // BuildDir is where output goes, inside the project (git-excluded).

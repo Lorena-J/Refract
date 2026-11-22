@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/ponytojas/Refract/internal/tools"
 	"os"
 	"os/exec"
 	"path"
@@ -14,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ponytojas/Refract/internal/tools"
 )
 
 // ErrNoSync means SyncTeX had no answer (no build yet, or nothing at that spot).
