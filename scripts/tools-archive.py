@@ -62,10 +62,13 @@ def required(os_name, arch):
         files += [
             "git/bin/git",
             "git/libexec/git-core/git",
+            # HTTPS remotes (push, pull), built against macOS's libcurl; git-remote-https links to it.
+            "git/libexec/git-core/git-remote-http",
             "licenses/git/COPYING",
             "licenses/git/LGPL-2.1",
             "licenses/git/SOURCE-OFFER.txt",
             f"licenses/git/source/git-{lock['GIT_VERSION']}.tar.xz",
+            "licenses/git/source/build-git-macos.sh",
         ]
         prefixes = ["git/share/git-core/templates/"]
     elif os_name == "windows":
@@ -74,6 +77,8 @@ def required(os_name, arch):
             "git/cmd/git.exe",
             "git/ucrt64/bin/git.exe",
             "git/usr/bin/sh.exe",
+            # HTTPS remotes: MinGit's Schannel libcurl, found through cmd/git.exe's PATH.
+            "git/ucrt64/bin/git-remote-https.exe",
             "licenses/git/LICENSE.txt",
             "licenses/git/package-versions.txt",
             "licenses/git/SOURCE-OFFER.txt",
@@ -185,8 +190,10 @@ def check(archive, os_name, arch):
     for rel in files[:3]:
         if rel in found and not found[rel][1]:
             problems.append(f"{rel} is not executable")
-    if os_name == "darwin" and "git/bin/git" in found and not found["git/bin/git"][1]:
-        problems.append("git/bin/git is not executable")
+    if os_name == "darwin":
+        for rel in ("git/bin/git", "git/libexec/git-core/git-remote-http"):
+            if rel in found and not found[rel][1]:
+                problems.append(f"{rel} is not executable")
     if MANIFEST in found:
         with tarfile_or_zip_member(archive, MANIFEST) as handle:
             data = json.load(handle)

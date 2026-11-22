@@ -70,6 +70,20 @@ and its helpers relative to its own `ucrt64/` and `usr/` folders, so MinGit stay
 under `git/` (`git/cmd/git.exe`, `git/ucrt64/libexec/git-core/`, `git/usr/bin/`). Linux archives
 have no Git: the Debian/Ubuntu package depends on the system one.
 
+What Refract runs (`internal/tools`, #53) and with which environment:
+
+| | Git it runs | Environment |
+|---|---|---|
+| macOS | `git/bin/git` | `GIT_EXEC_PATH=git/libexec/git-core`, `GIT_TEMPLATE_DIR=git/share/git-core/templates`, `GIT_CONFIG_NOSYSTEM=1` |
+| Windows | `git\cmd\git.exe` (MinGit's launcher: it puts `ucrt64\bin` and `usr\bin` first on `PATH`) | `GIT_CONFIG_NOSYSTEM=1` only. No `GIT_EXEC_PATH` or `GIT_TEMPLATE_DIR`: Git finds `ucrt64\libexec\git-core` and its templates relative to itself |
+
+HTTPS remotes (push and pull) work with only these: on macOS Git uses the system libcurl, which
+checks servers against `/etc/ssl/cert.pem` (part of macOS; certificates added only to the
+Keychain are not used); on Windows MinGit's default libcurl uses Schannel and the Windows
+certificate store, so ignoring MinGit's `etc/gitconfig` (which sets only `core.autocrlf`,
+`core.symlinks`, `credential.helper=manager` and similar) does not affect them. The smoke test
+reads an HTTPS remote on both.
+
 **Pins.** `packaging/tools.lock` is the only place with versions, sources and checksums. The
 Dockerfile, `scripts/install-tex-tools.sh` (CI), `scripts/build-tools.sh` and the release all
 read it; a test fails if any of them hardcodes a pin. Every download is verified against the
@@ -81,7 +95,7 @@ lock before use (`scripts/tools-common.sh`).
 | ripgrep (MIT or Unlicense) | official release assets | musl static on Linux |
 | SyncTeX (MIT) | built from the pinned commit of jlaurens/synctex | zlib linked statically; Windows cross-built with llvm-mingw |
 | zlib (Zlib) | pinned release tarball, compiled into SyncTeX | |
-| Git, macOS (GPLv2, parts LGPL 2.1) | built from the official source tarball, `RUNTIME_PREFIX`, no curl, OpenSSL, expat, Perl, Python, Tcl or gettext | links only libSystem, libz and libiconv, which macOS provides; the smoke test fails if anything else is linked |
+| Git, macOS (GPLv2, parts LGPL 2.1) | built from the official source tarball, `RUNTIME_PREFIX`, HTTPS through macOS's libcurl, Apple Common Crypto; no OpenSSL, expat, Perl, Python, Tcl or gettext | links only libSystem, libz, libiconv, libcurl and the CoreFoundation and CoreServices frameworks, which macOS provides; the smoke test fails if anything else is linked |
 | Git, Windows (GPLv2 and the MSYS2/MinGW component licences) | MinGit from Git for Windows, unmodified | |
 
 **Licence obligations.** Each archive carries the licence texts under `licenses/`. Git is GPLv2:

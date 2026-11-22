@@ -8,14 +8,18 @@
 # <output-dir>/source/git-<version>.tar.xz (the exact source, for the GPL offer).
 #
 # Choices: RUNTIME_PREFIX=YesPlease makes git find its helpers and templates
-# relative to its own executable, so the folder can be moved. No curl, OpenSSL,
-# expat, Perl, Python, Tcl/Tk or gettext: a local history needs none, and every
-# library git still links (libSystem, libz, libiconv) ships with macOS, so the
-# result needs no Homebrew and no bundled dylibs.
+# relative to its own executable, so the folder can be moved. HTTPS remotes (push
+# and pull) use macOS's own libcurl (/usr/bin/curl-config, /usr/lib/libcurl.4.dylib,
+# which verifies servers against the system's certificates) and Apple Common Crypto
+# for hashing, never Homebrew, MacPorts or Fink copies. No OpenSSL, expat (dumb-HTTP
+# push only), Perl, Python, Tcl/Tk or gettext. Every library git links (libSystem,
+# libz, libiconv, libcurl, the Security and CoreFoundation frameworks) ships with
+# macOS, so the result needs no bundled dylibs; the smoke test enforces it.
 set -eu
 . "$(dirname "$0")/tools-common.sh"
 [ $# -eq 1 ] || die "usage: build-git-macos.sh <output-dir>"
 [ "$(uname -s)" = Darwin ] || die "build-git-macos.sh runs on macOS"
+[ -x /usr/bin/curl-config ] || die "/usr/bin/curl-config (part of macOS) is missing"
 OUT=$1
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
@@ -29,7 +33,8 @@ STAGE="$WORK/stage"
 
 make -C "$SRC" -j"$(sysctl -n hw.ncpu)" \
   prefix=/usr/local RUNTIME_PREFIX=YesPlease \
-  NO_GETTEXT=YesPlease NO_OPENSSL=YesPlease NO_CURL=YesPlease NO_EXPAT=YesPlease \
+  CURL_CONFIG=/usr/bin/curl-config NO_HOMEBREW=YesPlease NO_DARWIN_PORTS=YesPlease NO_FINK=YesPlease \
+  NO_GETTEXT=YesPlease NO_OPENSSL=YesPlease NO_EXPAT=YesPlease \
   NO_TCLTCK=YesPlease NO_PERL=YesPlease NO_PYTHON=YesPlease NO_INSTALL_HARDLINKS=YesPlease \
   DESTDIR="$STAGE" install
 

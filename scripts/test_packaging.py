@@ -224,11 +224,15 @@ class ToolsArchiveTests(unittest.TestCase):
 
     def test_layout_matches_what_refract_resolves(self):
         mac, _ = tools_archive.required("darwin", "arm64")
-        for rel in ("tectonic", "synctex", "rg", "git/bin/git", "git/libexec/git-core/git"):
+        for rel in ("tectonic", "synctex", "rg", "git/bin/git", "git/libexec/git-core/git", "git/libexec/git-core/git-remote-http"):
             self.assertIn(rel, mac)
-        win, _ = tools_archive.required("windows", "amd64")
-        for rel in ("tectonic.exe", "synctex.exe", "rg.exe"):
+        # Windows: MinGit unmodified; Refract runs git/cmd/git.exe, which finds its own
+        # helpers (no GIT_EXEC_PATH), and there is no git/bin/git.exe.
+        win, win_prefixes = tools_archive.required("windows", "amd64")
+        for rel in ("tectonic.exe", "synctex.exe", "rg.exe", "git/cmd/git.exe", "git/ucrt64/bin/git-remote-https.exe"):
             self.assertIn(rel, win)
+        self.assertNotIn("git/bin/git.exe", win)
+        self.assertIn("git/ucrt64/libexec/git-core/", win_prefixes)
         linux, _ = tools_archive.required("linux", "amd64")
         self.assertFalse([rel for rel in linux if rel.startswith("git/")], "Linux packages depend on the system Git")
 
@@ -236,6 +240,8 @@ class ToolsArchiveTests(unittest.TestCase):
         for os_name, arch, skip in (
             ("darwin", "arm64", "synctex"),
             ("darwin", "arm64", "git/libexec/git-core/git"),
+            ("darwin", "arm64", "git/libexec/git-core/git-remote-http"),
+            ("windows", "amd64", "git/ucrt64/bin/git-remote-https.exe"),
             ("darwin", "amd64", "licenses/git/SOURCE-OFFER.txt"),
             ("linux", "amd64", "rg"),
             ("linux", "arm64", "licenses/ripgrep/COPYING"),

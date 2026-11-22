@@ -85,13 +85,16 @@ case "$OS" in
     mv "$STAGE/git/COPYING" "$STAGE/git/LGPL-2.1" "$STAGE/licenses/git/"
     mv "$STAGE/git/source/git-${GIT_VERSION}.tar.xz" "$STAGE/licenses/git/source/"
     rmdir "$STAGE/git/source"
+    # The scripts that control the build are part of the corresponding source (GPLv2 §3).
+    cp "$TOOLS_ROOT/scripts/build-git-macos.sh" "$TOOLS_ROOT/scripts/tools-common.sh" "$STAGE/licenses/git/source/"
     cat > "$STAGE/licenses/git/SOURCE-OFFER.txt" <<OFFER
 Git ${GIT_VERSION} is free software under the GNU General Public License version 2
 (COPYING) and, for some files, the LGPL 2.1 (LGPL-2.1). The complete corresponding
 source of the bundled git executable is in this folder: source/git-${GIT_VERSION}.tar.xz
 (the unmodified official tarball, SHA-256 ${GIT_SOURCE_SHA256}).
-It was built with the options in scripts/build-git-macos.sh of the Refract
-repository (https://github.com/ponytojas/Refract), release ${TAG}.
+It was built by source/build-git-macos.sh (with source/tools-common.sh), the same
+scripts as in the Refract repository (https://github.com/ponytojas/Refract) at
+release ${TAG}, against libraries that are part of macOS.
 OFFER
     ;;
   windows)
