@@ -1,0 +1,171 @@
+# Builds Refract.app for macOS, one per architecture, and signs, notarizes and staples it
+# when the signing secrets are there. Called by the release workflow (#71); also runs on pull
+# requests that touch macos/ (always ad hoc: secrets never reach a pull request) and by hand.
+#
+# Secrets (names only; how to create them: macos/README.md, "Signing and notarization"):
+#   MACOS_CERT_P12_BASE64   the Developer ID Application certificate and its key, a .p12, base64
+#   MACOS_CERT_PASSWORD     the password of that .p12
+#   MACOS_SIGN_IDENTITY     "Developer ID Application: Name (TEAMID)"
+#   NOTARY_KEY_P8_BASE64    the App Store Connect API key (.p8), base64
+#   NOTARY_KEY_ID           its key id
+#   NOTARY_ISSUER_ID        the issuer id
+# Without all six (a fork's pull request, a repository that hasn't set them) the app is built
+# signed ad hoc, with a notice: it runs here but Gatekeeper rejects it, so it is never a release.
+name: macos-app
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Version for the app (a tag such as v0.3.0); v0.0.0-dev when empty"
+        type: string
+        default: ""
+    secrets:
+      MACOS_CERT_P12_BASE64: { required: false }
+      MACOS_CERT_PASSWORD: { required: false }
+      MACOS_SIGN_IDENTITY: { required: false }
+      NOTARY_KEY_P8_BASE64: { required: false }
+      NOTARY_KEY_ID: { required: false }
+      NOTARY_ISSUER_ID: { required: false }
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version for the app (a tag such as v0.3.0); v0.0.0-dev when empty"
+        type: string
+        default: ""
+  pull_request:
+    paths:
+      - "macos/**"
+      - "Makefile"
+      - ".github/workflows/macos-app.yml"
+      - "scripts/build-*.sh"
+      - "scripts/tools-common.sh"
+      - "packaging/tools.lock"
+
+permissions:
+  contents: read
+
+jobs:
+  app:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: macos-15, arch: arm64 }
+          - { runner: macos-15-intel, arch: amd64 }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    env:
+      ARCH: ${{ matrix.arch }}
+      VERSION: ${{ inputs.version || 'v0.0.0-dev' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Signing secrets
+        id: secrets
+        env:
+          EVENT: ${{ github.event_name }}
+          CERT: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          NOTARY_KEY: ${{ secrets.NOTARY_KEY_P8_BASE64 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            echo "::notice title=macOS app is not signed::Pull requests build the app signed ad hoc: secrets are never given to them."
+            echo "sign=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$CERT" ] || [ -z "$CERT_PASSWORD" ] || [ -z "$IDENTITY" ] || [ -z "$NOTARY_KEY" ] || [ -z "$NOTARY_KEY_ID" ] || [ -z "$NOTARY_ISSUER_ID" ]; then
+            echo "::notice title=macOS app is not signed::The signing secrets are not available here (see macos/README.md), so the app is built signed ad hoc and is not notarized. Gatekeeper will reject it: do not publish it."
+            echo "sign=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "sign=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # A keychain of its own for this job, with a random password nobody sees, deleted at the end.
+      - name: Import the signing certificate
+        if: steps.secrets.outputs.sign == 'true'
+        env:
+          CERT: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          set +x
+          KEYCHAIN="$RUNNER_TEMP/refract-signing.keychain-db"
+          KEYCHAIN_PASSWORD=$(openssl rand -hex 24)
+          echo "::add-mask::$KEYCHAIN_PASSWORD"
+          printf '%s' "$CERT" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          rm -f "$RUNNER_TEMP/cert.p12"
+          # Lets codesign use the key without a prompt nobody can answer.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          # shellcheck disable=SC2046  # the current list, one path per word, quotes dropped
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          echo "REFRACT_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+
+      - name: Write the notarization key
+        if: steps.secrets.outputs.sign == 'true'
+        env:
+          NOTARY_KEY: ${{ secrets.NOTARY_KEY_P8_BASE64 }}
+        run: |
+          set +x
+          umask 077
+          printf '%s' "$NOTARY_KEY" | base64 --decode > "$RUNNER_TEMP/notary-key.p8"
+          echo "REFRACT_NOTARY_KEY_PATH=$RUNNER_TEMP/notary-key.p8" >> "$GITHUB_ENV"
+
+      - name: Build, sign, notarize and staple
+        if: steps.secrets.outputs.sign == 'true'
+        env:
+          REFRACT_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          REFRACT_NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          REFRACT_NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: make mac-release MAC_ARCH="$ARCH" MAC_VERSION="$VERSION"
+
+      - name: Build (ad hoc)
+        if: steps.secrets.outputs.sign != 'true'
+        run: |
+          make mac MAC_ARCH="$ARCH" MAC_VERSION="$VERSION"
+          ditto -c -k --keepParent "build/mac/$ARCH/Refract.app" "build/mac/$ARCH/Refract-$ARCH.zip"
+
+      # What people would download: the zip, unpacked in a fresh folder, must still verify
+      # (a zip that drops a symlink or a ticket would show here), and run its tools.
+      - name: Check the zip
+        env:
+          SIGNED: ${{ steps.secrets.outputs.sign }}
+        run: |
+          rm -rf check && mkdir check
+          ditto -x -k "build/mac/$ARCH/Refract-$ARCH.zip" check
+          if [ "$SIGNED" = true ]; then
+            macos/verify-app.sh --release check/Refract.app
+            xcrun stapler validate check/Refract.app
+            spctl --assess --type execute -vv check/Refract.app
+          else
+            macos/verify-app.sh check/Refract.app
+          fi
+          L=check/Refract.app/Contents/Resources/Server/libexec/refract
+          "$L/git/bin/git" --version
+          "$L/tectonic" --version
+          "$L/rg" --version | head -1
+          check/Refract.app/Contents/Resources/Server/bin/refract version
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: ${{ steps.secrets.outputs.sign == 'true' && 'Refract-app' || 'Refract-app-adhoc' }}-${{ matrix.arch }}
+          path: build/mac/${{ matrix.arch }}/Refract-${{ matrix.arch }}.zip
+          if-no-files-found: error
+
+      - name: Remove the keychain and keys
+        if: always()
+        run: |
+          if [ -n "${REFRACT_KEYCHAIN:-}" ]; then security delete-keychain "$REFRACT_KEYCHAIN" || true; fi
+          rm -f "$RUNNER_TEMP/cert.p12" "$RUNNER_TEMP/notary-key.p8"

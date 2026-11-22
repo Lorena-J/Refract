@@ -1,10 +1,11 @@
 #!/bin/sh
 # Assembles Refract.app for one architecture: the Swift app, the refract server built
-# with the web app inside, and the bundled tools, signed ad hoc (or with
-# CODESIGN_IDENTITY). Run through `make mac`; needs Xcode (swift, codesign), Go, and
-# the web app built (`make web`).
+# with the web app inside, and the bundled tools, signed ad hoc, or with the Developer ID in
+# REFRACT_SIGN_IDENTITY (macos/sign-app.sh, then macos/verify-app.sh). Run through `make mac`;
+# needs Xcode (swift, codesign), Go, and the web app built (`make web`).
 #
 # Usage: macos/build-app.sh <arm64|amd64> <version> <output-dir>
+#   REFRACT_SIGN_IDENTITY  "Developer ID Application: Name (TEAMID)"; default "-" (ad hoc)
 #   TOOLS_ARCHIVE=path  use this refract-tools-*-darwin-<arch>.tar.gz instead of building one
 #                       (the release workflow passes the archive it already built)
 #
@@ -26,7 +27,6 @@ case "$ARCH" in
   amd64) SWIFT_ARCH=x86_64 ;;
   *) echo "error: arch must be arm64 or amd64" >&2; exit 2 ;;
 esac
-IDENTITY=${CODESIGN_IDENTITY:--}
 BUILD="$ROOT/build/mac"
 mkdir -p "$BUILD" "$OUT"
 OUT=$(cd "$OUT" && pwd)
@@ -74,22 +74,10 @@ cp -R "$ROOT/macos/Resources/en.lproj" "$ROOT/macos/Resources/es.lproj" "$APP/Co
 chmod -R go-w "$APP"
 chmod 755 "$APP/Contents/MacOS/Refract" "$APP/Contents/Resources/Server/bin/refract"
 
-echo "==> signing (identity: $IDENTITY)"
-# Inside out: every Mach-O first (the tools, then the server), then the app that seals
-# them as resources: codesign --deep doesn't sign what is under Resources, so they are
-# signed here and listed by the check below.
-find "$APP/Contents" -type f ! -path "$APP/Contents/MacOS/*" -print | while IFS= read -r f; do
-  case "$(file -b "$f")" in
-    *Mach-O*) codesign --force --options runtime --timestamp=none --sign "$IDENTITY" "$f" ;;
-  esac
-done
-codesign --force --options runtime --timestamp=none --sign "$IDENTITY" "$APP/Contents/MacOS/Refract"
-codesign --force --options runtime --timestamp=none --sign "$IDENTITY" "$APP"
-codesign --verify --deep --strict --verbose=2 "$APP"
-# What --deep can't see: every Mach-O inside is signed and its signature valid.
-find "$APP/Contents" -type f -print | while IFS= read -r f; do
-  case "$(file -b "$f")" in
-    *Mach-O*) codesign --verify --strict "$f" || { echo "error: $f is not validly signed" >&2; exit 1; } ;;
-  esac
-done
+"$ROOT/macos/sign-app.sh" "$APP"
+if [ "${REFRACT_SIGN_IDENTITY:--}" = "-" ]; then
+  "$ROOT/macos/verify-app.sh" "$APP"
+else
+  "$ROOT/macos/verify-app.sh" --release "$APP"
+fi
 echo "$APP"

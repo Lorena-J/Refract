@@ -122,6 +122,20 @@ with `refract` in `Server/bin/`: not `Contents/Helpers`, whose files codesign tr
 To build one locally (macOS arm64 example): `scripts/build-tools.sh darwin arm64 v0.0.0-dev dist`,
 then extract it and run `scripts/smoke-tools.sh <folder> darwin`.
 
+## macOS app signing and notarization
+
+The macOS app (#66) is signed with a Developer ID Application certificate, uses the hardened
+runtime with no entitlements, and is notarized and stapled (#69). `macos/sign-app.sh` signs every
+Mach-O in the bundle inside out, `macos/verify-app.sh --release` fails the build on any unsigned,
+ad hoc or foreign-team Mach-O, and `macos/notarize.sh` submits, staples and assesses it.
+`make mac-release` does all of it locally; `.github/workflows/macos-app.yml` is the reusable
+workflow the release job (#71) calls, and it falls back to an ad hoc, clearly marked build when
+the secrets are absent. Repository secrets, by name: `MACOS_CERT_P12_BASE64`,
+`MACOS_CERT_PASSWORD`, `MACOS_SIGN_IDENTITY`, `NOTARY_KEY_P8_BASE64`, `NOTARY_KEY_ID`,
+`NOTARY_ISSUER_ID`. How the maintainer creates the certificate, the App Store Connect API key,
+the local `notarytool` profile and sets the secrets (`gh secret set`) is in `macos/README.md`,
+"Signing and notarization". Values never go in the repository.
+
 ## Server deployments
 
 Server deployments are a distinct path: `server/` (a systemd unit and

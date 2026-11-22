@@ -1,0 +1,43 @@
+#!/bin/sh
+# Signs Refract.app: every Mach-O inside it first, then the app that seals them.
+#
+# Usage: macos/sign-app.sh <Refract.app>
+#   REFRACT_SIGN_IDENTITY  the signing identity, e.g. "Developer ID Application: Name (TEAMID)".
+#                          Default "-": ad hoc, for development builds (not accepted by Gatekeeper).
+#   REFRACT_KEYCHAIN       optional keychain to look the identity up in (CI uses a temporary one)
+#
+# Hardened runtime everywhere. No entitlements, on purpose: see macos/README.md, "Signing".
+# A real identity also gets a secure timestamp, which notarization requires.
+# Signatures live in the files, so symlinks (Git's hundreds of git-* links) are not signed.
+set -eu
+[ $# -eq 1 ] && [ -d "$1/Contents" ] || { echo "usage: sign-app.sh <Refract.app>" >&2; exit 2; }
+APP=$1
+IDENTITY=${REFRACT_SIGN_IDENTITY:--}
+if [ "$IDENTITY" = "-" ]; then
+  TIMESTAMP=--timestamp=none
+else
+  TIMESTAMP=--timestamp
+fi
+
+sign() {
+  if [ -n "${REFRACT_KEYCHAIN:-}" ]; then
+    codesign --force --options runtime "$TIMESTAMP" --keychain "$REFRACT_KEYCHAIN" --sign "$IDENTITY" "$1"
+  else
+    codesign --force --options runtime "$TIMESTAMP" --sign "$IDENTITY" "$1"
+  fi
+}
+
+if [ "$IDENTITY" = "-" ]; then
+  echo "==> signing ad hoc (development build: Gatekeeper will not accept it)"
+else
+  echo "==> signing with: $IDENTITY"
+fi
+# Inside out. codesign --deep doesn't sign what is under Resources, so each Mach-O is
+# signed here (the tools, then the server, then the app executable) and the app seals them.
+find "$APP/Contents" -type f ! -path "$APP/Contents/MacOS/*" -print | while IFS= read -r f; do
+  case "$(file -b "$f")" in
+    *Mach-O*) sign "$f" ;;
+  esac
+done
+find "$APP/Contents/MacOS" -type f -print | while IFS= read -r f; do sign "$f"; done
+sign "$APP"
