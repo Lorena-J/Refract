@@ -6,7 +6,7 @@ Notable changes to Refract. The format follows [Keep a Changelog](https://keepac
 
 ### Added
 
-- Refract finds `tectonic`, `synctex`, `rg` and `git` in a bundled `libexec/refract` folder next to the executable (the executable's own folder on Windows) before the `PATH`, and runs them by absolute path; a bundled Git uses only its own helpers and templates. `REFRACT_TECTONIC_BIN`, `REFRACT_SYNCTEX_BIN`, `REFRACT_RG_BIN` and `REFRACT_GIT_BIN` override the lookup. The startup log shows where each was found, and the web app shows one notice when a tool is missing, saying what won't work, on whichever page opens first. On macOS and Linux a bundled tool in a folder that others can write, or that another user owns, is ignored.
+- Refract finds `tectonic`, `synctex`, `rg` and `git` in a bundled `libexec/refract` folder next to the executable (the executable's own folder on Windows) before the `PATH`, and runs them by absolute path; a bundled Git uses only its own helpers and templates. `REFRACT_TECTONIC_BIN`, `REFRACT_SYNCTEX_BIN`, `REFRACT_RG_BIN` and `REFRACT_GIT_BIN` override the lookup. The startup log shows where each was found, and the web app shows one notice when a tool is missing, saying what won't work, on whichever page opens first. On macOS and Linux a bundled tool in a folder that others can write, or that another user owns, is ignored. The same checks cover bundled Git's helpers and templates.
 
 ## [0.2.0] - 2026-11-20
 

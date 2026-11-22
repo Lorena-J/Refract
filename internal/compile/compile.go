@@ -4,7 +4,6 @@ package compile
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"errors"
 	"io"
@@ -102,17 +101,21 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 	}
 
 	workDir := filepath.Join(sourceDir, filepath.FromSlash(path.Dir(mainFile)))
+	bin, err := t.bin()
+	if err != nil {
+		return nil, err
+	}
 	var cmd *exec.Cmd
 	if t.Sandbox != nil {
 		cmd, err = t.Sandbox.command(runCtx, sandboxJob{
-			Tectonic: t.bin(), Args: args, Bundle: t.Bundle, Cache: t.CacheDir,
+			Tectonic: bin, Args: args, Bundle: t.Bundle, Cache: t.CacheDir,
 			Project: projectDir, OutDir: outDir, Out: sandboxDir(out), WorkDir: workDir, Timeout: t.Timeout,
 		})
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		cmd = exec.CommandContext(runCtx, t.bin(), args...)
+		cmd = exec.CommandContext(runCtx, bin, args...)
 		cmd.Dir = workDir
 		// A minimal environment: the document must not be able to \input
 		// /proc/self/environ and read secrets like REFRACT_SECRET_KEY.
@@ -295,4 +298,4 @@ func (r *Runner) Compile(ctx context.Context, key, projectDir, mainFile string) 
 }
 
 // bin is the tectonic to run: Bin, else the one internal/tools finds.
-func (t *Tectonic) bin() string { return cmp.Or(t.Bin, tools.Path("tectonic")) }
+func (t *Tectonic) bin() (string, error) { return tools.Resolve("tectonic", t.Bin) }
