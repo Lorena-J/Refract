@@ -429,7 +429,7 @@ To restrict a server to one ChatGPT account, set `REFRACT_ALLOWED_SUBJECT` to th
 
 ### Install the CLI
 
-The CLI lets you run `refract login` on your computer and upload the resulting credential file to an existing Refract instance. Login does not need Docker, Go, Node.js, git or LaTeX tools. Installing a package does not start a server or create a background service. The same executable also includes the server and its administration commands; those need the server configuration described in [Deploy](#deploy).
+The CLI lets you run `refract login` on your computer and upload the resulting credential file to an existing Refract instance. Login does not need Docker, Go, Node.js, git or LaTeX tools. Installing a package never starts a service, creates a key or writes data; see the [packaging policy](packaging/README.md). The same executable also includes the server and its administration commands (and `refract local`, a local-only instance); a server needs the configuration described in [Deploy](#deploy).
 
 **macOS (Apple Silicon or Intel):**
 
