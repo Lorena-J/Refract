@@ -358,4 +358,13 @@ export default {
   'Try again': 'Reintentar',
   'Sign out of {device}': 'Cerrar sesión en {device}',
   'This list may be out of date.': 'Puede que esta lista no esté al día.',
+  'Some tools are missing': 'Faltan algunas herramientas',
+  "Git is missing, so projects can't keep their history. Whoever installed Refract needs to reinstall it or install Git.":
+    'Falta Git, así que los proyectos no pueden guardar su historial. Quien instaló Refract debe reinstalarlo o instalar Git.',
+  "Tectonic is missing, so documents can't be compiled.":
+    'Falta Tectonic, así que no se pueden compilar los documentos.',
+  'SyncTeX is missing, so jumping between the source and the PDF is unavailable.':
+    'Falta SyncTeX, así que no se puede saltar entre el código fuente y el PDF.',
+  "ripgrep is missing, so the assistant can't search the project.":
+    'Falta ripgrep, así que el asistente no puede buscar en el proyecto.',
 } as Record<string, string>

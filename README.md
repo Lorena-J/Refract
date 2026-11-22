@@ -528,6 +528,32 @@ All settings are environment variables.
 | `REFRACT_GITHUB_CLIENT_ID` | Client ID of your GitHub OAuth App, to connect GitHub accounts (see below). |
 | `REFRACT_OPENALEX_API_KEY` | A free [OpenAlex key](https://openalex.org/settings/api). Without one, paper searches share a small daily budget per IP address. |
 | `REFRACT_TECTONIC_BUNDLE` | The Tectonic bundle: a URL (pinned in the image), or a local folder (required with the sandbox). |
+| `REFRACT_TECTONIC_BIN`, `REFRACT_SYNCTEX_BIN`, `REFRACT_RG_BIN`, `REFRACT_GIT_BIN` | Use this program instead of the one [Refract finds](#where-refract-finds-its-tools). A path, or a name looked up on the `PATH`. If it isn't runnable, the tool counts as missing: Refract doesn't fall back to another. |
+
+### Where Refract finds its tools
+
+Refract runs `tectonic` (compiling), `synctex` (source ↔ PDF jumps), `rg` (the assistant's search) and `git` (history). For each it looks, in this order, at:
+
+1. its `REFRACT_<NAME>_BIN` variable (see [Configuration](#configuration));
+2. the folder of bundled tools next to the program: `../libexec/refract/` relative to the `refract` executable on macOS and Linux, and the executable's own folder on Windows (symbolic links of the executable are resolved first);
+3. the `PATH`.
+
+It always runs the absolute path it found, and the startup log says what was found and where (`tool name=git path=… source=bundled|env|path`). The desktop packages ship private copies in the bundled folder:
+
+```text
+libexec/refract/
+  tectonic  synctex  rg          (.exe on Windows)
+  git/
+    bin/git                      macOS and Linux
+    libexec/git-core/            Git's helpers
+    share/git-core/templates/    optional: Git's init templates
+```
+
+For a Git found in `git/bin/`, Refract sets `GIT_EXEC_PATH` to `git/libexec/git-core`, `GIT_TEMPLATE_DIR` to the templates folder when there is one, and `GIT_CONFIG_NOSYSTEM=1`, so it never uses helpers or configuration from the system. On Windows `git/` is an unmodified [MinGit](https://github.com/git-for-windows/git/releases) tree: Refract runs `git\cmd\git.exe`, which finds its own helpers under `git\ucrt64\`, and sets only `GIT_CONFIG_NOSYSTEM=1`. A Git from `REFRACT_GIT_BIN` or the `PATH` is run as it is.
+
+**Trust.** Whoever can replace a bundled program runs code as the user running Refract. On macOS and Linux Refract therefore ignores the bundled folder, or any single bundled tool, when it or any folder up to `libexec/` is writable by group or others, or owned by neither the current user nor root, and logs why once (it then falls back to the `PATH`). On Windows Refract trusts the executable's own folder as it is and can't check its permissions: install it where only administrators can write (for example under `Program Files`), because anyone who can write there can make Refract run their programs.
+
+A missing tool doesn't stop Refract: it logs what won't work without it and the web app shows one notice. Without `git` projects can't keep their history (whoever installed Refract must reinstall it or install Git); without `tectonic`, compiling doesn't work; without `synctex`, jumping between source and PDF is unavailable; without `rg`, the assistant can't search the project. The compile sandbox resolves Tectonic the same way.
 
 ### Connect GitHub
 

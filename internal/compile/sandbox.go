@@ -163,10 +163,10 @@ func (s *Sandbox) Check(ctx context.Context, t *Tectonic) error {
 			return fmt.Errorf("REFRACT_SANDBOX=bwrap needs %s on the PATH: install the %s package (%s)", tool.name, tool.env, sandboxHelp)
 		}
 	}
-	if _, err := exec.LookPath(cmp.Or(t.Bin, "tectonic")); err != nil {
-		return fmt.Errorf("REFRACT_SANDBOX=bwrap needs tectonic on the PATH (%s)", sandboxHelp)
+	if _, err := exec.LookPath(t.bin()); err != nil {
+		return fmt.Errorf("REFRACT_SANDBOX=bwrap needs tectonic: install it, or set REFRACT_TECTONIC_BIN (%s)", sandboxHelp)
 	}
-	if err := s.prepare(cmp.Or(t.Bin, "tectonic")); err != nil {
+	if err := s.prepare(t.bin()); err != nil {
 		return fmt.Errorf("REFRACT_SANDBOX=bwrap: %w", err)
 	}
 	if fi, err := os.Stat(t.Bundle); t.Bundle == "" || err != nil || !fi.IsDir() {

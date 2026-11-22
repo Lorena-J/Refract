@@ -32,6 +32,8 @@ type api struct {
 
 	canSignOut bool // REFRACT_AUTH=builtin: Refract keeps the session
 
+	missingTools []string // external programs not found at startup (internal/tools), for the UI notice
+
 	providers *providers.Store // users' API-key providers
 	outbound  *http.Client     // for those providers (see providers.HTTPClient)
 	usage     *usage.Recorder  // what each model call used; nil records nothing
@@ -79,10 +81,13 @@ func (a *api) metered(kind string) func(context.Context) ai.Provider {
 	}
 }
 
+// missing is a.missingTools, never nil so that it encodes as [].
+func (a *api) missing() []string { return append([]string{}, a.missingTools...) }
+
 func (a *api) routes(rt *router) {
 	rt.user("GET /api/me", func(w http.ResponseWriter, r *http.Request) {
 		u, _ := auth.UserFrom(r.Context())
-		writeJSON(w, map[string]any{"id": u.ID, "email": u.Email, "can_sign_out": a.canSignOut, "mode": a.mode})
+		writeJSON(w, map[string]any{"id": u.ID, "email": u.Email, "can_sign_out": a.canSignOut, "mode": a.mode, "missing_tools": a.missing()})
 	})
 	rt.user("GET /api/chatgpt/status", a.status)
 	if a.mode.ChatGPT() { // elsewhere these fall through to a 404

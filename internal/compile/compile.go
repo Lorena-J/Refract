@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/ponytojas/Refract/internal/fonts"
+	"github.com/ponytojas/Refract/internal/tools"
 )
 
 // BuildDir is where output goes, inside the project (git-excluded).
@@ -41,7 +42,7 @@ type Compiler interface {
 
 // Tectonic runs the tectonic CLI.
 type Tectonic struct {
-	Bin      string // "tectonic" if empty
+	Bin      string // found by internal/tools if empty
 	Bundle   string // pinned bundle URL; empty = Tectonic's default
 	CacheDir string // TECTONIC_CACHE_DIR; empty = Tectonic's default
 	Timeout  time.Duration
@@ -104,14 +105,14 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 	var cmd *exec.Cmd
 	if t.Sandbox != nil {
 		cmd, err = t.Sandbox.command(runCtx, sandboxJob{
-			Tectonic: cmp.Or(t.Bin, "tectonic"), Args: args, Bundle: t.Bundle, Cache: t.CacheDir,
+			Tectonic: t.bin(), Args: args, Bundle: t.Bundle, Cache: t.CacheDir,
 			Project: projectDir, OutDir: outDir, Out: sandboxDir(out), WorkDir: workDir, Timeout: t.Timeout,
 		})
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		cmd = exec.CommandContext(runCtx, cmp.Or(t.Bin, "tectonic"), args...)
+		cmd = exec.CommandContext(runCtx, t.bin(), args...)
 		cmd.Dir = workDir
 		// A minimal environment: the document must not be able to \input
 		// /proc/self/environ and read secrets like REFRACT_SECRET_KEY.
@@ -292,3 +293,6 @@ func (r *Runner) Compile(ctx context.Context, key, projectDir, mainFile string) 
 	}
 	return r.Compiler.Compile(ctx, projectDir, mainFile)
 }
+
+// bin is the tectonic to run: Bin, else the one internal/tools finds.
+func (t *Tectonic) bin() string { return cmp.Or(t.Bin, tools.Path("tectonic")) }
