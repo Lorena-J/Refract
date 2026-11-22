@@ -38,7 +38,6 @@ jobs:
       # Without them the compile and SyncTeX tests skip themselves; install the image's versions.
       - name: Tectonic and synctex
         run: |
-          sudo apt-get install -yq zlib1g-dev
           scripts/install-tex-tools.sh "$RUNNER_TEMP/bin"
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       # The sandbox tests need bubblewrap and unprivileged user namespaces, which

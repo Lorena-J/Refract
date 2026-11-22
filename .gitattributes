@@ -1,0 +1,4 @@
+# Shell scripts and the tools lock are read by sh, also on Windows runners (Git Bash):
+# keep LF even where core.autocrlf is set.
+*.sh text eol=lf
+packaging/tools.lock text eol=lf

@@ -26,32 +26,25 @@ COPY --from=web /src/web/dist web/dist
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/refract ./cmd/refract
 
 # --- synctex CLI from the official parser sources (Tectonic ships none) ---
+# Pins (commit, zlib) are in packaging/tools.lock, shared with CI and the release;
+# scripts/build-synctex.sh compiles synctex with the pinned zlib statically.
 FROM alpine:3.24.4 AS synctex
-# Tag 2023.4(TeXLive); the commit hash pins the content.
-ARG SYNCTEX_COMMIT=c3641da45b41cd61f9e625fe722d0a8d54cedaa9
-# Upgraded first: synctex embeds this zlib statically, where no scanner sees it.
-RUN apk upgrade --no-cache && apk add --no-cache build-base git zlib-dev zlib-static
-RUN git clone https://github.com/jlaurens/synctex.git /src \
- && git -C /src checkout --detach $SYNCTEX_COMMIT
-WORKDIR /src
-# Outside TeX Live, synctex_main.c expects <w2c/c-auto.h>; point it at the
-# repo's own config header. (__SYNCTEX_WORK__ is the author's local setup and
-# hardcodes a zlib path, so it is not used.)
-RUN mkdir -p w2c /out \
- && echo '#include "synctex_parser_c-auto.h"' > w2c/c-auto.h \
- && cc -O2 -static -I. synctex_main.c synctex_parser.c synctex_parser_utils.c -lz -o /out/synctex
+RUN apk upgrade --no-cache && apk add --no-cache build-base git curl
+COPY packaging/tools.lock /src/packaging/tools.lock
+COPY scripts/tools-common.sh scripts/build-synctex.sh /src/scripts/
+RUN /src/scripts/build-synctex.sh linux "$(case $(uname -m) in x86_64) echo amd64 ;; *) echo arm64 ;; esac)" /out/synctex
 
-# --- Tectonic, pinned official static build, checksum verified ---
+# --- Tectonic, pinned official static build, checksum verified (packaging/tools.lock) ---
 FROM --platform=$BUILDPLATFORM alpine:3.24.4 AS tectonic
 ARG TARGETARCH
-ARG TECTONIC_VERSION=0.17.0
-RUN case "$TARGETARCH" in \
-      amd64) triple=x86_64-unknown-linux-musl  sha=8533d07f9ccbd7a65824b9e0459041bca34af1eb33daba48f59215593753a3b7 ;; \
-      arm64) triple=aarch64-unknown-linux-musl sha=b10954a95404f3ab2328d2fa59a5ebab8e657f893fab096f98be8db7c0c979b8 ;; \
-      *) echo "unsupported arch $TARGETARCH" >&2; exit 1 ;; \
-    esac \
- && wget -qO /tmp/t.tgz "https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic%40${TECTONIC_VERSION}/tectonic-${TECTONIC_VERSION}-${triple}.tar.gz" \
- && echo "$sha  /tmp/t.tgz" | sha256sum -c - \
+ENV TOOLS_ROOT=/src
+RUN apk add --no-cache curl
+COPY packaging/tools.lock /src/packaging/tools.lock
+COPY scripts/tools-common.sh /src/scripts/
+RUN . /src/scripts/tools-common.sh \
+ && asset=$(tectonic_asset linux "$TARGETARCH") \
+ && fetch "https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic%40${TECTONIC_VERSION}/tectonic-${TECTONIC_VERSION}-${asset%|*}.${asset#*|}" \
+      "$(lock_get TECTONIC_SHA256 linux "$TARGETARCH")" /tmp/t.tgz \
  && tar -xzf /tmp/t.tgz -C /usr/local/bin tectonic
 
 # --- runtime ---
