@@ -11,6 +11,22 @@ final class LinkPolicyTests: XCTestCase {
         XCTAssertEqual(classify("http://127.0.0.1:51234/projects/1"), .ours)
         XCTAssertEqual(classify("blob:http://127.0.0.1:51234/abc"), .ours)
         XCTAssertEqual(classify("about:blank"), .ours)
+        XCTAssertEqual(classify("about:srcdoc"), .ours)
+        XCTAssertEqual(classify("HTTP://127.0.0.1:51234/x"), .ours)
+        XCTAssertEqual(classify("data:text/plain,hi"), .ours)
+        // userinfo is not the host
+        XCTAssertEqual(classify("http://evil@127.0.0.1:51234/"), .ours)
+    }
+
+    func testLookalikesAreNotOurs() {
+        XCTAssertEqual(classify("http://127.0.0.1:51234@evil.example/"), .external)
+        XCTAssertEqual(classify("http://127.0.0.1.evil.example:51234/"), .external)
+        XCTAssertEqual(classify("http://[::1]:51234/"), .external)
+        XCTAssertEqual(classify("http://127.0.0.1/"), .external)
+        XCTAssertEqual(classify("blob:https://evil.example/abc"), .refused)
+        XCTAssertEqual(classify("blob:http://127.0.0.1:51235/abc"), .refused)
+        XCTAssertEqual(classify("blob:null/abc"), .refused)
+        XCTAssertEqual(classify("about:config"), .refused)
     }
 
     func testOtherPortOrHostIsExternal() {
@@ -38,5 +54,12 @@ final class LinkPolicyTests: XCTestCase {
         XCTAssertEqual(DownloadName.sanitize(".hidden"), "hidden")
         XCTAssertEqual(DownloadName.sanitize("a\u{0}b.pdf"), "ab.pdf")
         XCTAssertEqual(DownloadName.sanitize("x", fallback: "f"), "x")
+        XCTAssertEqual(DownloadName.sanitize("report\u{202E}fdp.exe"), "reportfdp.exe")
+        XCTAssertEqual(DownloadName.sanitize("a\u{200B}b.zip"), "ab.zip")
+        XCTAssertEqual(DownloadName.sanitize(". .zip"), "zip")
+        let long = DownloadName.sanitize(String(repeating: "é", count: 300) + ".zip")
+        XCTAssertLessThanOrEqual(long.utf8.count, 255)
+        XCTAssertTrue(long.hasSuffix("é.zip"))
+        XCTAssertEqual(DownloadName.sanitize(String(repeating: "a", count: 300)).utf8.count, 255)
     }
 }

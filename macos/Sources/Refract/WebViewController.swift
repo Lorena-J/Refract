@@ -89,7 +89,9 @@ final class WebViewController: NSViewController, WKNavigationDelegate, WKUIDeleg
         case .ours:
             decisionHandler(navigationAction.shouldPerformDownload ? .download : .allow)
         case .external:
-            openExternally(url)
+            // Only the page itself sends the person elsewhere: a frame inside it (an embed, an ad)
+            // can't open browser tabs on its own.
+            if navigationAction.targetFrame?.isMainFrame ?? true { openExternally(url) }
             decisionHandler(.cancel)
         case .refused:
             AppLog.note("blocked navigation to a \(url?.scheme ?? "?"): link")
@@ -119,7 +121,12 @@ final class WebViewController: NSViewController, WKNavigationDelegate, WKUIDeleg
         // the app's own pages load in this view.
         let url = navigationAction.request.url
         switch LinkPolicy.classify(url, origin: origin) {
-        case .ours: if navigationAction.shouldPerformDownload { return nil } else { webView.load(navigationAction.request) }
+        case .ours:
+            // A blob:, data: or about: page in a new window would replace the app in this view.
+            if let scheme = url?.scheme?.lowercased(), scheme == "http" || scheme == "https",
+                !navigationAction.shouldPerformDownload {
+                webView.load(navigationAction.request)
+            }
         case .external: openExternally(url)
         case .refused: AppLog.note("blocked a new window for a \(url?.scheme ?? "?"): link")
         }
@@ -184,6 +191,38 @@ final class WebViewController: NSViewController, WKNavigationDelegate, WKUIDeleg
         } else {
             completionHandler(alert.runModal() == .alertFirstButtonReturn)
         }
+    }
+
+    /// The web app doesn't call alert or prompt; without these WebKit would drop the message
+    /// silently and answer null.
+    func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
+        initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.addButton(withTitle: L("dialog.ok", "OK"))
+        if let window = view.window {
+            alert.beginSheetModal(for: window) { _ in completionHandler() }
+        } else {
+            alert.runModal()
+            completionHandler()
+        }
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String,
+        defaultText: String?, initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping (String?) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = prompt
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        field.stringValue = defaultText ?? ""
+        alert.accessoryView = field
+        alert.addButton(withTitle: L("dialog.ok", "OK"))
+        alert.addButton(withTitle: L("dialog.cancel", "Cancel"))
+        alert.window.initialFirstResponder = field
+        let finish: (NSApplication.ModalResponse) -> Void = {
+            completionHandler($0 == .alertFirstButtonReturn ? field.stringValue : nil)
+        }
+        if let window = view.window { alert.beginSheetModal(for: window, completionHandler: finish) } else { finish(alert.runModal()) }
     }
 
     // MARK: File inputs
