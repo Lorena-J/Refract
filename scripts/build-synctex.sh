@@ -42,10 +42,17 @@ cd "$WORK/synctex"
 # a zlib path, so it is not used.)
 mkdir -p w2c
 echo '#include "synctex_parser_c-auto.h"' > w2c/c-auto.h
-STATIC=
+STATIC='' LIBS=''
 [ "$OS" = linux ] && STATIC=-static
+if [ "$OS" = windows ]; then
+  # On Windows synctex_main.c calls kpathsea's kpse_set_program_name, which only
+  # matters inside TeX Live; the parser itself uses shlwapi.
+  mkdir -p kpathsea
+  echo '#define kpse_set_program_name(argv0, name) ((void)0)' > kpathsea/progname.h
+  STATIC=-static LIBS=-lshlwapi
+fi
 # shellcheck disable=SC2086
-$CC -O2 $ARCHFLAG $STATIC -I. -I"$ZSRC" synctex_main.c synctex_parser.c synctex_parser_utils.c "$WORK/libz.a" -o "$WORK/synctex.bin"
+$CC -O2 $ARCHFLAG $STATIC -I. -I"$ZSRC" synctex_main.c synctex_parser.c synctex_parser_utils.c "$WORK/libz.a" $LIBS -o "$WORK/synctex.bin"
 case "$OS" in
   darwin) strip -x "$WORK/synctex.bin" 2>/dev/null || true ;;
 esac
