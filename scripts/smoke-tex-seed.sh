@@ -29,9 +29,11 @@ trap cleanup EXIT
 HOMEDIR=$WORK/home
 CACHE=$WORK/cache
 mkdir -p "$HOMEDIR" "$WORK/projects"
+if [ "$OS" = windows ]; then HOMEDIR=$(cygpath -w "$HOMEDIR"); fi
 # What the installer does: the seed becomes the cache the first compile starts from.
 cp -R "$DIR/tex-seed/cache" "$CACHE"
 chmod -R u+w "$CACHE"
+if [ "$OS" = windows ]; then CACHE=$(cygpath -w "$CACHE"); fi
 
 # The runtime is read-only while the tests run.
 case "$OS" in
@@ -75,9 +77,14 @@ compile() { # label dir
   fi
   mkdir "$proj/.out"
   log=$proj/.out/tectonic.log
+  # The runtime finds nothing it should not: a fresh home, the seed as the only cache. Windows
+  # keeps its environment (Tectonic needs the user's known folders there).
+  case "$OS" in
+    windows) TENV="env" ;;
+    *) TENV="env -i PATH=/nonexistent" ;;
+  esac
   # shellcheck disable=SC2086
-  (cd "$proj" && offline env -i PATH=/nonexistent "HOME=$HOMEDIR" "USERPROFILE=$HOMEDIR" "TECTONIC_CACHE_DIR=$CACHE" \
-    ${SYSTEMROOT:+"SYSTEMROOT=$SYSTEMROOT"} \
+  (cd "$proj" && offline $TENV "HOME=$HOMEDIR" "TECTONIC_CACHE_DIR=$CACHE" \
     "$DIR/tectonic$EXE" "$main" --outdir .out --synctex --keep-logs --untrusted -Z continue-on-errors $ONLY --bundle "$URL") >"$log" 2>&1 \
     || { cat "$log" >&2; fail "$label did not compile offline"; }
   if grep -qi 'downloading' "$log"; then grep -i downloading "$log" >&2; fail "$label downloaded files"; fi
