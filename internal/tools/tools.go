@@ -125,9 +125,13 @@ func Find(name string) Tool {
 	return t
 }
 
-// Path is Find(name).Path, or name itself when missing so that running it
-// fails with the usual "executable file not found" error.
-func Path(name string) string { return cmp.Or(Find(name).Path, name) }
+// Path is Find(name).Path. When the tool is missing it is the override as
+// written, or else name itself, so that running it fails with the usual "not
+// found" error: never a bare name that the PATH could resolve after a broken
+// override, which would run a program the override was meant to replace.
+func Path(name string) string {
+	return cmp.Or(Find(name).Path, os.Getenv(EnvVar(name)), name)
+}
 
 // All looks every tool up.
 func All() []Tool {

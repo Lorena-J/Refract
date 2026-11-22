@@ -73,9 +73,21 @@ func TestPrecedence(t *testing.T) {
 	if got := Find("rg"); got.Source != SourceEnv || got.Path != over {
 		t.Errorf("env beats bundled: %+v", got)
 	}
-	t.Setenv("REFRACT_RG_BIN", filepath.Join(t.TempDir(), "nope"))
+	nope := filepath.Join(t.TempDir(), "nope")
+	t.Setenv("REFRACT_RG_BIN", nope)
 	if got := Find("rg"); got.Found() {
 		t.Errorf("a broken override is final: %+v", got)
+	}
+	if got := Path("rg"); got != nope {
+		t.Errorf("Path with a broken override = %s, want %s (never the bundled or PATH rg)", got, nope)
+	}
+	t.Setenv("REFRACT_RG_BIN", "")
+	if err := os.Remove(filepath.Join(dir, "rg")); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("REFRACT_RG_BIN", "not-rg") // a name, looked up on the PATH: not there
+	if got := Path("rg"); got != "not-rg" {
+		t.Errorf("Path = %s: running it must not find the PATH's rg", got)
 	}
 }
 
