@@ -185,6 +185,8 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
   const [result, setResult] = useState<CompileResult | null>(null)
   const [compileError, setCompileError] = useState('')
   const [activity, setActivity] = useState<Activity | null>(null)
+  const stopPolling = useRef(() => {}) // the running compile's activity polling
+  useEffect(() => () => stopPolling.current(), [])
   const [jump, setJump] = useState<{ path: string; line: number; n: number } | undefined>()
   const [pdfVersion, setPdfVersion] = useState(0)
   const [highlight, setHighlight] = useState<Highlight | undefined>()
@@ -503,15 +505,24 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
     setCompiling(true)
     setCompileError('')
     // A first compile may download for a minute: ask what it is doing, from 0.8 s in, every second.
+    stopPolling.current()
+    setActivity(null)
+    let polling = true
     let poll: ReturnType<typeof setInterval> | undefined
+    const ask = () =>
+      api<Activity>(`/api/projects/${id}/compile/activity`)
+        .then((a) => polling && setActivity(a)) // an answer after the compile ended is stale
+        .catch(() => {})
     const first = setTimeout(() => {
-      const ask = () =>
-        api<Activity>(`/api/projects/${id}/compile/activity`)
-          .then(setActivity)
-          .catch(() => {})
       ask()
       poll = setInterval(ask, 1000)
     }, 800)
+    const stop = () => {
+      polling = false
+      clearTimeout(first)
+      clearInterval(poll)
+    }
+    stopPolling.current = stop
     try {
       await autosave.flushAll() // compile what is on screen
       const res = await api<CompileResult>(`/api/projects/${id}/compile`, { method: 'POST' })
@@ -520,8 +531,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
     } catch (e) {
       setCompileError(errorText(e))
     } finally {
-      clearTimeout(first)
-      clearInterval(poll)
+      stop()
       setActivity(null)
       setCompiling(false)
     }
