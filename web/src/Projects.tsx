@@ -63,6 +63,7 @@ import { ago } from '@/lib/time'
 import { daysLeft } from '@/lib/trash'
 import { cn } from '@/lib/utils'
 import { lang, t, tn, type Lang } from '@/lib/i18n'
+import { readDropped, type DroppedFile } from '@/lib/dropfiles'
 import { useCommands } from '@/lib/commands'
 import { DropdownItems, WithContextMenu, type MenuEntry } from '@/components/Menu'
 import { Link, navigate, pageReady, previousPath, usePath } from '@/lib/router'
@@ -202,7 +203,7 @@ function ProjectList({ status }: { status: ChatGPTStatus | null }) {
 
   async function importZips(files: File[]) {
     const zips = files.filter((f) => f.name.toLowerCase().endsWith('.zip'))
-    if (zips.length === 0) return toast.error(t('Drop .zip files to import them.'))
+    if (zips.length === 0) return toast.error(t('Drop .zip files or folders to import them.'))
     setBusy(true)
     const done: ImportResult[] = []
     for (const f of zips) {
@@ -224,8 +225,15 @@ function ProjectList({ status }: { status: ChatGPTStatus | null }) {
   async function importFolder(files: File[]) {
     if (files.length === 0) return
     const folder = files[0].webkitRelativePath.split('/')[0]
+    await uploadFolder(
+      folder,
+      files.map((file) => ({ file, path: file.webkitRelativePath })),
+    )
+  }
+
+  async function uploadFolder(folder: string, files: DroppedFile[]) {
     const form = new FormData()
-    for (const f of files) form.append('file', f, f.webkitRelativePath)
+    for (const f of files) form.append('file', f.file, f.path)
     setBusy(true)
     try {
       finishImport([
@@ -310,10 +318,13 @@ function ProjectList({ status }: { status: ChatGPTStatus | null }) {
     load()
   }
 
-  function onDrop(e: DragEvent) {
+  async function onDrop(e: DragEvent) {
     e.preventDefault()
     setDragging(false)
-    importZips([...e.dataTransfer.files])
+    const dropped = await readDropped([...e.dataTransfer.items])
+    if (dropped.folders.length === 0) return importZips(dropped.files)
+    for (const f of dropped.folders) if (f.files.length) await uploadFolder(f.name, f.files)
+    if (dropped.files.some((f) => f.name.toLowerCase().endsWith('.zip'))) importZips(dropped.files)
   }
 
   const sortBy = (key: Sort['key']) => setSort((s) => ({ key, desc: s.key === key ? !s.desc : key === 'updated' }))
@@ -483,7 +494,7 @@ function ProjectList({ status }: { status: ChatGPTStatus | null }) {
 
         {dragging && (
           <div className="pointer-events-none absolute inset-2 flex items-center justify-center rounded-lg border-2 border-dashed border-ring bg-background/80 text-sm font-medium backdrop-blur-sm">
-            {t('Drop .zip files to import')}
+            {t('Drop .zip files or folders to import')}
           </div>
         )}
       </main>
