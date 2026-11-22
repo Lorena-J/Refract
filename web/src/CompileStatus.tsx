@@ -163,6 +163,10 @@ export default function CompileStatus({
             <span className="text-xs text-muted-foreground">· {tn(warnings, '{n} warning', '{n} warnings')}</span>
           )}
         </PopoverTrigger>
+        {/* The chip's name stays fixed: say the network states out loud, not every file downloaded */}
+        <span role="status" className="sr-only">
+          {['retrying', 'needs-download', 'interrupted'].includes(view.kind) ? label : ''}
+        </span>
         <PopoverContent align="start" className="max-h-[60vh] w-[26rem] overflow-auto p-0">
           <div className="flex items-center justify-between border-b px-3 py-2">
             <span className="text-sm font-medium">{t('Problems')}</span>
