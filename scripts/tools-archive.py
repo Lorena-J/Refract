@@ -42,6 +42,11 @@ def load_lock(path=LOCK):
     return values
 
 
+def hash_file_name(url):
+    """Tectonic's name for a bundle URL in bundles/hashes/ (same as scripts/tex-seed.py)."""
+    return url.replace(":", ",58,").replace("/", ",47,")
+
+
 def required(os_name, arch):
     """Relative paths that must exist in the archive of a target."""
     lock = load_lock()
@@ -57,7 +62,13 @@ def required(os_name, arch):
         "licenses/ripgrep/UNLICENSE",
         "licenses/synctex/LICENSE",
         "licenses/zlib/LICENSE",
+        # The TeX seed (scripts/tex-seed.py): the cache fragment and its licences.
+        "tex-seed/seed.json",
+        f"tex-seed/cache/bundles/hashes/{hash_file_name(lock['TECTONIC_BUNDLE_URL'])}",
+        f"tex-seed/cache/bundles/data/{lock['TECTONIC_BUNDLE_DIGEST']}.index",
+        "licenses/tex/NOTICE.md",
     ]
+    seed_prefixes = [f"tex-seed/cache/bundles/data/{lock['TECTONIC_BUNDLE_DIGEST']}/", "licenses/tex/"]
     if os_name == "darwin":
         files += [
             "git/bin/git",
@@ -86,7 +97,7 @@ def required(os_name, arch):
         prefixes = ["git/ucrt64/libexec/git-core/", "git/ucrt64/share/git-core/templates/"]
     else:
         prefixes = []
-    return files, prefixes
+    return files, prefixes + seed_prefixes
 
 
 def components(os_name, arch):
@@ -115,6 +126,12 @@ def components(os_name, arch):
             "source": "https://github.com/madler/zlib/releases/tag/v" + lock["ZLIB_VERSION"],
             "sha256": lock["ZLIB_SHA256"],
             "license": "Zlib",
+        },
+        "tex-seed": {
+            "version": "TeX Live 2022 (" + lock["TECTONIC_BUNDLE_URL"].rsplit("/", 1)[-1] + ")",
+            "source": lock["TECTONIC_BUNDLE_URL"],
+            "sha256": lock["TECTONIC_BUNDLE_DIGEST"],
+            "license": "various free licences, per file (licenses/tex/NOTICE.md)",
         },
     }
     if os_name == "darwin":
