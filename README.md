@@ -530,7 +530,9 @@ libexec/refract/
 
 For a Git found in `git/bin/`, Refract sets `GIT_EXEC_PATH` to `git/libexec/git-core`, `GIT_TEMPLATE_DIR` to the templates folder when there is one, and `GIT_CONFIG_NOSYSTEM=1`, so it never uses helpers or configuration from the system. A Git from `REFRACT_GIT_BIN` or the `PATH` is run as it is.
 
-A missing tool doesn't stop Refract: it logs what won't work without it and the web app shows one notice. Without `git` projects can't keep their history (reinstall Refract, or install Git); without `tectonic`, compiling doesn't work; without `synctex`, jumping between source and PDF is unavailable; without `rg`, the assistant can't search the project. The compile sandbox resolves Tectonic the same way.
+**Trust.** Whoever can replace a bundled program runs code as the user running Refract. On macOS and Linux Refract therefore ignores the bundled folder, or any single bundled tool, when it or any folder up to `libexec/` is writable by group or others, or owned by neither the current user nor root, and logs why once (it then falls back to the `PATH`). On Windows Refract trusts the executable's own folder as it is and can't check its permissions: install it where only administrators can write (for example under `Program Files`), because anyone who can write there can make Refract run their programs.
+
+A missing tool doesn't stop Refract: it logs what won't work without it and the web app shows one notice. Without `git` projects can't keep their history (whoever installed Refract must reinstall it or install Git); without `tectonic`, compiling doesn't work; without `synctex`, jumping between source and PDF is unavailable; without `rg`, the assistant can't search the project. The compile sandbox resolves Tectonic the same way.
 
 ### Connect GitHub
 

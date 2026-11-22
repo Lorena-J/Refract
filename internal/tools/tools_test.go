@@ -125,3 +125,57 @@ func TestGitEnv(t *testing.T) {
 		t.Errorf("a system git gets no changes: %v", got)
 	}
 }
+
+func TestUntrustedBundledFolderIgnored(t *testing.T) {
+	dir := install(t)
+	fake(t, filepath.Join(dir, "tectonic"))
+	fake(t, filepath.Join(dir, "git", "bin", "git"))
+	if !Find("tectonic").Found() {
+		t.Fatal("a private bundled folder should be used")
+	}
+	for name, path := range map[string]string{
+		"folder":    dir,
+		"libexec":   filepath.Dir(dir),
+		"git/bin":   filepath.Join(dir, "git", "bin"),
+		"tool file": filepath.Join(dir, "tectonic"),
+	} {
+		fi, _ := os.Stat(path)
+		mode := fi.Mode().Perm()
+		if err := os.Chmod(path, mode|0o020); err != nil {
+			t.Fatal(err)
+		}
+		bad := Find("tectonic").Found()
+		if name == "git/bin" {
+			bad = Find("git").Found()
+		}
+		if bad {
+			t.Errorf("group-writable %s should be ignored", name)
+		}
+		if err := os.Chmod(path, mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chmod(filepath.Join(dir, "tectonic"), 0o757); err != nil {
+		t.Fatal(err)
+	}
+	if Find("tectonic").Found() {
+		t.Error("a tool writable by others should be ignored")
+	}
+	if !Find("git").Found() {
+		t.Error("the other tools stay usable")
+	}
+}
+
+func TestUntrustedOwner(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root owns everything it may use")
+	}
+	if why := unsafe("/"); why != "" && !strings.Contains(why, "writable") {
+		t.Errorf("/ is owned by root: %s", why)
+	}
+	// A file owned by someone else, neither us nor root, is not available to
+	// create here; check at least that our own files pass.
+	if why := unsafe(fake(t, filepath.Join(t.TempDir(), "x"))); why != "" {
+		t.Errorf("own file: %s", why)
+	}
+}

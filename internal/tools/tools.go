@@ -11,6 +11,12 @@
 //     executable are resolved first).
 //  3. the PATH.
 //
+// On Unix a bundled tool is ignored, and the reason logged once, when it or any
+// folder up to the parent of the bundled folder is writable by group or others
+// or owned by neither the current user nor root. On Windows the executable's
+// own folder is trusted as it is: install Refract where only administrators can
+// write.
+//
 // Callers always run the absolute path Find returns. A bundled Git lives in its
 // own tree (see below) and is told, through GitEnv, to use only that tree's
 // helpers and templates, never the system's.
@@ -25,11 +31,13 @@ package tools
 
 import (
 	"cmp"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 )
 
 // Names of the tools, in the order they are reported.
@@ -92,6 +100,30 @@ func bundled(dir, name string) string {
 	return filepath.Join(dir, exeName(name))
 }
 
+var warned sync.Map // paths already logged as untrusted
+
+// trusted reports whether the bundled program p may be run. On Unix neither p
+// nor any folder from p up to the parent of the bundled folder may be writable
+// by group or others, or owned by anyone but the current user or root: anyone
+// who could replace them could run code as the user. The reason is logged once.
+func trusted(dir, p string) bool {
+	if goos == "windows" {
+		return true
+	}
+	stop := filepath.Dir(filepath.Clean(dir))
+	for q := filepath.Clean(p); ; q = filepath.Dir(q) {
+		if why := unsafe(q); why != "" {
+			if _, seen := warned.LoadOrStore(q, true); !seen {
+				slog.Warn("ignoring bundled tool", "tool", p, "why", why)
+			}
+			return false
+		}
+		if q == stop || q == filepath.Dir(q) {
+			return true
+		}
+	}
+}
+
 func runnable(p string) bool {
 	fi, err := os.Stat(p)
 	if err != nil || fi.IsDir() {
@@ -112,7 +144,7 @@ func Find(name string) Tool {
 		return t
 	}
 	if dir := Dir(); dir != "" {
-		if p := bundled(dir, name); runnable(p) {
+		if p := bundled(dir, name); runnable(p) && trusted(dir, p) {
 			t.Path, t.Source = filepath.Clean(p), SourceBundled
 			return t
 		}
