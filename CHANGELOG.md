@@ -4,6 +4,10 @@ Notable changes to Refract. The format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Changed
+
+- `refract local` keeps its secret key in the system credential store (macOS Keychain, Secret Service on Linux, Windows Credential Manager), one item per data folder, and falls back to an owner-only `secret.key` in the data folder when no store can be reached, saying so in the log. An existing `secret.key` is kept. If the key is gone from the store for a data folder that was used before, Refract logs that stored credentials can't be read instead of failing.
+
 ## [0.2.0] - 2026-11-20
 
 ### Added

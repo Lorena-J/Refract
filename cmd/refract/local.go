@@ -20,6 +20,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ponytojas/Refract/internal/localkey"
 	"github.com/ponytojas/Refract/internal/mode"
 	"github.com/ponytojas/Refract/internal/store"
 )
@@ -27,8 +28,9 @@ import (
 // localPort is where refract local listens unless the port is taken.
 const localPort = 8080
 
-// localKeyFile holds the generated secret key inside the data folder, until
-// the system keychain takes over (#51).
+// localKeyFile holds the secret key inside the data folder when the system
+// credential store can't, or when it was already there before the store was
+// used.
 const localKeyFile = "secret.key"
 
 // localStartTimeout bounds the wait for the server to answer before the
@@ -69,6 +71,7 @@ func runLocal(args []string) error {
 	defer stop()
 	return startLocal(ctx, localOptions{
 		getenv:  os.Getenv,
+		keys:    localkey.System(),
 		port:    *port,
 		portSet: portSet,
 		out:     os.Stdout,
@@ -86,6 +89,8 @@ type localOptions struct {
 	portSet bool // false: localPort, or a free one when it is taken
 	out     io.Writer
 	open    func(url string) // opens the browser
+	// keys is the system credential store; nil means the key file only.
+	keys localkey.Store
 	// defaultDir replaces localDataDir's result, for tests.
 	defaultDir string
 }
@@ -126,7 +131,7 @@ func startLocal(ctx context.Context, o localOptions) error {
 	}
 	var key []byte // nil: run reads REFRACT_SECRET_KEY, which wins when set
 	if o.getenv("REFRACT_SECRET_KEY") == "" {
-		if key, err = loadOrCreateKey(filepath.Join(dataDir, localKeyFile)); err != nil {
+		if key, err = resolveLocalKey(o.keys, dataDir); err != nil {
 			return err
 		}
 	}
@@ -174,6 +179,51 @@ func localDataDir(goos string, getenv func(string) string, home string) (string,
 		return filepath.Join(home, "Library", "Application Support", "Refract"), nil
 	}
 	return filepath.Join(home, ".local", "share", "refract"), nil
+}
+
+// resolveLocalKey finds the secret key of a data folder. An existing
+// secret.key is kept as it is (nothing migrates silently). Otherwise the key
+// lives in the system credential store, and in an owner-only secret.key when
+// the store can't be reached. A missing store item for a folder that already
+// has a database means the old key is gone: a new one is made and the log
+// says stored credentials can't be read. The key is never logged.
+func resolveLocalKey(ks localkey.Store, dataDir string) ([]byte, error) {
+	path := filepath.Join(dataDir, localKeyFile)
+	if _, err := os.Lstat(path); err == nil {
+		return readKeyFile(path)
+	}
+	if ks == nil {
+		return loadOrCreateKey(path)
+	}
+	key, found, err := localkey.Load(ks, dataDir)
+	switch {
+	case found:
+		return key, nil
+	case errors.Is(err, localkey.ErrInvalid):
+		return nil, err
+	case err != nil:
+		slog.Warn("the system credential store is not available; keeping the secret key in an owner-only file instead", "file", path, "err", err)
+		warnIfCredentialsLost(dataDir, "the secret key file is missing")
+		return loadOrCreateKey(path)
+	}
+	warnIfCredentialsLost(dataDir, "the secret key is not in the system credential store")
+	key = make([]byte, 32)
+	rand.Read(key)
+	if err := localkey.Save(ks, dataDir, key); err != nil {
+		slog.Warn("can't save the secret key in the system credential store; keeping it in an owner-only file instead", "file", path, "err", err)
+		return loadOrCreateKey(path)
+	}
+	slog.Info("created the secret key in the system credential store", "service", localkey.Service, "account", localkey.Account(dataDir))
+	return key, nil
+}
+
+// warnIfCredentialsLost reports that a new key is about to be made for a data
+// folder that has been used before, so credentials stored with the old one
+// (ChatGPT sign-in, API keys, git tokens) can't be read back.
+func warnIfCredentialsLost(dataDir, why string) {
+	if _, err := os.Stat(filepath.Join(dataDir, "refract.db")); err == nil {
+		slog.Warn("this data folder was used before: "+why+", so a new key is made and stored ChatGPT sign-ins, API keys and git tokens can't be read; add them again in Settings, or restore the old key (see the README)", "data", dataDir)
+	}
 }
 
 // loadOrCreateKey reads the secret key at path, or creates it with a new
