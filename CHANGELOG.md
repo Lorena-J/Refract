@@ -10,9 +10,11 @@ Notable changes to Refract. The format follows [Keep a Changelog](https://keepac
 - `refract local --status` prints a JSON `error` line when it fails, instead of nothing.
 - `window.refractFlush()` in the web app saves pending edits and tells whether everything was saved, for the desktop app to call before it stops the server.
 - Refract finds `tectonic`, `synctex`, `rg` and `git` in a bundled `libexec/refract` folder next to the executable (the executable's own folder on Windows) before the `PATH`, and runs them by absolute path; a bundled Git uses only its own helpers and templates. `REFRACT_TECTONIC_BIN`, `REFRACT_SYNCTEX_BIN`, `REFRACT_RG_BIN` and `REFRACT_GIT_BIN` override the lookup. The startup log shows where each was found, and the web app shows one notice when a tool is missing, saying what won't work, on whichever page opens first. On macOS and Linux a bundled tool in a folder that others can write, or that another user owns, is ignored.
+- The macOS app updates itself with Sparkle 2 (**Refract → Check for Updates…**, automatic checks when the person agrees), from a feed per architecture published with the release and signed with an EdDSA key. Before it relaunches, the server stops the way it does on quit. A failed or interrupted download, or an update that doesn't verify, leaves the running app as it is. `scripts/make-appcast.py` writes the feed from the release's CHANGELOG section.
 
 ### Changed
 
+- A failed database upgrade now says that nothing was changed and where the copy from before the upgrade is (`refract.db.pre-upgrade`).
 - `refract local` keeps its secret key in the system credential store (macOS Keychain, Secret Service on Linux, Windows Credential Manager), one item per data folder, and falls back to an owner-only `secret.key` in the data folder when no store can be reached, saying so in the log. An existing `secret.key` is kept. If the key is gone from the store for a data folder that was used before, Refract logs that stored credentials can't be read instead of failing.
 
 ## [0.2.0] - 2026-11-20

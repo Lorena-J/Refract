@@ -6,6 +6,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var root: RootViewController!
     private var window: NSWindow!
     private var quitting = false
+    private var pendingStops: [(Bool) -> Void] = []
+    private var updates: UpdateController!
     private let portKey = "serverPort"
     /// `REFRACT_APP_DEFAULTS_SUITE` names a separate UserDefaults suite (scratch runs and tests).
     private static let defaults: UserDefaults = {
@@ -18,8 +20,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if activateRunningInstance() {
             exit(0)
         }
-        installMenu()
-
         let layout = BundleLayout()
         var config = ServerSupervisor.Config(
             executable: layout.server,
@@ -30,6 +30,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // ~/Library/Application Support/Refract.
         config.workingDirectory = NSHomeDirectory()
         supervisor = ServerSupervisor(config: config)
+        updates = UpdateController(settings: UpdateSettings.resolve(
+            info: Bundle.main.infoDictionary ?? [:], environment: ProcessInfo.processInfo.environment))
+        updates.stopServer = { [weak self] done in self?.stopServer(then: done) }
+        updates.resumeServer = { [weak self] in
+            guard let self else { return }
+            self.quitting = false
+            self.supervisor.restart()
+        }
+        installMenu()
         let saved = Self.defaults.integer(forKey: portKey)
         supervisor.preferredPort = saved > 0 ? saved : nil
 
@@ -102,11 +111,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let supervisor else { return .terminateNow }
-        if quitting { return .terminateLater }
         // A terminal instance has nothing to stop, but its page may hold unsaved typing.
         switch supervisor.state {
         case .starting, .stopping, .ready: break
         default: return .terminateNow
+        }
+        stopServer { proceed in
+            if proceed { AppLog.note("quitting after the server stopped") }
+            NSApp.reply(toApplicationShouldTerminate: proceed)
+        }
+        return .terminateLater
+    }
+
+    /// The quit sequence up to the server's end, shared by ⌘Q and by an update's relaunch: the
+    /// page saves what was typed (asking, if it can't), standard input closes, and the server
+    /// finishes its requests and closes the database (killed only after 30 seconds, see
+    /// ServerSupervisor). Calls back `true` once the server is gone, `false` if the person
+    /// chose to keep working. Calls arriving while one runs wait for its result.
+    private func stopServer(then done: @escaping (Bool) -> Void) {
+        pendingStops.append(done)
+        guard pendingStops.count == 1 else { return }
+        switch supervisor.state {
+        case .starting, .stopping, .ready: break
+        default:
+            finishStop(true)
+            return
         }
         quitting = true
         Task { @MainActor in
@@ -120,7 +149,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 alert.addButton(withTitle: L("quit.unsaved.quit", "Quit Anyway"))
                 if alert.runModal() == .alertFirstButtonReturn {
                     quitting = false
-                    NSApp.reply(toApplicationShouldTerminate: false)
+                    finishStop(false)
                     return
                 }
             }
@@ -131,11 +160,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             supervisor.stop { outcome in
                 slow.invalidate()
-                AppLog.note("quitting after the server stopped (\(outcome))")
-                NSApp.reply(toApplicationShouldTerminate: true)
+                AppLog.note("the server stopped (\(outcome))")
+                self.finishStop(true)
             }
         }
-        return .terminateLater
+    }
+
+    private func finishStop(_ proceed: Bool) {
+        let waiting = pendingStops
+        pendingStops = []
+        waiting.forEach { $0(proceed) }
     }
 
     // MARK: Menu (a minimum: ⌘Q, ⌘W and the editing commands the web view needs; #68 replaces it)
@@ -154,6 +188,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let app = submenu("Refract")
         add(app, L("menu.about", "About Refract"), #selector(NSApplication.orderFrontStandardAboutPanel(_:)))
+        let check = app.addItem(withTitle: L("menu.checkForUpdates", "Check for Updates…"), action: #selector(UpdateController.checkForUpdates(_:)), keyEquivalent: "")
+        check.target = updates
         app.addItem(.separator())
         add(app, L("menu.hide", "Hide Refract"), #selector(NSApplication.hide(_:)), "h")
         add(app, L("menu.hideOthers", "Hide Others"), #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option])

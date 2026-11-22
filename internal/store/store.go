@@ -183,7 +183,7 @@ func migrate(db *sql.DB, path string) error {
 	}
 	for i := version; i < len(migrations); i++ {
 		if _, err := tx.Exec(migrations[i]); err != nil {
-			return fmt.Errorf("migration %d: %w", i+1, err)
+			return upgradeFailed(i+1, version, path, err)
 		}
 	}
 	if _, err := tx.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, len(migrations))); err != nil {
@@ -208,6 +208,15 @@ func schemaVersion(db *sql.DB) (int, error) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
+}
+
+// upgradeFailed words a failed migration for the person who reads it (the desktop app
+// shows it): nothing was changed, and where the copy from before the upgrade is.
+func upgradeFailed(n, from int, path string, err error) error {
+	if from == 0 {
+		return fmt.Errorf("migration %d: %w", n, err)
+	}
+	return fmt.Errorf("migration %d: %w. Your data was not changed: the database is still at schema version %d. A copy from before the upgrade is at %s; keep it, and install the previous version of Refract or report this", n, err, from, path+".pre-upgrade")
 }
 
 func newer(version int) error {
