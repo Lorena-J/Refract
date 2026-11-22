@@ -15,7 +15,7 @@ WinGet's nested executable paths depend on that layout.
   `bin/` folder (`../libexec/refract/` from the executable), and the same folder as the
   executable on Windows. #53 makes `refract` resolve its tools there. Desktop apps
   (macOS, Windows) ship private copies of Git with the helper executables and libraries
-  it needs, Tectonic, SyncTeX and ripgrep. Debian/Ubuntu packages do not bundle Git:
+  it needs, Tectonic, SyncTeX and ripgrep (see "Bundled tools"). Debian/Ubuntu packages do not bundle Git:
   they declare it as a package dependency (`Depends: git`) and use the system copy.
 - Licences and notices, and the documentation.
 - A desktop entry and icons for graphical installs.
@@ -47,6 +47,62 @@ The packaging tests (`scripts/test_packaging.py`) enforce the rules that can be
 checked: no Debian maintainer scripts, no Homebrew `post_install` or cask `postflight`,
 no system-wide service or data paths, no setuid or world-writable files, and a payload
 that contains only the allowed paths.
+
+## Bundled tools
+
+`.github/workflows/tools.yml` builds a tools archive per target, `refract-tools-<tag>-<os>-<arch>`
+(`.tar.gz`, `.zip` on Windows). The release attaches them and fails when an archive lacks a
+required tool or licence (`scripts/tools-archive.py`, also run by the tests). The installers
+(#58, #59, #60, #66) unpack one into the tools folder described above:
+
+```
+tectonic  synctex  rg            (.exe on Windows)
+git/bin/git                      macOS only
+git/libexec/git-core/            macOS only: the Git helpers (GIT_EXEC_PATH)
+git/share/git-core/templates/    macOS only (GIT_TEMPLATE_DIR)
+git/cmd/git.exe                  Windows: MinGit keeps its own tree (see below)
+licenses/<component>/...         licences, notices, and for Git the source or its offer
+tools-manifest.json              versions, sources and SHA-256 of the inputs and of every file
+```
+
+Windows deviates from the macOS paths on purpose: `git.exe` of Git for Windows finds `sh.exe`
+and its helpers relative to its own `ucrt64/` and `usr/` folders, so MinGit stays unmodified
+under `git/` (`git/cmd/git.exe`, `git/ucrt64/libexec/git-core/`, `git/usr/bin/`). Linux archives
+have no Git: the Debian/Ubuntu package depends on the system one.
+
+**Pins.** `packaging/tools.lock` is the only place with versions, sources and checksums. The
+Dockerfile, `scripts/install-tex-tools.sh` (CI), `scripts/build-tools.sh` and the release all
+read it; a test fails if any of them hardcodes a pin. Every download is verified against the
+lock before use (`scripts/tools-common.sh`).
+
+| Component | Source | Notes |
+|---|---|---|
+| Tectonic (MIT) | official release assets | musl static on Linux, MSVC static CRT on Windows |
+| ripgrep (MIT or Unlicense) | official release assets | musl static on Linux |
+| SyncTeX (MIT) | built from the pinned commit of jlaurens/synctex | zlib linked statically; Windows cross-built with llvm-mingw |
+| zlib (Zlib) | pinned release tarball, compiled into SyncTeX | |
+| Git, macOS (GPLv2, parts LGPL 2.1) | built from the official source tarball, `RUNTIME_PREFIX`, no curl, OpenSSL, expat, Perl, Python, Tcl or gettext | links only libSystem, libz and libiconv, which macOS provides; the smoke test fails if anything else is linked |
+| Git, Windows (GPLv2 and the MSYS2/MinGW component licences) | MinGit from Git for Windows, unmodified | |
+
+**Licence obligations.** Each archive carries the licence texts under `licenses/`. Git is GPLv2:
+the macOS archive includes the exact source tarball (`licenses/git/source/`) and a source
+offer; the Windows archive includes MinGit's `LICENSE.txt`, its component list and a written
+offer pointing at the Git for Windows and MSYS2 sources. Tectonic's binary statically includes
+many Rust crates and TeX components; its `LICENSE` points to their licences, and the crate list
+is in the Tectonic source tag recorded in the manifest. Installers that ship the archive must
+keep `licenses/` and the manifest and show them (for example in an About or Licences screen).
+Review the Windows and Tectonic notices again when bumping a pin.
+
+**Gaps.** `windows-arm64` has no tools archive: upstream Tectonic publishes no Windows arm64
+build. The release attaches `refract-tools-<tag>-gaps.txt` listing it, and no Windows arm64
+desktop installer may be advertised as complete until Tectonic runs there. The macOS amd64
+tools are built and smoke-tested on an Intel runner; the Windows archive is cross-built on
+Linux and only smoke-tested on a Windows amd64 runner. Those runners have a Git installed:
+the smoke test strips `PATH` so the bundled runtime is what runs, which is close to but not
+identical to a clean machine.
+
+To build one locally (macOS arm64 example): `scripts/build-tools.sh darwin arm64 v0.0.0-dev dist`,
+then extract it and run `scripts/smoke-tools.sh <folder> darwin`.
 
 ## Server deployments
 
