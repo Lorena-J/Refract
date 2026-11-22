@@ -1,0 +1,469 @@
+"""Builds and validates the TeX seed (see packaging/README.md, "TeX seed").
+
+  tex-seed.py build <tectonic> <out> <tlpdb.xz> [--update]
+  tex-seed.py verify <tex-seed dir>        checks seed.json against the files and the repository; prints the bundle URL
+
+Compiles every built-in template (internal/projects/templates/<id>/<lang>) and every
+document in packaging/tex-seed/documents/ with Refract's Tectonic flags and an empty
+cache, so that the cache ends up holding exactly the bundle files they need. Then it
+writes, under <out>:
+
+  tex-seed/cache/bundles/...   the cache fragment (hash file, index, data files)
+  tex-seed/seed.json           id, Tectonic version, bundle, coverage, sha256 of every file
+  licenses/tex/                the licence texts and NOTICE.md (file -> TeX Live package -> licence)
+
+and compares the file list with the committed packaging/tex-seed/files.txt: a changed
+list (new bundle file, new template) fails with a diff until `--update` rewrites it.
+Every seed file must have a licence (from the pinned TeX Live database or from
+packaging/tex-seed/license-overrides.txt); a file without one fails the build.
+"""
+
+import collections
+import difflib
+import fnmatch
+import hashlib
+import json
+import lzma
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+SEED_DIR = ROOT / "packaging" / "tex-seed"
+TEMPLATES = ROOT / "internal" / "projects" / "templates"
+SCHEMA = 1
+
+# Refract's compile flags (internal/compile), minus the paths.
+FLAGS = ["--synctex", "--keep-logs", "--untrusted", "-Z", "continue-on-errors"]
+
+# TeX Live licence identifiers -> (licence text in packaging/tex-seed/licenses, name).
+# A text of None means no text is needed (public domain).
+TEXTS = {
+    "lppl1.3c": ("LPPL-1.3c.txt", "LaTeX Project Public License 1.3c"),
+    "lppl1.3a": ("LPPL-1.3c.txt", "LaTeX Project Public License 1.3a (1.3c shipped)"),
+    "lppl1.3": ("LPPL-1.3c.txt", "LaTeX Project Public License 1.3 (1.3c shipped)"),
+    "lppl": ("LPPL-1.3c.txt", "LaTeX Project Public License, version unspecified (1.3c shipped)"),
+    "lppl1.2": ("LPPL-1.2.txt", "LaTeX Project Public License 1.2"),
+    "gfl": ("GUST-FONT-LICENSE.txt", "GUST Font License 1.0"),
+    "ofl": ("OFL-1.1.txt", "SIL Open Font License 1.1"),
+    "gpl": ("GPL-2.0.txt", "GNU GPL, version unspecified (2.0 shipped)"),
+    "gpl2": ("GPL-2.0.txt", "GNU GPL 2.0"),
+    "gpl2+": ("GPL-2.0.txt", "GNU GPL 2.0 or later (2.0 shipped)"),
+    "lgpl": ("LGPL-2.1.txt", "GNU LGPL, version unspecified (2.1 shipped)"),
+    "lgpl2.1": ("LGPL-2.1.txt", "GNU LGPL 2.1"),
+    "mit": ("MIT.txt", "MIT"),
+    "x11": ("X11.txt", "X11"),
+    "knuth": ("KNUTH.txt", "Knuth License (Computer Modern)"),
+    "unicode": ("Unicode-DFS-2015.txt", "Unicode Data Files and Software License (2015)"),
+    "apache2": ("Apache-2.0.txt", "Apache License 2.0"),
+    "pd": (None, "public domain"),
+    "fdl": (None, "GNU FDL (documentation of the package, not part of the files shipped)"),
+    # In the file's own header, which the override names; the text is not shipped.
+    "in-file": (None, "licence stated in the file's header"),
+    "other-free": (None, "other free licence, stated in the file's header"),
+}
+# A TeX Live package licence that carries no obligation for the files by itself.
+DOC_ONLY = {"fdl"}
+
+SOURCE_URL = "https://www.tug.org/historic/"
+TLPDB_NOTE = "tlnet-final/tlpkg/texlive.tlpdb.xz"
+
+
+def die(message):
+    print(f"error: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def load_lock():
+    values = {}
+    for line in (ROOT / "packaging" / "tools.lock").read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            key, _, value = line.partition("=")
+            values[key] = value
+    return values
+
+
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def hash_file_name(url):
+    """Tectonic's name for a bundle URL in bundles/hashes/: ':' and '/' written as ,58, and ,47,."""
+    return url.replace(":", ",58,").replace("/", ",47,")
+
+
+# ---------------------------------------------------------------------------
+# Compiling
+
+
+def covered_projects():
+    """[(label, directory, main file)] for every template language folder."""
+    projects = []
+    for template in sorted(p for p in TEMPLATES.iterdir() if p.is_dir()):
+        for lang in sorted(p for p in template.iterdir() if p.is_dir()):
+            main = lang / "main.tex"
+            if not main.is_file():
+                roots = sorted(lang.glob("*.tex"))
+                if len(roots) != 1:
+                    die(f"{lang}: no main.tex and not exactly one .tex file at the top")
+                main = roots[0]
+            projects.append((f"{template.name}/{lang.name}", lang, main.name))
+    if not projects:
+        die(f"no templates under {TEMPLATES}")
+    return projects
+
+
+def covered_documents():
+    documents = sorted((SEED_DIR / "documents").glob("*.tex"))
+    if not documents:
+        die("no documents in packaging/tex-seed/documents")
+    return documents
+
+
+def tectonic_version(tectonic):
+    out = subprocess.run([tectonic, "--version"], capture_output=True, text=True, check=True).stdout
+    match = re.search(r"Tectonic (\S+)", out)
+    if not match:
+        die(f"cannot read the version of {tectonic}: {out!r}")
+    return match.group(1)
+
+
+def compile_one(tectonic, bundle, env, label, project, main, workdir):
+    target = workdir / re.sub(r"[^A-Za-z0-9]+", "-", label)
+    shutil.copytree(project, target / "src")
+    outdir = target / "out"
+    outdir.mkdir()
+    result = subprocess.run(
+        [tectonic, "--outdir", str(outdir), *FLAGS, "--bundle", bundle, main],
+        cwd=target / "src", env=env, capture_output=True, text=True, timeout=1800,
+    )
+    pdf = outdir / (Path(main).stem + ".pdf")
+    problems = [line for line in result.stderr.splitlines() if line.startswith("error:") or "failed to download" in line]
+    if result.returncode != 0 or not pdf.is_file() or pdf.read_bytes()[:4] != b"%PDF" or problems:
+        die(f"{label} did not compile cleanly (exit {result.returncode}):\n{result.stderr[-3000:]}")
+    print(f"compiled {label}")
+
+
+# ---------------------------------------------------------------------------
+# Licences
+
+
+def read_tlpdb(path):
+    """{package: {"lic": str|None, "run": [paths]}} from the TeX Live database."""
+    packages = {}
+    current = None
+    section = None
+    with lzma.open(path, "rt", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            line = line.rstrip("\n")
+            if line.startswith("name "):
+                current = {"lic": None, "run": []}
+                packages[line[5:]] = current
+                section = None
+            elif current is None:
+                continue
+            elif line.startswith("catalogue-license "):
+                current["lic"] = line.split(" ", 1)[1].strip()
+            elif line.startswith(" "):
+                if section == "runfiles":
+                    current["run"].append(line.split()[0])
+            elif line.strip() == "":
+                section = None
+            else:
+                section = line.split(" ", 1)[0]
+    return packages
+
+
+def load_overrides():
+    """{("package"|"file"|"glob", name): [licence ids]} from license-overrides.txt."""
+    overrides = {}
+    path = SEED_DIR / "license-overrides.txt"
+    for number, line in enumerate(path.read_text().splitlines(), 1):
+        line = line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        parts = line.split()
+        if len(parts) < 3 or parts[0] not in ("package", "file", "glob"):
+            die(f"{path}:{number}: expected 'package|file|glob <name> <licence>...'")
+        for lic in parts[2:]:
+            if lic not in TEXTS:
+                die(f"{path}:{number}: unknown licence {lic!r}")
+        overrides[(parts[0], parts[1])] = parts[2:]
+    return overrides
+
+
+def candidates_for(name, by_base, packages):
+    """Packages that ship the bundle file `name`, dropping development and platform copies."""
+    names = sorted(set(by_base.get(name, [])))
+    kept = [n for n in names if not n.endswith("-dev") and "." not in n and not n.startswith("tlperl")]
+    return kept or names
+
+
+def licences_of_package(name, packages, overrides):
+    if ("package", name) in overrides:
+        return overrides[("package", name)]
+    lic = packages[name]["lic"]
+    if not lic:
+        return None
+    ids = lic.split()
+    for item in ids:
+        if item not in TEXTS:
+            die(f"package {name}: licence {item!r} has no text in packaging/tex-seed/licenses (add it, or an override)")
+    # other-free alone says nothing about the actual terms: the override names the real licence.
+    if ids == ["other-free"]:
+        return None
+    shipped = [i for i in ids if i not in DOC_ONLY and i != "other-free"]
+    return shipped or ids
+
+
+def attribute(files, packages, overrides):
+    """{file: [(package, [licences])]}; dies listing every file without a licence."""
+    by_base = collections.defaultdict(list)
+    for name, package in packages.items():
+        for path in package["run"]:
+            by_base[os.path.basename(path)].append(name)
+    result = {}
+    missing = []
+    for name in files:
+        if ("file", name) in overrides:
+            result[name] = [("(override)", overrides[("file", name)])]
+            continue
+        globbed = [lics for (kind, pattern), lics in overrides.items() if kind == "glob" and fnmatch.fnmatchcase(name, pattern)]
+        if globbed:
+            result[name] = [("(override)", globbed[0])]
+            continue
+        owners = candidates_for(name, by_base, packages)
+        found = []
+        for owner in owners:
+            lics = licences_of_package(owner, packages, overrides)
+            if lics:
+                found.append((owner, lics))
+        if not found:
+            missing.append(f"{name} (packages: {', '.join(owners) or 'none'})")
+        else:
+            result[name] = found
+    if missing:
+        die(
+            "no licence for these seed files; read their headers and add 'file <name> <licence>' or "
+            "'glob <pattern> <licence>' or 'package <name> <licence>' to packaging/tex-seed/license-overrides.txt:\n  " + "\n  ".join(missing)
+        )
+    return result
+
+
+def write_notice(out, lock, attribution, tectonic_ver):
+    lic_dir = out / "licenses" / "tex"
+    lic_dir.mkdir(parents=True, exist_ok=True)
+    used = sorted({lic for found in attribution.values() for _, lics in found for lic in lics})
+    texts = {}
+    for lic in used:
+        filename = TEXTS[lic][0]
+        if filename:
+            source = SEED_DIR / "licenses" / filename
+            if not source.is_file():
+                die(f"missing licence text {source}")
+            shutil.copyfile(source, lic_dir / filename)
+            texts.setdefault(filename, []).append(lic)
+
+    per_package = collections.defaultdict(list)
+    for name, found in sorted(attribution.items()):
+        for owner, lics in found:
+            per_package[(owner, tuple(lics))].append(name)
+
+    lines = [
+        "# Licences of the TeX seed",
+        "",
+        "The folder `tex-seed/` of this archive holds files of the TeX Live 2022 bundle that Tectonic",
+        f"{tectonic_ver} downloads (`{lock['TECTONIC_BUNDLE_URL']}`, digest `{lock['TECTONIC_BUNDLE_DIGEST']}`).",
+        "They are copied unmodified into the user's Tectonic cache, so that compiling the built-in",
+        "templates works without a network. Each file keeps the licence of the TeX Live package it",
+        "comes from: the tables below map every file to its package and licence. This file is",
+        "generated by `scripts/tex-seed.py` from the TeX Live database pinned in `packaging/tools.lock`",
+        f"(`{lock['TEXLIVE_TLPDB_URL']}`, SHA-256 `{lock['TEXLIVE_TLPDB_SHA256']}`),",
+        "plus `packaging/tex-seed/license-overrides.txt` for files and packages the database does not describe.",
+        "",
+        "## Source code",
+        "",
+        "Every file is the distributed form of a TeX Live 2022 package. The sources are the package",
+        "archives and the source tree of TeX Live 2022: https://www.tug.org/historic/ lists the",
+        "TeX Live 2022 release (the `tlnet-final/archive/<package>.tar.xz` archives hold the source files),",
+        "and the Subversion tree is https://tug.org/svn/texlive/tags/texlive-2022.0/. The unmodified",
+        "bundle is the tar at the URL above. For three years from a Refract release, the Refract",
+        "maintainers will also send a copy of any of these sources on request",
+        "(https://github.com/ponytojas/Refract/issues).",
+        "",
+        "## Licence texts in this folder",
+        "",
+    ]
+    for filename, ids in sorted(texts.items()):
+        names = "; ".join(sorted({TEXTS[i][1] for i in ids}))
+        lines.append(f"- `{filename}`: {names}")
+    lines += [
+        "",
+        "TeX Live's identifiers `lppl`, `lppl1.3` and `lppl1.3a` mean those LPPL versions; the files",
+        "also allow any later version, so the text of 1.3c is shipped. `gpl` and `lgpl` without a",
+        "version are shipped with GPL 2.0 and LGPL 2.1. `fdl` covers the documentation of a package,",
+        "which the seed does not contain.",
+        "",
+        "## Files by package",
+        "",
+        "| Package | Licence | Files |",
+        "|---|---|---|",
+    ]
+    for (owner, lics), names in sorted(per_package.items()):
+        lines.append(f"| {owner} | {', '.join(lics)} | {', '.join(f'`{n}`' for n in sorted(names))} |")
+    (lic_dir / "NOTICE.md").write_text("\n".join(lines) + "\n")
+
+
+# ---------------------------------------------------------------------------
+
+
+def build(tectonic, out, tlpdb, update):
+    lock = load_lock()
+    url, digest = lock["TECTONIC_BUNDLE_URL"], lock["TECTONIC_BUNDLE_DIGEST"]
+    version = tectonic_version(tectonic)
+    if version != lock["TECTONIC_VERSION"]:
+        die(f"{tectonic} is Tectonic {version}; packaging/tools.lock pins {lock['TECTONIC_VERSION']} and the cache layout is version specific")
+    if sha256_file(tlpdb) != lock["TEXLIVE_TLPDB_SHA256"]:
+        die(f"{tlpdb} does not match TEXLIVE_TLPDB_SHA256 in packaging/tools.lock")
+    packages = read_tlpdb(tlpdb)
+    overrides = load_overrides()
+    out = Path(out).resolve()
+    if out.exists() and any(out.iterdir()):
+        die(f"{out} is not empty")
+    out.mkdir(parents=True, exist_ok=True)
+
+    work = Path(tempfile.mkdtemp(prefix="tex-seed."))
+    try:
+        cache = work / "cache"
+        cache.mkdir()
+        home = work / "home"
+        home.mkdir()
+        env = {**os.environ, "TECTONIC_CACHE_DIR": str(cache), "HOME": str(home), "XDG_CACHE_HOME": str(home / ".cache")}
+        env.pop("REFRACT_TECTONIC_BUNDLE", None)
+
+        covers = {"templates": [], "documents": []}
+        for label, project, main in covered_projects():
+            compile_one(tectonic, url, env, label, project, main, work / "projects")
+            covers["templates"].append(label)
+        for document in covered_documents():
+            project = work / "docs" / document.stem
+            project.mkdir(parents=True)
+            shutil.copyfile(document, project / "main.tex")
+            compile_one(tectonic, url, env, f"document {document.stem}", project, "main.tex", work / "projects")
+            covers["documents"].append(document.stem)
+
+        # The cache must name the pinned bundle by the digest the lock pins.
+        hash_file = cache / "bundles" / "hashes" / hash_file_name(url)
+        if not hash_file.is_file():
+            die(f"the cache has no hash file for {url} (expected {hash_file.name})")
+        if hash_file.read_text().strip() != digest:
+            die(f"the bundle at {url} now has digest {hash_file.read_text().strip()}, not the pinned {digest}")
+        data = cache / "bundles" / "data"
+        index = data / f"{digest}.index"
+        files_dir = data / digest
+        if not index.is_file() or not files_dir.is_dir():
+            die("the cache lacks the bundle index or data directory")
+
+        seed = out / "tex-seed"
+        target = seed / "cache" / "bundles"
+        (target / "hashes").mkdir(parents=True)
+        (target / "data" / digest).mkdir(parents=True)
+        shutil.copyfile(hash_file, target / "hashes" / hash_file.name)
+        shutil.copyfile(index, target / "data" / index.name)
+        names = sorted(p.name for p in files_dir.iterdir() if p.is_file())
+        if not names:
+            die("no bundle files were cached")
+        for name in names:
+            shutil.copyfile(files_dir / name, target / "data" / digest / name)
+        for path in sorted(files_dir.rglob("*")):
+            if path.is_dir():
+                die(f"unexpected directory {path} in the bundle cache")
+
+        hashes = {}
+        for path in sorted(seed.rglob("*")):
+            if path.is_file():
+                hashes[path.relative_to(seed).as_posix()] = sha256_file(path)
+        listing = "".join(f"{value}  {rel}\n" for rel, value in sorted(hashes.items()))
+
+        attribution = attribute(names, packages, overrides)
+        write_notice(out, lock, attribution, version)
+
+        seed_json = {
+            "schema": SCHEMA,
+            "id": hashlib.sha256(listing.encode()).hexdigest(),
+            "tectonic": version,
+            "bundle": {"url": url, "digest": digest},
+            "covers": covers,
+            "files": hashes,
+        }
+        (seed / "seed.json").write_text(json.dumps(seed_json, indent=2, sort_keys=True) + "\n")
+
+        committed = SEED_DIR / "files.txt"
+        if update:
+            committed.write_text(listing)
+            print(f"updated {committed.relative_to(ROOT)}")
+        else:
+            old = committed.read_text() if committed.is_file() else ""
+            if old != listing:
+                diff = "".join(difflib.unified_diff(old.splitlines(True), listing.splitlines(True), "files.txt (committed)", "files.txt (built)"))
+                die(
+                    "the seed differs from packaging/tex-seed/files.txt (a new Tectonic, bundle, template or document, "
+                    "or a non-reproducible build). Review the diff; if it is expected, rerun with --update and commit "
+                    "the file:\n" + diff
+                )
+        print(f"seed {seed_json['id'][:12]}: {len(names)} bundle files, {len(hashes)} files in total, "
+              f"{len(covers['templates'])} templates, {len(covers['documents'])} documents")
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def verify(seed):
+    """Fails unless seed.json matches the files in the folder, the lock and the repository's templates."""
+    seed = Path(seed)
+    lock = load_lock()
+    data = json.loads((seed / "seed.json").read_text())
+    if data.get("schema") != SCHEMA:
+        die(f"unknown seed schema {data.get('schema')!r}")
+    if data["bundle"] != {"url": lock["TECTONIC_BUNDLE_URL"], "digest": lock["TECTONIC_BUNDLE_DIGEST"]}:
+        die("seed.json names another bundle than packaging/tools.lock")
+    if data["tectonic"] != lock["TECTONIC_VERSION"]:
+        die("seed.json was built for another Tectonic than packaging/tools.lock")
+    found = {p.relative_to(seed).as_posix() for p in seed.rglob("*") if p.is_file()} - {"seed.json"}
+    if found != set(data["files"]):
+        die("the files in the seed folder differ from seed.json: " + ", ".join(sorted(found ^ set(data["files"]))[:10]))
+    for rel, value in data["files"].items():
+        if sha256_file(seed / rel) != value:
+            die(f"{rel} does not match its checksum in seed.json")
+    listing = "".join(f"{value}  {rel}\n" for rel, value in sorted(data["files"].items()))
+    if hashlib.sha256(listing.encode()).hexdigest() != data["id"]:
+        die("seed.json id does not match its file list")
+    want = {"templates": [label for label, _, _ in covered_projects()], "documents": [d.stem for d in covered_documents()]}
+    if data["covers"] != want:
+        die(f"seed.json covers {data['covers']}, the repository has {want}: rebuild the seed")
+    print(data["bundle"]["url"])
+
+
+def main(argv):
+    args = [a for a in argv[1:] if a != "--update"]
+    update = len(args) != len(argv) - 1
+    if len(args) == 4 and args[0] == "build":
+        build(args[1], args[2], args[3], update)
+        return 0
+    if len(args) == 2 and args[0] == "verify":
+        verify(args[1])
+        return 0
+    print(__doc__, file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
