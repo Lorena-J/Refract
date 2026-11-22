@@ -9,6 +9,8 @@
 # Hardened runtime everywhere. No entitlements, on purpose: see macos/README.md, "Signing".
 # A real identity also gets a secure timestamp, which notarization requires.
 # Signatures live in the files, so symlinks (Git's hundreds of git-* links) are not signed.
+# Each nested Mach-O gets a stable identifier, <bundle id>.<file name>: without one, codesign
+# keeps the linker's, which carries a hash that changes with every build.
 set -eu
 [ $# -eq 1 ] && [ -d "$1/Contents" ] || { echo "usage: sign-app.sh <Refract.app>" >&2; exit 2; }
 APP=$1
@@ -18,12 +20,15 @@ if [ "$IDENTITY" = "-" ]; then
 else
   TIMESTAMP=--timestamp
 fi
+BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")
 
+# sign <path> [codesign options...]
 sign() {
+  f=$1; shift
   if [ -n "${REFRACT_KEYCHAIN:-}" ]; then
-    codesign --force --options runtime "$TIMESTAMP" --keychain "$REFRACT_KEYCHAIN" --sign "$IDENTITY" "$1"
+    codesign --force --options runtime "$TIMESTAMP" --keychain "$REFRACT_KEYCHAIN" --sign "$IDENTITY" "$@" "$f"
   else
-    codesign --force --options runtime "$TIMESTAMP" --sign "$IDENTITY" "$1"
+    codesign --force --options runtime "$TIMESTAMP" --sign "$IDENTITY" "$@" "$f"
   fi
 }
 
@@ -36,8 +41,9 @@ fi
 # signed here (the tools, then the server, then the app executable) and the app seals them.
 find "$APP/Contents" -type f ! -path "$APP/Contents/MacOS/*" -print | while IFS= read -r f; do
   case "$(file -b "$f")" in
-    *Mach-O*) sign "$f" ;;
+    *Mach-O*) sign "$f" --identifier "$BUNDLE_ID.$(basename "$f")" ;;
   esac
 done
+# The app's executable and the app take the bundle id from Info.plist.
 find "$APP/Contents/MacOS" -type f -print | while IFS= read -r f; do sign "$f"; done
 sign "$APP"
