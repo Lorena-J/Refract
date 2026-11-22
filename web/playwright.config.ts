@@ -10,8 +10,8 @@ import { randomBytes } from 'node:crypto'
 // (Playwright's build, `npx playwright install webkit`), the engine of the macOS app's WKWebView.
 // `make e2e BROWSER=chrome|webkit|all` selects the browser; direct runs default to Chrome.
 // Ports can be moved (REFRACT_E2E_PORT, REFRACT_E2E_MODEL_PORT) to run two checkouts side by side.
-const port = Number(process.env.REFRACT_E2E_PORT ?? 18090)
-const modelPort = Number(process.env.REFRACT_E2E_MODEL_PORT ?? 18091)
+const port = Number(process.env.REFRACT_E2E_PORT || 18090)
+const modelPort = Number(process.env.REFRACT_E2E_MODEL_PORT || 18091)
 const browser = process.env.REFRACT_E2E_BROWSER === 'webkit' ? 'webkit' : 'chrome'
 // Workers load this config too: they inherit the runner's folder through the environment instead of
 // making their own, and the runner, which started the server on it, removes it when it exits.

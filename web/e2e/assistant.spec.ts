@@ -16,7 +16,7 @@ test('the assistant proposes a change that is reviewed and accepted', async ({ p
       kind: 'openrouter',
       name: 'Test',
       api_key: 'test',
-      base_url: `http://127.0.0.1:${process.env.REFRACT_E2E_MODEL_PORT ?? 18091}/api/v1`,
+      base_url: `http://127.0.0.1:${process.env.REFRACT_E2E_MODEL_PORT || 18091}/api/v1`,
     },
   })
   expect(provider.ok()).toBeTruthy()

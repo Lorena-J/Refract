@@ -33,4 +33,4 @@ createServer(async (req, res) => {
     res.write(chunk({ content: 'I changed the greeting.' }, 'stop'))
   }
   res.end('data: [DONE]\n\n')
-}).listen(Number(process.env.REFRACT_E2E_MODEL_PORT ?? 18091), '127.0.0.1')
+}).listen(Number(process.env.REFRACT_E2E_MODEL_PORT || 18091), '127.0.0.1')
