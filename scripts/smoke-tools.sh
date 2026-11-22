@@ -31,9 +31,12 @@ run "$DIR/synctex$EXE" help 2>&1 | head -1 | grep -q SyncTeX || fail "synctex he
 
 case "$OS" in
   darwin)
+    want=${MACOSX_DEPLOYMENT_TARGET:-13.0}
     for f in tectonic synctex rg git/bin/git git/libexec/git-core/git git/libexec/git-core/git-remote-http; do
       bad=$(otool -L "$DIR/$f" | tail -n +2 | awk '{print $1}' | grep -v -e '^/usr/lib/' -e '^/System/Library/' || true)
       [ -z "$bad" ] || fail "$f links libraries that are not part of macOS: $bad"
+      minos=$(vtool -show-build "$DIR/$f" 2>/dev/null | awk '/minos/{print $2; exit}')
+      [ "${minos%%.*}" -le "${want%%.*}" ] 2>/dev/null || fail "$f needs macOS $minos, newer than the supported $want"
     done
     ;;
   linux)

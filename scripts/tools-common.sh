@@ -5,6 +5,11 @@
 TOOLS_ROOT=${TOOLS_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}
 . "$TOOLS_ROOT/packaging/tools.lock"
 
+# The macOS tools run on the oldest macOS the desktop app supports (macos/Package.swift,
+# LSMinimumSystemVersion), not only on the Mac that builds them: without this, clang
+# targets the build machine's own version. Windows and Linux builds ignore it.
+export MACOSX_DEPLOYMENT_TARGET=${MACOSX_DEPLOYMENT_TARGET:-13.0}
+
 die() { echo "error: $*" >&2; exit 1; }
 
 # lock_get NAME os arch: the value of NAME_<os>_<arch> from the lock.

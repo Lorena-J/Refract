@@ -1,4 +1,4 @@
-.PHONY: dev dev-api dev-web build web test login users docker e2e
+.PHONY: dev dev-api dev-web build web test login users docker e2e mac mac-test
 
 # Go API on :8080 + Vite on :5173 (proxies /api). Open http://localhost:5173.
 dev:
@@ -58,3 +58,15 @@ docker:
 		docker buildx build $(BUILDX_FLAGS) --platform linux/$$p --load -t refract:$$p . && \
 		scripts/smoke-docker.sh refract:$$p linux/$$p || exit 1; \
 	done
+
+# Refract.app for one architecture (macOS only; needs Xcode and Go): build/mac/<arch>/Refract.app,
+# signed ad hoc. The first run builds the bundled Git and synctex, which takes a few minutes.
+# make mac MAC_ARCH=amd64 on an Intel Mac; TOOLS_ARCHIVE=<refract-tools-*.tar.gz> skips building the tools.
+MAC_ARCH ?= $(if $(filter arm64,$(shell uname -m)),arm64,amd64)
+MAC_VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo v0.0.0-dev)
+mac: web
+	macos/build-app.sh $(MAC_ARCH) $(MAC_VERSION) build/mac/$(MAC_ARCH)
+
+# The app's lifecycle tests (macOS only).
+mac-test:
+	cd macos && swift test --scratch-path ../build/mac/swift

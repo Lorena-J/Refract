@@ -644,6 +644,21 @@ Development data lives in `./data`, with its own key in `data/dev.key`. To contr
 | `internal/auth`, `internal/users` | Sign-in modes, accounts and sessions |
 | `internal/store` | SQLite, migrations and encrypted settings |
 | `web/` | The web app |
+| `macos/` | The macOS app: a Swift shell around the server (see below) |
+
+### Building the macOS app
+
+`Refract.app` is a Swift app (AppKit and a `WKWebView`, macOS 13 or later) that runs `refract local --embedded` as a child process with its own copies of Git, Tectonic, SyncTeX and ripgrep, and shows the web app. It uses the same data folder as `refract local`, so the app and the command line share projects. Logs are in `~/Library/Logs/Refract/`.
+
+You need a Mac with Xcode (its command line tools are enough to build), Go and Node.js:
+
+```sh
+make mac           # build/mac/<arch>/Refract.app, signed ad hoc (arm64 on Apple silicon, amd64 on Intel)
+open build/mac/arm64/Refract.app
+make mac-test      # the lifecycle tests (swift test)
+```
+
+The first `make mac` compiles the bundled Git and SyncTeX with `scripts/build-tools.sh` (a few minutes, cached in `build/mac/cache`, which is ignored by git). Set `TOOLS_ARCHIVE=<refract-tools-...-darwin-<arch>.tar.gz>` to use an archive you already have. Each architecture gets its own app, because the tools are built on a Mac of that architecture. Ad-hoc signing is enough to run it on the Mac that built it; signing for distribution and notarization come later. To stop at the Swift part, `cd macos && swift build`. How the pieces fit, and why, is in [macos/README.md](macos/README.md).
 
 ### CI and releases
 

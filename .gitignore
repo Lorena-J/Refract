@@ -7,6 +7,8 @@ node_modules/
 web/dist/*
 !web/dist/.gitkeep
 /refract
+/build/
+.build/
 web/test-results/
 web/playwright-report/
 __pycache__/

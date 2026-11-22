@@ -115,6 +115,10 @@ Linux and only smoke-tested on a Windows amd64 runner. Those runners have a Git 
 the smoke test strips `PATH` so the bundled runtime is what runs, which is close to but not
 identical to a clean machine.
 
+The macOS app (#66, `macos/`) unpacks one into `Refract.app/Contents/Resources/Server/libexec/refract/`
+with `refract` in `Server/bin/`: not `Contents/Helpers`, whose files codesign treats as nested code
+(see `macos/README.md`). The macOS tools target macOS 13 (`MACOSX_DEPLOYMENT_TARGET`, checked by the smoke test).
+
 To build one locally (macOS arm64 example): `scripts/build-tools.sh darwin arm64 v0.0.0-dev dist`,
 then extract it and run `scripts/smoke-tools.sh <folder> darwin`.
 
