@@ -34,6 +34,9 @@ type instanceInfo struct {
 	URL     string `json:"url"`
 	PID     int    `json:"pid"`
 	Version string `json:"version"`
+	// Embedded: started with --embedded, so every request needs that
+	// launch's token and the address can't simply be opened.
+	Embedded bool `json:"embedded,omitempty"`
 }
 
 // instanceStatus is the machine-readable answer of `refract local --status`,
@@ -43,12 +46,17 @@ type instanceStatus struct {
 	URL     string `json:"url,omitempty"`
 	PID     int    `json:"pid,omitempty"`
 	Version string `json:"version,omitempty"`
-	DataDir string `json:"dataDir"`
-	Lock    string `json:"lockFile"`
+	// Embedded: the instance needs its own launch's token (see instanceInfo).
+	Embedded bool   `json:"embedded,omitempty"`
+	DataDir  string `json:"dataDir"`
+	Lock     string `json:"lockFile"`
 }
 
 // instanceLock is the exclusive lock on a data folder's lock file.
-type instanceLock struct{ f *os.File }
+type instanceLock struct {
+	f        *os.File
+	embedded bool // recorded with the address
+}
 
 // lockInstance takes the lock of dataDir. held is true when another process
 // has it. The lock, not the file's existence, decides: a file left by a crash
@@ -70,12 +78,12 @@ func lockInstance(dataDir string) (l *instanceLock, held bool, err error) {
 		f.Close()
 		return nil, false, fmt.Errorf("clearing %s: %w", f.Name(), err)
 	}
-	return &instanceLock{f}, false, nil
+	return &instanceLock{f: f}, false, nil
 }
 
 // Record writes the address being served (replacing what a previous run left).
 func (l *instanceLock) Record(u string) error {
-	b, _ := json.Marshal(instanceInfo{URL: u, PID: os.Getpid(), Version: version})
+	b, _ := json.Marshal(instanceInfo{URL: u, PID: os.Getpid(), Version: version, Embedded: l.embedded})
 	if err := l.f.Truncate(0); err != nil {
 		return err
 	}
@@ -122,7 +130,7 @@ func checkInstance(ctx context.Context, dataDir string) instanceStatus {
 	for {
 		// No address yet (empty or half-written while the holder starts): retry.
 		if info, err := readInstanceInfo(dataDir); err == nil && loopbackURL(info.URL) {
-			st.URL, st.PID, st.Version = info.URL, info.PID, info.Version
+			st.URL, st.PID, st.Version, st.Embedded = info.URL, info.PID, info.Version, info.Embedded
 			req, _ := http.NewRequestWithContext(ctx, http.MethodGet, info.URL+"/healthz", nil)
 			if resp, err := client.Do(req); err == nil {
 				resp.Body.Close()

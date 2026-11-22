@@ -43,6 +43,17 @@ const localStartTimeout = 30 * time.Second
 // on first run, there is no sign-in and the server listens on loopback only.
 func runLocal(args []string) error {
 	out := &jsonOut{w: os.Stdout}
+	if wantsJSON(args) {
+		defer func() {
+			// A crash while starting still leaves the line, then crashes as before.
+			if p := recover(); p != nil {
+				if !out.wrote.Load() {
+					printJSON(os.Stdout, errorStatus{State: stateError, Error: fmt.Sprint("refract crashed: ", p)})
+				}
+				panic(p)
+			}
+		}()
+	}
 	err := runLocalTo(args, out)
 	var e errExit
 	if err != nil && wantsJSON(args) && !out.wrote.Load() && !errors.As(err, &e) {
@@ -191,6 +202,11 @@ func startLocal(ctx context.Context, o localOptions) error {
 				printJSON(o.out, st)
 				return nil
 			}
+			if st.Embedded {
+				// Its pages need the app's token: a browser would only get 401.
+				fmt.Fprintf(o.out, "Refract is already running in the desktop app (pid %d) on this data folder\nData folder: %s\nUse the app, or quit it and start refract local again.\n", st.PID, dataDir)
+				return nil
+			}
 			fmt.Fprintf(o.out, "Refract is already running at %s\nData folder: %s\n", st.URL, dataDir)
 			o.open(st.URL)
 			return nil
@@ -207,6 +223,7 @@ func startLocal(ctx context.Context, o localOptions) error {
 		// The other one stopped meanwhile: take the lock again.
 	}
 	defer lock.Release()
+	lock.embedded = o.embedded
 	var key []byte // nil: run reads REFRACT_SECRET_KEY, which wins when set
 	if o.getenv("REFRACT_SECRET_KEY") == "" {
 		if key, err = resolveLocalKey(o.keys, dataDir); err != nil {

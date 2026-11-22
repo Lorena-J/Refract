@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"runtime"
 	"strings"
 	"sync/atomic"
 )
@@ -40,6 +41,14 @@ func readEmbedToken(fd int, getenv func(string) string, unsetenv func(string) er
 	unsetenv(embedTokenEnv)
 	tok := fromEnv
 	if fd >= 0 {
+		switch {
+		case runtime.GOOS == "windows":
+			return "", errors.New("--token-fd isn't available on Windows: pass the token in " + embedTokenEnv)
+		case fd <= 2:
+			// 0 is the standard input that keeps Refract running, 1 the
+			// standard output that carries the JSON line.
+			return "", fmt.Errorf("--token-fd %d is standard input, output or error: pass another descriptor (3 or more)", fd)
+		}
 		f := os.NewFile(uintptr(fd), "token")
 		if f == nil {
 			return "", fmt.Errorf("--token-fd %d is not an open file descriptor", fd)

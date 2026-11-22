@@ -376,11 +376,15 @@ func TestEmbeddedSecondStartReportsTheRunningInstance(t *testing.T) {
 	defer stdin.Close()
 	_ = cmd.Run()
 	var st instanceStatus
-	if err := json.Unmarshal(out.Bytes(), &st); err != nil || st.State != stateRunning || st.URL != first.line.URL || st.PID != first.cmd.Process.Pid {
+	if err := json.Unmarshal(out.Bytes(), &st); err != nil || st.State != stateRunning || st.URL != first.line.URL || st.PID != first.cmd.Process.Pid || !st.Embedded {
 		t.Fatalf("second: %q (%v)", out.String(), err)
 	}
 	if cmd.ProcessState.ExitCode() != 0 {
 		t.Errorf("exit %d", cmd.ProcessState.ExitCode())
+	}
+	// A terminal refract local doesn't send the browser to a page that needs the app's token.
+	if out, code := runChild(t, dir, "--no-browser"); code != 0 || !strings.Contains(out, "desktop app") || strings.Contains(out, first.line.URL) {
+		t.Errorf("CLI start: exit %d, %q", code, out)
 	}
 }
 
@@ -458,5 +462,20 @@ func TestWatchStdinCancelsOnEOF(t *testing.T) {
 	case <-ctx.Done():
 	case <-time.After(2 * time.Second):
 		t.Fatal("not cancelled")
+	}
+}
+
+func TestEmbeddedStartReportsATerminalInstanceAsOpen(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "Refract")
+	first := startChild(t, dir)
+	exe, _ := os.Executable()
+	cmd := exec.Command(exe, "--embedded")
+	cmd.Env = append(localEnv(dir), embedTokenEnv+"="+testEmbedToken)
+	stdin, _ := cmd.StdinPipe()
+	defer stdin.Close()
+	out, _ := cmd.Output()
+	var st instanceStatus
+	if err := json.Unmarshal(out, &st); err != nil || st.State != stateRunning || st.URL != first.url || st.Embedded {
+		t.Fatalf("embedded start: %q (%v)", out, err)
 	}
 }
