@@ -35,8 +35,9 @@ echo "==> zipping"
 ditto -c -k --keepParent "$APP" "$ZIP"
 
 echo "==> submitting to Apple (waits for the result, usually a few minutes)"
-# An Invalid result also exits non-zero: read the JSON either way, to fetch the log.
-xcrun notarytool submit "$ZIP" "$@" --wait --output-format json > "$WORK/result.json" || true
+# The exit status doesn't say whether Apple accepted it (an Invalid result can exit 0): the
+# status in the JSON does. A stuck submission gives up after the timeout, its id printed.
+xcrun notarytool submit "$ZIP" "$@" --wait --timeout 2h --output-format json > "$WORK/result.json" || true
 cat "$WORK/result.json"
 # JSON without jq: plutil reads it.
 STATUS=$(plutil -extract status raw -o - "$WORK/result.json" 2>/dev/null || echo unknown)
@@ -48,7 +49,13 @@ if [ "$STATUS" != "Accepted" ]; then
 fi
 
 echo "==> stapling"
-xcrun stapler staple "$APP"
+# The ticket can take a moment to reach Apple's CDN after Accepted: retry a few times.
+n=0
+until xcrun stapler staple "$APP"; do
+  n=$((n + 1))
+  [ "$n" -lt 5 ] || { echo "error: stapling failed (submission $ID)" >&2; exit 1; }
+  sleep 30
+done
 xcrun stapler validate "$APP"
 echo "==> Gatekeeper"
 spctl --assess --type execute -vv "$APP"
