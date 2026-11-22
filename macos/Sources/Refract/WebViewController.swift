@@ -28,8 +28,13 @@ final class WebViewController: NSViewController, WKNavigationDelegate, WKUIDeleg
     /// first request already carries it. token is nil for a terminal instance, which has none.
     func load(token: String?) {
         Task { @MainActor in
+            let store = webView.configuration.websiteDataStore.httpCookieStore
+            // Cookies ignore ports: drop the token of an earlier launch so that it never
+            // goes to another server on this host (a terminal instance gets none).
+            for old in await store.allCookies() where old.name == embedCookieName && old.domain == origin.host {
+                await store.deleteCookie(old)
+            }
             if let token {
-                let store = webView.configuration.websiteDataStore.httpCookieStore
                 let cookie = HTTPCookie(properties: [
                     .name: embedCookieName,
                     .value: token,

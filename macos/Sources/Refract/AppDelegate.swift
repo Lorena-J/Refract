@@ -65,12 +65,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .stopping, .stopped:
             root.showLoading(L("loading.restarting", "Restarting Refract…"))
         case .ready(let url, let owns):
-            if owns, let port = url.port { UserDefaults.standard.set(port, forKey: portKey) }
+            if owns, let port = url.port {
+                UserDefaults.standard.set(port, forKey: portKey)
+                supervisor.preferredPort = port
+            }
             let token = owns ? supervisor.token : nil
             root.showWeb(url: url, token: token)
             if owns { checkTools(url: url, token: token) }
         case .failed(let failure):
-            AppLog.note("showing the error view: \(failure)")
+            // Not the failure itself: its log tail is already in the log.
+            AppLog.note("showing the error view: \(String(describing: failure).prefix(while: { $0 != "(" }))")
             root.showError(failure)
         }
     }
@@ -93,8 +97,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let supervisor else { return .terminateNow }
         if quitting { return .terminateLater }
+        // A terminal instance has nothing to stop, but its page may hold unsaved typing.
         switch supervisor.state {
-        case .starting, .stopping, .ready(_, true): break
+        case .starting, .stopping, .ready: break
         default: return .terminateNow
         }
         quitting = true
