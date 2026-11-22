@@ -165,6 +165,11 @@ jobs:
               *) echo "::error::$f points at $url, not at this release"; exit 1 ;;
             esac
             [ -f "dist/${url##*/}" ] || { echo "::error::$f names ${url##*/}, which this release does not attach"; exit 1; }
+            arch=${f##*/appcast-}; arch=${arch%.xml}
+            case "${url##*/}" in
+              *"-$arch.zip") ;;
+              *) echo "::error::$f points at ${url##*/}, an archive of another architecture"; exit 1 ;;
+            esac
           done
       # The notes are the version's section of CHANGELOG.md ("## [0.1.0] - …"),
       # minus the link definitions at the end of the file. Without that
