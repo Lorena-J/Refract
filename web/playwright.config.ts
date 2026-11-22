@@ -1,5 +1,5 @@
 import { defineConfig } from '@playwright/test'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
@@ -12,7 +12,11 @@ import { randomBytes } from 'node:crypto'
 // Ports can be moved (REFRACT_E2E_PORT, REFRACT_E2E_MODEL_PORT) to run two checkouts side by side.
 const port = Number(process.env.REFRACT_E2E_PORT ?? 18090)
 const modelPort = Number(process.env.REFRACT_E2E_MODEL_PORT ?? 18091)
-const dataDir = mkdtempSync(join(tmpdir(), 'refract-e2e-'))
+// Workers load this config too: they inherit the runner's folder through the environment instead of
+// making their own, and the runner, which started the server on it, removes it when it exits.
+const ownDataDir = !process.env.REFRACT_E2E_DATA_DIR
+const dataDir = (process.env.REFRACT_E2E_DATA_DIR ??= mkdtempSync(join(tmpdir(), 'refract-e2e-')))
+if (ownDataDir) process.on('exit', () => rmSync(dataDir, { recursive: true, force: true }))
 
 export default defineConfig({
   testDir: 'e2e',
