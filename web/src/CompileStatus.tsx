@@ -164,7 +164,7 @@ export default function CompileStatus({
           )}
         </PopoverTrigger>
         {/* The chip's name stays fixed: say the network states out loud, not every file downloaded */}
-        <span role="status" className="sr-only">
+        <span aria-live="polite" className="sr-only">
           {['retrying', 'needs-download', 'interrupted'].includes(view.kind) ? label : ''}
         </span>
         <PopoverContent align="start" className="max-h-[60vh] w-[26rem] overflow-auto p-0">
