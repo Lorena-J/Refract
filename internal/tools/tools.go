@@ -24,9 +24,12 @@
 // The bundled folder (Dir) holds:
 //
 //	tectonic  synctex  rg                 the three single-file tools (".exe" on Windows)
-//	git/bin/git                           the git executable (git/bin/git.exe on Windows)
+//	git/bin/git                           the git executable (macOS, Linux)
 //	git/libexec/git-core/                 Git's helpers (GIT_EXEC_PATH)
 //	git/share/git-core/templates/         optional; Git's init templates (GIT_TEMPLATE_DIR)
+//
+// On Windows git/ is an unmodified MinGit tree: git/cmd/git.exe is run, and it
+// finds its helpers and templates under git/ucrt64/ by itself.
 package tools
 
 import (
@@ -95,6 +98,9 @@ func exeName(name string) string {
 // bundled is where name lives inside Dir().
 func bundled(dir, name string) string {
 	if name == "git" {
+		if goos == "windows" {
+			return filepath.Join(dir, "git", "cmd", "git.exe")
+		}
 		return filepath.Join(dir, "git", "bin", exeName(name))
 	}
 	return filepath.Join(dir, exeName(name))
@@ -187,7 +193,9 @@ func Missing() []string {
 
 // GitEnv is the environment to add when running the git at gitPath. For a
 // bundled Git it points Git at its own helpers and templates and ignores the
-// system configuration; for any other Git it adds nothing.
+// system configuration; for any other Git it adds nothing. MinGit on Windows
+// finds its own helpers, and a GIT_EXEC_PATH would break them, so it only
+// gets GIT_CONFIG_NOSYSTEM.
 func GitEnv(gitPath string) []string {
 	dir := Dir()
 	if dir == "" || gitPath == "" {
@@ -196,6 +204,9 @@ func GitEnv(gitPath string) []string {
 	root := filepath.Join(dir, "git")
 	if filepath.Clean(gitPath) != filepath.Clean(bundled(dir, "git")) {
 		return nil
+	}
+	if goos == "windows" {
+		return []string{"GIT_CONFIG_NOSYSTEM=1"}
 	}
 	env := []string{
 		"GIT_EXEC_PATH=" + filepath.Join(root, "libexec", "git-core"),

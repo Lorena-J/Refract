@@ -179,3 +179,27 @@ func TestUntrustedOwner(t *testing.T) {
 		t.Errorf("own file: %s", why)
 	}
 }
+
+func TestWindowsGitIsMinGit(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	exe := fake(t, filepath.Join(root, "refract.exe"))
+	executable = func() (string, error) { return exe, nil }
+	goos = "windows"
+	t.Cleanup(func() { executable, goos = os.Executable, runtime.GOOS })
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv(EnvVar("git"), "")
+	fake(t, filepath.Join(root, "git", "bin", "git.exe")) // not MinGit's entry point
+	if got := Find("git"); got.Found() {
+		t.Fatalf("git/bin/git.exe should not be used on Windows: %+v", got)
+	}
+	git := fake(t, filepath.Join(root, "git", "cmd", "git.exe"))
+	if got := Find("git"); got.Source != SourceBundled || got.Path != git {
+		t.Fatalf("%+v, want %s", got, git)
+	}
+	if env := GitEnv(git); len(env) != 1 || env[0] != "GIT_CONFIG_NOSYSTEM=1" {
+		t.Errorf("MinGit finds its own helpers; env = %v", env)
+	}
+}
