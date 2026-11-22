@@ -580,6 +580,8 @@ make e2e BROWSER=all                      # both, as CI does
 make docker                               # images for amd64 and arm64, each smoke-tested
 ```
 
+The browser tests use ports 18090 and 18091; set `REFRACT_E2E_PORT` and `REFRACT_E2E_MODEL_PORT` to run two checkouts side by side.
+
 Development data lives in `./data`, with its own key in `data/dev.key`. To contribute, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### How it's built
