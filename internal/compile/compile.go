@@ -132,9 +132,9 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 	var dl downloadState
 	var dlMu sync.Mutex
 	report := reporterFrom(ctx)
-	pw := &progressWriter{report: func(e Event) {
+	onEvent := func(e Event) {
 		dlMu.Lock()
-		dl.add(e)
+		dl.add(e, time.Now())
 		dlMu.Unlock()
 		if report != nil {
 			report(e)
@@ -142,11 +142,17 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 		if e.stops() {
 			stopRun() // before xdvipdfmx: the previous good PDF stays
 		}
-	}}
+	}
+	// Tectonic writes its notes ("downloading …") to stdout and its warnings
+	// ("failure fetching …") to stderr; each stream gets its own splitter,
+	// since exec copies them from separate goroutines.
+	pw, po := &progressWriter{report: onEvent}, &progressWriter{report: onEvent}
 	cmd.Stderr = io.MultiWriter(&stderr, pw)
+	cmd.Stdout = po
 
 	start := time.Now()
 	runErr := cmd.Run()
+	po.close()
 	pw.close()
 	dlMu.Lock()
 	downloads := dl
@@ -173,7 +179,8 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 		res.TimedOut = true
 	}
 	var exitErr *exec.ExitError
-	if errors.As(runErr, &exitErr) && t.Sandbox != nil && cpuLimited(exitErr) && !res.Superseded && !res.TimedOut {
+	// An early stop for a failed download kills with SIGKILL too: not the CPU limit.
+	if errors.As(runErr, &exitErr) && t.Sandbox != nil && cpuLimited(exitErr) && !res.Superseded && !res.TimedOut && !downloads.offline {
 		res.TimedOut, res.CPULimit = true, true
 	}
 	if runErr != nil && !errors.As(runErr, &exitErr) && !res.TimedOut && !res.Superseded {
@@ -200,7 +207,7 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 		msg := "Compilation failed."
 		if res.CPULimit {
 			msg = "Compilation used too much CPU time and was stopped. Look for an infinite loop."
-		} else if res.TimedOut && downloads.lastWasDown {
+		} else if res.TimedOut && downloads.downloadingAt(time.Now()) {
 			res.Downloads.Interrupted = true
 			msg = "Still downloading LaTeX packages when the time ran out. Compile again to continue; what was downloaded is kept."
 			res.Problems = append([]Problem{{Severity: "error", Kind: "download", Message: msg}}, res.Problems...)

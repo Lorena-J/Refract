@@ -207,7 +207,7 @@ func TestCompileActivity(t *testing.T) {
 	}
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "tectonic")
-	if err := os.WriteFile(bin, []byte("#!/bin/sh\necho 'note: downloading siunitx.sty' >&2\nsleep 30\n"), 0o755); err != nil {
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\necho 'note: downloading siunitx.sty'\nsleep 30\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	db, err := store.Open(filepath.Join(dir, "t.db"))

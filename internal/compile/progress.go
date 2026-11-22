@@ -3,9 +3,11 @@ package compile
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // EventKind tells what Tectonic reported about fetching a bundle file.
@@ -143,18 +145,24 @@ func (w *progressWriter) close() {
 type downloadState struct {
 	fetched     map[string]bool
 	missing     []string
-	offline     bool // the package server could not be reached, or Tectonic gave up on a file
-	lastWasDown bool // the run was still downloading when it ended
+	offline     bool      // the package server could not be reached, or Tectonic gave up on a file
+	lastWasDown bool      // the last event was the start of a download
+	lastAt      time.Time // when that download started
 }
 
-func (d *downloadState) add(e Event) {
+// downloadQuiet is how long a single download may plausibly take: a run that
+// timed out longer than this after its last download started was busy with
+// something else (a loop in the document, say), not downloading.
+var downloadQuiet = 15 * time.Second
+
+func (d *downloadState) add(e Event, now time.Time) {
 	switch e.Kind {
 	case Downloading:
 		if d.fetched == nil {
 			d.fetched = map[string]bool{}
 		}
 		d.fetched[e.File] = true
-		d.lastWasDown = true
+		d.lastWasDown, d.lastAt = true, now
 	case FetchFailed:
 		d.lastWasDown = false
 		if e.Network {
@@ -164,6 +172,11 @@ func (d *downloadState) add(e Event) {
 		d.lastWasDown = false
 		d.fail(e.File)
 	}
+}
+
+// downloadingAt reports whether the run was most likely still downloading at now.
+func (d *downloadState) downloadingAt(now time.Time) bool {
+	return d.lastWasDown && now.Sub(d.lastAt) < downloadQuiet
 }
 
 func (d *downloadState) fail(file string) {
@@ -188,6 +201,15 @@ type Downloads struct {
 	Missing     []string `json:"missing"`     // files that could not be downloaded
 	Offline     bool     `json:"offline"`     // the compile stopped because the server can't be reached
 	Interrupted bool     `json:"interrupted"` // the time ran out while downloading
+}
+
+// MarshalJSON keeps missing a list, also in results built before any compile ran.
+func (d Downloads) MarshalJSON() ([]byte, error) {
+	type plain Downloads
+	if d.Missing == nil {
+		d.Missing = []string{}
+	}
+	return json.Marshal(plain(d))
 }
 
 // cascade matches the problems that follow from a missing download.

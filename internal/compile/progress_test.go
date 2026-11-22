@@ -2,6 +2,7 @@ package compile
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -142,7 +143,7 @@ func TestEarlyStopOnNetworkFailure(t *testing.T) {
 }
 
 func TestTimeoutWhileDownloadingSaysCompileAgain(t *testing.T) {
-	bin, _ := fakeTectonic(t, "echo 'note: downloading foo.sty' >&2\nsleep 30\n")
+	bin, _ := fakeTectonic(t, "echo 'note: downloading foo.sty'\nsleep 30\n") // Tectonic prints notes on stdout
 	dir := t.TempDir()
 	write(t, dir, "main.tex", "x")
 	tc := &Tectonic{Bin: bin, Timeout: 1500 * time.Millisecond}
@@ -159,8 +160,30 @@ func TestTimeoutWhileDownloadingSaysCompileAgain(t *testing.T) {
 	}
 }
 
+func TestTimeoutLongAfterADownloadIsALoop(t *testing.T) {
+	defer func(q time.Duration) { downloadQuiet = q }(downloadQuiet)
+	downloadQuiet = 300 * time.Millisecond
+	bin, _ := fakeTectonic(t, "echo 'note: downloading foo.sty'\nsleep 30\n")
+	dir := t.TempDir()
+	write(t, dir, "main.tex", "x")
+	res, err := (&Tectonic{Bin: bin, Timeout: 1500 * time.Millisecond}).Compile(context.Background(), dir, "main.tex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.TimedOut || res.Downloads.Interrupted || !strings.Contains(res.Problems[0].Message, "infinite loop") {
+		t.Fatalf("res = %+v", res)
+	}
+}
+
+func TestDownloadsJSONHasAList(t *testing.T) {
+	b, err := json.Marshal(&Result{Superseded: true})
+	if err != nil || !strings.Contains(string(b), `"missing":[]`) {
+		t.Fatalf("%s %v", b, err)
+	}
+}
+
 func TestRunnerActivity(t *testing.T) {
-	bin, _ := fakeTectonic(t, "echo 'note: downloading a.sty' >&2\necho 'note: downloading b.sty' >&2\nsleep 30\n")
+	bin, _ := fakeTectonic(t, "echo 'note: downloading a.sty'\necho 'note: downloading b.sty'\nsleep 30\n")
 	dir := t.TempDir()
 	write(t, dir, "main.tex", "x")
 	r := &Runner{Compiler: &Tectonic{Bin: bin, Timeout: time.Minute}}
