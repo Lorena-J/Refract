@@ -5,7 +5,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"os"
@@ -199,5 +201,53 @@ func TestLocalOpensRunningInstanceInBrowser(t *testing.T) {
 	})
 	if err != nil || opened != u || !strings.Contains(out.String(), "Refract is already running at "+u) {
 		t.Fatalf("err = %v, opened = %q, out = %q", err, opened, out.String())
+	}
+}
+
+func TestLocalLockClearsAStaleAddress(t *testing.T) {
+	dir := t.TempDir()
+	// Left by a run killed with kill -9: its port may now be another program's.
+	os.WriteFile(filepath.Join(dir, localLockFile), []byte(`{"url":"http://127.0.0.1:8080","pid":1}`+"\n"), 0o600)
+	l, held, err := lockInstance(dir)
+	if err != nil || held {
+		t.Fatal(err, held)
+	}
+	defer l.Release()
+	if b, _ := os.ReadFile(filepath.Join(dir, localLockFile)); len(b) != 0 {
+		t.Errorf("stale address kept: %q", b)
+	}
+}
+
+func TestLocalCheckSeesAHolderThatStops(t *testing.T) {
+	dir := t.TempDir()
+	l, _, _ := lockInstance(dir)
+	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	dead := "http://" + ln.Addr().String()
+	ln.Close()
+	l.Record(dead) // shutting down: no longer answers, still holds the lock
+	go func() { time.Sleep(300 * time.Millisecond); l.Release() }()
+	old := instanceWait
+	instanceWait = 5 * time.Second
+	defer func() { instanceWait = old }()
+	t0 := time.Now()
+	if st := checkInstance(context.Background(), dir); st.State != stateStopped {
+		t.Errorf("status = %+v", st)
+	}
+	if took := time.Since(t0); took > 3*time.Second {
+		t.Errorf("took %v to notice the lock was released", took)
+	}
+}
+
+func TestLocalStatusLeavesAMissingFolderAlone(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "never-started")
+	var out bytes.Buffer
+	if err := reportLocalStatus(context.Background(), &out, dir); err == nil {
+		t.Fatal("status of a missing folder succeeded")
+	}
+	if !strings.Contains(out.String(), `"state":"stopped"`) {
+		t.Errorf("out = %q", out.String())
+	}
+	if _, err := os.Stat(dir); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("status created the folder: %v", err)
 	}
 }

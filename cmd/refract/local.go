@@ -131,26 +131,36 @@ func startLocal(ctx context.Context, o localOptions) error {
 	if v := o.getenv("REFRACT_AUTH"); v != "" && authMode(v) != "none" {
 		slog.Warn("refract local runs without sign-in; REFRACT_AUTH is ignored", "REFRACT_AUTH", v)
 	}
+	if o.status {
+		return reportLocalStatus(ctx, o.out, dataDir)
+	}
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return fmt.Errorf("creating the data folder: %w", err)
 	}
 	// The lock comes before the database and the key: a second start must
 	// not touch either while the first one is using them.
-	if o.status {
-		return reportLocalStatus(ctx, o.out, dataDir)
-	}
-	lock, held, err := lockInstance(dataDir)
-	if err != nil {
-		return err
-	}
-	if held {
-		st := checkInstance(ctx, dataDir)
-		if st.State != stateRunning {
+	var lock *instanceLock
+	for lock == nil {
+		l, held, err := lockInstance(dataDir)
+		if err != nil {
+			return err
+		}
+		if !held {
+			lock = l
+			break
+		}
+		switch st := checkInstance(ctx, dataDir); st.State {
+		case stateRunning:
+			fmt.Fprintf(o.out, "Refract is already running at %s\nData folder: %s\n", st.URL, dataDir)
+			o.open(st.URL)
+			return nil
+		case stateUnresponsive:
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			return errors.New(recoveryHelp(st))
 		}
-		fmt.Fprintf(o.out, "Refract is already running at %s\nData folder: %s\n", st.URL, dataDir)
-		o.open(st.URL)
-		return nil
+		// The other one stopped meanwhile: take the lock again.
 	}
 	defer lock.Release()
 	var key []byte // nil: run reads REFRACT_SECRET_KEY, which wins when set
@@ -459,14 +469,23 @@ func localLogHandler(w *os.File) slog.Handler {
 // nil only when a refract local is running and answering.
 func reportLocalStatus(ctx context.Context, out io.Writer, dataDir string) error {
 	var st instanceStatus
-	l, held, err := lockInstance(dataDir)
+	var l *instanceLock
+	held := false
+	_, err := os.Stat(filepath.Join(dataDir, localLockFile))
+	if err == nil { // without the file nobody holds the lock; don't create it
+		l, held, err = lockInstance(dataDir)
+	} else if errors.Is(err, fs.ErrNotExist) {
+		err = nil
+	}
 	switch {
 	case err != nil:
 		return err
 	case held:
 		st = checkInstance(ctx, dataDir)
 	default:
-		l.Release()
+		if l != nil {
+			l.Release()
+		}
 		st = instanceStatus{State: stateStopped, DataDir: dataDir, Lock: filepath.Join(dataDir, localLockFile)}
 	}
 	b, _ := json.Marshal(st)

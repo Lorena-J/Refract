@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -51,7 +52,8 @@ type instanceLock struct{ f *os.File }
 
 // lockInstance takes the lock of dataDir. held is true when another process
 // has it. The lock, not the file's existence, decides: a file left by a crash
-// is simply locked again.
+// is simply locked again, and emptied so that its stale address (which may
+// now belong to another program) is never mistaken for this run's.
 func lockInstance(dataDir string) (l *instanceLock, held bool, err error) {
 	f, err := os.OpenFile(filepath.Join(dataDir, localLockFile), os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
@@ -63,6 +65,10 @@ func lockInstance(dataDir string) (l *instanceLock, held bool, err error) {
 			err = fmt.Errorf("locking %s: %w", f.Name(), err)
 		}
 		return nil, held, err
+	}
+	if err := f.Truncate(0); err != nil {
+		f.Close()
+		return nil, false, fmt.Errorf("clearing %s: %w", f.Name(), err)
 	}
 	return &instanceLock{f}, false, nil
 }
@@ -105,23 +111,31 @@ func loopbackURL(s string) bool {
 }
 
 // checkInstance describes the refract local using dataDir, given that its lock
-// is held: it waits up to instanceWait for the recorded address to appear and
-// answer /healthz. It contacts loopback addresses only.
+// was held: it waits up to instanceWait for the recorded address to appear and
+// answer /healthz, and reports stopped if the holder lets go of the lock
+// meanwhile (it was shutting down). It contacts loopback addresses only.
 func checkInstance(ctx context.Context, dataDir string) instanceStatus {
 	st := instanceStatus{State: stateUnresponsive, DataDir: dataDir, Lock: filepath.Join(dataDir, localLockFile)}
 	ctx, cancel := context.WithTimeout(ctx, instanceWait)
 	defer cancel()
+	client := &http.Client{Timeout: 2 * time.Second}
 	for {
-		info, err := readInstanceInfo(dataDir)
-		if err == nil && loopbackURL(info.URL) {
-			st.URL, st.PID, st.Version = info.URL, info.PID, info.Version
-			if waitHealthy(ctx, info.URL+"/healthz") {
-				st.State = stateRunning
-				return st
-			}
-			return st
-		}
 		// No address yet (empty or half-written while the holder starts): retry.
+		if info, err := readInstanceInfo(dataDir); err == nil && loopbackURL(info.URL) {
+			st.URL, st.PID, st.Version = info.URL, info.PID, info.Version
+			req, _ := http.NewRequestWithContext(ctx, http.MethodGet, info.URL+"/healthz", nil)
+			if resp, err := client.Do(req); err == nil {
+				resp.Body.Close()
+				if resp.StatusCode == http.StatusOK {
+					st.State = stateRunning
+					return st
+				}
+			}
+		}
+		if l, held, err := lockInstance(dataDir); err == nil && !held {
+			l.Release()
+			return instanceStatus{State: stateStopped, DataDir: st.DataDir, Lock: st.Lock}
+		}
 		select {
 		case <-ctx.Done():
 			return st
