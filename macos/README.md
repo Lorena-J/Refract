@@ -82,8 +82,9 @@ Gatekeeper accepts the downloaded app only if the app and every executable in it
 Developer ID Application certificate, use the hardened runtime, and the whole is notarized by Apple.
 
 **What the scripts do.** `sign-app.sh` signs every Mach-O (the tools, Git's helpers and libraries,
-the server, then the app's executable) with `--options runtime` and, for a real identity, a secure
-timestamp, then the app that seals them. Symlinks (Git's `git-*` links) carry no signature and are
+the server, then the app's executable) with `--options runtime`, a stable identifier
+(`<bundle id>.<file name>`; the linker's carries a hash that changes every build) and, for a real
+identity, a secure timestamp, then the app that seals them. Symlinks (Git's `git-*` links) carry no signature and are
 not signed. `verify-app.sh` runs `codesign --verify --deep --strict`, then checks every Mach-O:
 valid signature, hardened runtime, no entitlements, no symlink leaving the bundle, and with
 `--release` also: not ad hoc, a Developer ID Application authority, a secure timestamp and the same
@@ -118,7 +119,8 @@ You need the Apple Developer Program account; only the Account Holder can create
    (with its private key under it) → Export → `.p12`, with a strong password. Keep the file out of
    the repository.
 3. **App Store Connect API key.** appstoreconnect.apple.com → Users and Access → Integrations →
-   Team Keys → `+`, role Developer. Download the `.p8` once (Apple will not show it again) and note
+   Team Keys → `+`, role Developer (enough for `notarytool`; the first time, the Account Holder has
+   to request API access on that page). Download the `.p8` once (Apple will not show it again) and note
    the Key ID and the Issuer ID shown on that page.
 4. **Local notarization profile**, stored in your keychain:
 
@@ -156,13 +158,18 @@ without developer tools.
 In CI, `.github/workflows/macos-app.yml` builds both architectures (macos-15 and macos-15-intel),
 imports the certificate into a temporary keychain with a random password, signs, notarizes with the
 API key, staples, verifies the unpacked zip and uploads it. The release workflow (#71) calls it with
-`secrets: inherit`. When the secrets are missing (a fork's pull request, or none set), and always on
+`secrets: inherit`, `require-signed: true` (missing secrets fail the run instead of producing an
+ad hoc build) and `tools-artifact: true` (it signs the `tools-darwin-<arch>` archive that
+`tools.yml` built and smoke-tested earlier in the same run, instead of building another). When the
+secrets are missing (a fork's pull request, or none set) and `require-signed` is off, and always on
 pull requests, it builds ad hoc, says so in a notice and uploads `Refract-app-adhoc-<arch>`, which
 Gatekeeper rejects. Pull requests never get the secrets.
 
-Secrets never appear in a command line, a log or a file in the repository: the scripts read them
-from the environment, the p12 and the key are written to the runner's temp folder with owner-only
-permissions and removed at the end, and the temporary keychain is deleted.
+Secrets never appear in a log or a file in the repository: the scripts read them from the
+environment and never print them, the p12 and the key are written to the runner's temp folder with
+owner-only permissions and removed at the end, and the temporary keychain is deleted. The p12
+password and the key and issuer ids are passed as arguments to `security` and `notarytool` on the
+runner, which is used by this job only and discarded.
 
 ## Testing without touching real state
 
