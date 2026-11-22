@@ -119,7 +119,7 @@ public final class ServerSupervisor {
             guard let self, let run, !run.gotLine, !run.exited else { return }
             run.superseded = true
             self.kill(run)
-            self.state = .failed(.startFailed("Refract did not answer within \(Int(self.config.readyTimeout)) seconds."))
+            self.state = .failed(.startFailed(String(format: L("error.timeout", "Refract did not answer within %d seconds."), Int(self.config.readyTimeout))))
         }
         run.timeout = item
         DispatchQueue.main.asyncAfter(deadline: .now() + config.readyTimeout, execute: item)
@@ -195,7 +195,7 @@ public final class ServerSupervisor {
         let rc = posix_spawn(&pid, config.executable.path, &actions, &attr, argv, envp)
         guard rc == 0 else {
             throw NSError(domain: NSPOSIXErrorDomain, code: Int(rc),
-                userInfo: [NSLocalizedDescriptionKey: "Can't start \(config.executable.path): \(String(cString: strerror(rc)))"])
+                userInfo: [NSLocalizedDescriptionKey: String(format: L("error.spawn", "Can't start %@: %@"), config.executable.path, String(cString: strerror(rc)))])
         }
 
         self.token = token

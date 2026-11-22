@@ -73,6 +73,15 @@ used last (`--port`) and, if it is taken, goes back to a free one.
 - A missing or non-executable server or tool, or `missing_tools` in `/api/me`: an error view with a
   link to download the app again (the bundle is signed and read-only: repairing is replacing it).
 
+## Testing without touching real state
+
+Environment variables of the app (not passed to the server) redirect what it writes outside the
+data folder: `REFRACT_APP_LOG_DIR=<dir>` for the log folder and `REFRACT_APP_DEFAULTS_SUITE=<name>`
+for a separate UserDefaults suite (the remembered port). The data folder is the server's: the app
+never sets `REFRACT_DATA_DIR`, so to test the server with scratch data run the bundled binary directly,
+`REFRACT_DATA_DIR=<dir> Refract.app/Contents/Resources/Server/bin/refract local --no-browser`.
+Launch the app with them via `open --env` or `env ... Refract.app/Contents/MacOS/Refract`.
+
 ## Left for later
 
 Links, downloads and file pickers (#67, `TODO(#67)` in `WebViewController`), the real menu (#68, the

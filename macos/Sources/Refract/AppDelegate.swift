@@ -7,6 +7,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow!
     private var quitting = false
     private let portKey = "serverPort"
+    /// `REFRACT_APP_DEFAULTS_SUITE` names a separate UserDefaults suite (scratch runs and tests).
+    private static let defaults: UserDefaults = {
+        if let suite = ProcessInfo.processInfo.environment["REFRACT_APP_DEFAULTS_SUITE"], !suite.isEmpty,
+           let d = UserDefaults(suiteName: suite) { return d }
+        return .standard
+    }()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if activateRunningInstance() {
@@ -24,7 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // ~/Library/Application Support/Refract.
         config.workingDirectory = NSHomeDirectory()
         supervisor = ServerSupervisor(config: config)
-        let saved = UserDefaults.standard.integer(forKey: portKey)
+        let saved = Self.defaults.integer(forKey: portKey)
         supervisor.preferredPort = saved > 0 ? saved : nil
 
         root = RootViewController(
@@ -66,7 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             root.showLoading(L("loading.restarting", "Restarting Refract…"))
         case .ready(let url, let owns):
             if owns, let port = url.port {
-                UserDefaults.standard.set(port, forKey: portKey)
+                Self.defaults.set(port, forKey: portKey)
                 supervisor.preferredPort = port
             }
             let token = owns ? supervisor.token : nil

@@ -9,8 +9,10 @@
 "error.reinstall" = "Descargar Refract de nuevo";
 "error.restart" = "Reiniciar";
 "error.showLogs" = "Mostrar registros";
+"error.spawn" = "No se pudo iniciar %@: %@";
 "error.start.message" = "Tus proyectos y archivos están intactos. Inténtalo de nuevo; si sigue fallando, el registro explica por qué.";
 "error.start.title" = "Refract no pudo iniciarse";
+"error.timeout" = "Refract no respondió en %d segundos.";
 "error.unresponsive.message" = "Otra copia de Refract tiene tus proyectos pero no responde (proceso %@). Espera un momento e inténtalo de nuevo, o cierra ese proceso.";
 "error.unresponsive.title" = "Otro Refract no responde";
 "loading.restarting" = "Reiniciando Refract…";

@@ -15,7 +15,11 @@ public struct LogStore {
         self.keep = keep
     }
 
+    /// `REFRACT_APP_LOG_DIR` replaces the folder (scratch runs and tests).
     public static var standard: LogStore {
+        if let dir = ProcessInfo.processInfo.environment["REFRACT_APP_LOG_DIR"], !dir.isEmpty {
+            return LogStore(directory: URL(fileURLWithPath: dir, isDirectory: true))
+        }
         let library = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
         return LogStore(directory: library.appendingPathComponent("Logs/Refract", isDirectory: true))
     }

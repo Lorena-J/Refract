@@ -18,7 +18,7 @@ def strings(lang):
 class MacStrings(unittest.TestCase):
     def test_every_key_is_translated(self):
         used = {}
-        for path in glob.glob(os.path.join(ROOT, "Sources", "Refract", "*.swift")):
+        for path in glob.glob(os.path.join(ROOT, "Sources", "*", "*.swift")):
             with open(path, encoding="utf-8") as f:
                 used.update(CALL.findall(f.read()))
         self.assertTrue(used)

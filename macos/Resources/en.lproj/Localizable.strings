@@ -9,8 +9,10 @@
 "error.reinstall" = "Download Refract Again";
 "error.restart" = "Restart";
 "error.showLogs" = "Show Logs";
+"error.spawn" = "Can't start %@: %@";
 "error.start.message" = "Your projects and files are untouched. Try again; if it keeps failing, the log says why.";
 "error.start.title" = "Refract couldn't start";
+"error.timeout" = "Refract did not answer within %d seconds.";
 "error.unresponsive.message" = "Another copy of Refract holds your projects but doesn't answer (process %@). Wait a moment and try again, or quit that process.";
 "error.unresponsive.title" = "Another Refract isn't answering";
 "loading.restarting" = "Restarting Refract…";
