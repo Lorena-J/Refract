@@ -9,6 +9,7 @@ import pathlib
 import plistlib
 import stat
 import sys
+import tarfile
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
@@ -202,6 +203,69 @@ class Appcast(unittest.TestCase):
         del os.environ["SPARKLE_ED_PRIVATE_KEY"]
         rc, _, _ = self.run_main(self.archive())
         self.assertIn("SPARKLE_ED_PRIVATE_KEY is not set", rc)
+
+
+class FetchSignUpdate(unittest.TestCase):
+    """The downloaded tool gets the private key: it runs only from an archive whose SHA-256
+    matches the pin, on every run, including from the cache."""
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:xz") as t:
+            body = b"#!/bin/sh\necho genuine\n"
+            info = tarfile.TarInfo("./bin/sign_update")
+            info.size = len(body)
+            t.addfile(info, io.BytesIO(body))
+        self.good = buf.getvalue()
+        self.downloads = []
+        self.served = self.good
+        test = self
+
+        class Response(io.BytesIO):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        def urlopen(url, timeout=None):
+            test.downloads.append(url)
+            return Response(test.served)
+
+        for name, value in [("SPARKLE_SHA256", hashlib.sha256(self.good).hexdigest())]:
+            old = getattr(mk, name)
+            setattr(mk, name, value)
+            self.addCleanup(setattr, mk, name, old)
+        old_urlopen = mk.urllib.request.urlopen
+        mk.urllib.request.urlopen = urlopen
+        self.addCleanup(setattr, mk.urllib.request, "urlopen", old_urlopen)
+        self.cache = os.path.join(self.dir.name, "cache")
+
+    def fetch(self):
+        work = tempfile.mkdtemp(dir=self.dir.name)
+        with contextlib.redirect_stderr(io.StringIO()):
+            path = mk.fetch_sign_update(self.cache, work)
+        self.assertTrue(path.startswith(work))
+        return pathlib.Path(path).read_bytes()
+
+    def test_downloads_once_and_rechecks_the_cache(self):
+        self.assertIn(b"genuine", self.fetch())
+        self.assertIn(b"genuine", self.fetch())
+        self.assertEqual(len(self.downloads), 1)
+
+    def test_tampered_cache_is_downloaded_again(self):
+        self.fetch()
+        cached = os.path.join(self.cache, f"Sparkle-{mk.SPARKLE_VERSION}.tar.xz")
+        pathlib.Path(cached).write_bytes(b"planted")
+        self.assertIn(b"genuine", self.fetch())
+        self.assertEqual(len(self.downloads), 2)
+
+    def test_download_that_does_not_match_is_refused(self):
+        self.served = self.good + b"x"
+        with self.assertRaises(mk.Fail):
+            self.fetch()
 
 
 if __name__ == "__main__":

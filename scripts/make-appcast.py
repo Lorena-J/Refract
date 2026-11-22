@@ -9,7 +9,7 @@ The archive is signed with Sparkle's `sign_update`, with the EdDSA private key f
 environment variable SPARKLE_ED_PRIVATE_KEY (CI secret; the content of the file that
 `generate_keys -x` writes). The key goes to the tool's standard input: never into a file, an
 argument or the output. Sparkle's tools are downloaded once from the pinned release and
-checked against its SHA-256 (or pass --sign-update with a binary of yours).
+checked against its SHA-256 on every run (or pass --sign-update with a binary of yours).
 
 Before writing anything it checks, so a bad release fails here and not on people's Macs:
   - the app inside the archive has the version of the tag, an update key (SUPublicEDKey) and
@@ -194,28 +194,41 @@ def markdown_to_html(md):
 
 
 # --- Sparkle's sign_update --------------------------------------------------------------------
-def fetch_sign_update(directory):
-    path = os.path.join(directory, "sign_update")
-    if os.path.exists(path):
-        return path
-    print(f"downloading Sparkle {SPARKLE_VERSION} tools", file=sys.stderr)
-    with urllib.request.urlopen(SPARKLE_URL, timeout=120) as r:
-        data = r.read()
-    if hashlib.sha256(data).hexdigest() != SPARKLE_SHA256:
-        raise Fail("the Sparkle download does not match its pinned SHA-256: not using it")
+def fetch_sign_update(cache, workdir):
+    """Sparkle's sign_update from the pinned release, extracted into `workdir` (a fresh
+    directory). The archive is cached in `cache`, but its SHA-256 is checked on every run:
+    the tool receives the private key, so nothing unverified is ever executed."""
+    archive = os.path.join(cache, f"Sparkle-{SPARKLE_VERSION}.tar.xz")
+    data = None
+    if os.path.isfile(archive):
+        with open(archive, "rb") as f:
+            data = f.read()
+        if hashlib.sha256(data).hexdigest() != SPARKLE_SHA256:
+            data = None
+    if data is None:
+        print(f"downloading Sparkle {SPARKLE_VERSION} tools", file=sys.stderr)
+        with urllib.request.urlopen(SPARKLE_URL, timeout=120) as r:
+            data = r.read()
+        if hashlib.sha256(data).hexdigest() != SPARKLE_SHA256:
+            raise Fail("the Sparkle download does not match its pinned SHA-256: not using it")
+        os.makedirs(cache, exist_ok=True)
+        with tempfile.NamedTemporaryFile(dir=cache, delete=False) as f:
+            f.write(data)
+        os.replace(f.name, archive)
+    path = os.path.join(workdir, "sign_update")
     with tarfile.open(fileobj=io.BytesIO(data), mode="r:xz") as t:
         member = t.getmember("./bin/sign_update")
-        os.makedirs(directory, exist_ok=True)
-        with open(path, "wb") as f:
+        with open(path, "xb") as f:
             f.write(t.extractfile(member).read())
-    os.chmod(path, 0o755)
+    os.chmod(path, 0o700)
     return path
 
 
 def sign(sign_update, archive, private_key):
     """(signature base64, length) of the archive. The key goes on standard input only."""
+    env = {k: v for k, v in os.environ.items() if k != "SPARKLE_ED_PRIVATE_KEY"}
     r = subprocess.run([sign_update, "--ed-key-file", "-", archive], input=private_key + "\n",
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, env=env)
     if r.returncode != 0:
         # The tool's message, never the key (it is not in anything the tool prints).
         raise Fail("sign_update failed: " + (r.stderr.strip() or r.stdout.strip() or f"status {r.returncode}"))
@@ -263,7 +276,8 @@ def main(argv=None):
     ap.add_argument("--notes-file", help="Markdown release notes, instead of the CHANGELOG section")
     ap.add_argument("--download-prefix", help=f"URL the archive will be served from (default: the tag's release on github.com/{REPO})")
     ap.add_argument("--sign-update", default=os.environ.get("SPARKLE_SIGN_UPDATE"), help="Sparkle's sign_update (default: downloaded, pinned)")
-    ap.add_argument("--tools-dir", default=os.path.join(tempfile.gettempdir(), "refract-sparkle-tools"))
+    ap.add_argument("--tools-dir", default=os.path.join(tempfile.gettempdir(), "refract-sparkle-tools"),
+                    help="where the Sparkle download is cached (checked against its SHA-256 on every run)")
     ap.add_argument("--date", help="publication date, ISO 8601 (default: now)")
     args = ap.parse_args(argv)
 
@@ -300,8 +314,9 @@ def main(argv=None):
             notes_md = f.read()
     else:
         notes_md = changelog_section(args.changelog, numeric)
-    sign_update = args.sign_update or fetch_sign_update(args.tools_dir)
-    signature, length = sign(sign_update, args.archive, private_key)
+    with tempfile.TemporaryDirectory() as work:
+        sign_update = args.sign_update or fetch_sign_update(args.tools_dir, work)
+        signature, length = sign(sign_update, args.archive, private_key)
     if length != os.path.getsize(args.archive):
         raise Fail("sign_update measured another length than the file's")
     if not ed25519_verify(public_bytes, base64.b64decode(signature), args.archive):
