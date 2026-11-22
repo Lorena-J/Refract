@@ -61,7 +61,9 @@ git/bin/git                      macOS only
 git/libexec/git-core/            macOS only: the Git helpers (GIT_EXEC_PATH)
 git/share/git-core/templates/    macOS only (GIT_TEMPLATE_DIR)
 git/cmd/git.exe                  Windows: MinGit keeps its own tree (see below)
+tex-seed/                        the TeX seed: a Tectonic cache fragment (see "TeX seed")
 licenses/<component>/...         licences, notices, and for Git the source or its offer
+licenses/tex/                    licences of the TeX seed and NOTICE.md (file -> package -> licence)
 tools-manifest.json              versions, sources and SHA-256 of the inputs and of every file
 ```
 
@@ -116,7 +118,71 @@ the smoke test strips `PATH` so the bundled runtime is what runs, which is close
 identical to a clean machine.
 
 To build one locally (macOS arm64 example): `scripts/build-tools.sh darwin arm64 v0.0.0-dev dist`,
-then extract it and run `scripts/smoke-tools.sh <folder> darwin`.
+then extract it and run `scripts/smoke-tools.sh <folder> darwin` and `scripts/smoke-tex-seed.sh <folder> darwin`.
+`build-tools.sh` needs `TEX_SEED_DIR` set to the output of `scripts/build-tex-seed.sh`.
+
+## TeX seed
+
+Tectonic downloads the TeX files a document needs on first use, so a fresh install cannot compile
+offline. Every tools archive therefore carries the **TeX seed**: the bundle files that the built-in
+templates and the documents in `packaging/tex-seed/documents/` need, laid out as a Tectonic cache
+fragment, so that the installer or `refract local` can put it into the person's cache
+(`TECTONIC_CACHE_DIR`, or Tectonic's default) and compile with no network at all.
+
+```
+tex-seed/seed.json                         schema, id, Tectonic version, bundle URL and digest,
+                                           covered templates and documents, SHA-256 of every file
+tex-seed/cache/bundles/hashes/<url,>       the bundle URL -> digest file (':' and '/' written ,58, and ,47,)
+tex-seed/cache/bundles/data/<digest>.index the bundle index
+tex-seed/cache/bundles/data/<digest>/*     the bundle files that were needed
+licenses/tex/                              licence texts and NOTICE.md
+```
+
+No `formats/` (Tectonic builds the format file offline from the seed on first compile), no `*.lock`,
+no `*.prefetch`. The bundle is the one `packaging/tools.lock` pins (`TECTONIC_BUNDLE_URL`, TeX Live
+2022, `tlextras-2022.0r0`, the same the Docker image and `prepare-bundle.sh` use; a test checks they
+agree); its digest (`TECTONIC_BUNDLE_DIGEST`) is checked against what the cache records.
+
+**Build.** `scripts/build-tex-seed.sh <tectonic> <out-dir>` (needs network and the Tectonic pinned in
+the lock) starts from an empty cache, compiles every `internal/projects/templates/<id>/<lang>` and every
+document with Refract's flags (`--synctex --keep-logs --untrusted -Z continue-on-errors --bundle <URL>`),
+and assembles `tex-seed/` and `licenses/tex/`. `scripts/tex-seed.py` does the work. The list of files
+and their checksums is committed as `packaging/tex-seed/files.txt`: the build fails with a diff when it
+changes (a new template, another package used, a new bundle or Tectonic), and
+`scripts/build-tex-seed.sh <tectonic> <out-dir> --update` rewrites it. That makes the build
+reproducible and reviewable. To cover another template, add it under `internal/projects/templates/`
+(or a document under `packaging/tex-seed/documents/`), run with `--update`, and commit `files.txt`.
+In CI the `seed` job of `tools.yml` builds it once with the pinned Linux Tectonic and hands it to every
+`build` job (`TEX_SEED_DIR`, required by `scripts/build-tools.sh`, which also serves the Windows
+cross-build).
+
+**Coverage.** The five built-in templates (article, beamer, cv, letter, thesis) in English and Spanish
+(10 projects) and three documents: `blank-10pt`, `blank-12pt` (a bare `article` at those sizes) and
+`common` (`amsmath`, `amsthm`, `graphicx`, `booktabs`, `xcolor`, `tikz`, `siunitx`, `listings`,
+`natbib`, `hyperref`, `cleveref`, `lmodern`, T1). A document that needs another package downloads it
+as before when there is a network; the seed does not make that fail.
+
+**Size.** Measured with Tectonic 0.17.0: 525 bundle files plus the 4.9 MB index, 25 MB on disk
+(527 files), 7.7 MB compressed (`tar.gz` of `tex-seed/` and `licenses/tex/`), the same in every
+archive.
+
+**Smoke test.** `scripts/smoke-tex-seed.sh <extracted-dir> <os>` (run by the `smoke` job after the
+tools smoke test) verifies `seed.json` against the files, then, with a read-only runtime, an empty home
+and a copy of the seed as the only cache, compiles every covered project and document, asserting no
+`downloading` line, a `%PDF` output and SyncTeX data, and a `synctex view` / `synctex edit` round trip.
+The network is blocked: macOS `sandbox-exec`, Linux `sudo unshare -n` (then `setpriv` back to the
+user), Windows a firewall rule on `tectonic.exe` plus `--only-cached`.
+
+**Licences.** The files are TeX Live packages under many free licences (mostly LPPL; also GPL, MIT,
+OFL, the GUST Font License, Knuth's licence, Apache-2.0 for the glyph lists, and the licence stated in
+each hyphenation file). `licenses/tex/NOTICE.md` maps every file to its TeX Live package and licence,
+and `licenses/tex/` has the texts (committed in `packaging/tex-seed/licenses/`). The mapping comes from
+the TeX Live 2022 database pinned in `packaging/tools.lock` (`TEXLIVE_TLPDB_URL`, `_SHA256`), plus
+`packaging/tex-seed/license-overrides.txt` for files and packages it does not describe (each entry
+says where its licence comes from). A seed file without a licence fails the build. The notice also says
+where the sources are (the TeX Live 2022 archives and Subversion tag) and offers them on request.
+Installers that ship an archive must keep `licenses/tex/` and show it with the other licences. Review
+the overrides again when a template or the bundle changes.
 
 ## Server deployments
 

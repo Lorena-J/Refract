@@ -20,6 +20,9 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("tools_archive", ROOT / "scripts/tools-archive.py")
 tools_archive = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(tools_archive)
+spec = importlib.util.spec_from_file_location("tex_seed", ROOT / "scripts/tex-seed.py")
+tex_seed = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(tex_seed)
 generate = runpy.run_path(str(ROOT / "scripts/package-metadata.py"))["generate"]
 
 
@@ -247,6 +250,8 @@ class ToolsArchiveTests(unittest.TestCase):
             ("linux", "arm64", "licenses/ripgrep/COPYING"),
             ("windows", "amd64", "git/usr/bin/sh.exe"),
             ("windows", "amd64", "tectonic.exe"),
+            ("linux", "amd64", "tex-seed/seed.json"),
+            ("darwin", "arm64", "licenses/tex/NOTICE.md"),
         ):
             stage = self.stage(os_name, arch, skip=(skip,))
             problems = tools_archive.check(self.pack(stage, os_name, arch), os_name, arch)
@@ -318,6 +323,54 @@ class ToolsArchiveTests(unittest.TestCase):
             self.assertIn("tools-common.sh", (ROOT / "scripts" / name).read_text())
         self.assertIn("packaging/tools.lock", (ROOT / "scripts/tools-common.sh").read_text())
 
+    def test_bundle_pin_is_the_lock_everywhere(self):
+        lock = tools_archive.load_lock()
+        url, digest = lock["TECTONIC_BUNDLE_URL"], lock["TECTONIC_BUNDLE_DIGEST"]
+        for name in ("Dockerfile", ".github/workflows/ci.yml", "packaging/server/prepare-bundle.sh"):
+            text = (ROOT / name).read_text()
+            self.assertIn(url, text, name)
+            for other in re.findall(r"https://\S*tlextras-\S*\.tar", text):
+                self.assertEqual(other, url, name)
+        self.assertIn(digest, (ROOT / "packaging/server/prepare-bundle.sh").read_text())
+        for name in ("Dockerfile", ".github/workflows/ci.yml"):
+            self.assertNotIn(digest, (ROOT / name).read_text(), name)
+        self.assertEqual(tex_seed.hash_file_name(url), tools_archive.hash_file_name(url))
+        self.assertEqual(tex_seed.hash_file_name("https://a/b:c"), "https,58,,47,,47,a,47,b,58,c")
+
+    def test_tex_seed_needs_a_licence_for_every_file(self):
+        packages = {
+            "known": {"lic": "lppl1.3c", "run": ["tex/latex/known/known.sty"]},
+            "nolic": {"lic": None, "run": ["tex/generic/nolic/nolic.tex"]},
+            "mapped": {"lic": None, "run": ["tex/generic/mapped/hyph-xx.tex"]},
+        }
+        overrides = {("glob", "hyph-*.tex"): ["in-file"]}
+        found = tex_seed.attribute(["known.sty", "hyph-xx.tex"], packages, overrides)
+        self.assertEqual(found["known.sty"], [("known", ["lppl1.3c"])])
+        self.assertEqual(found["hyph-xx.tex"][0][1], ["in-file"])
+        with self.assertRaises(SystemExit):
+            tex_seed.attribute(["nolic.tex"], packages, overrides)
+        with self.assertRaises(SystemExit):
+            tex_seed.attribute(["unknown.tex"], packages, overrides)
+
+    def test_tex_seed_licence_texts_exist_and_covers_match_the_repository(self):
+        for name, (filename, _) in tex_seed.TEXTS.items():
+            if filename:
+                self.assertTrue((ROOT / "packaging/tex-seed/licenses" / filename).is_file(), name)
+        overrides = tex_seed.load_overrides()
+        self.assertTrue(overrides)
+        documents = {p.stem for p in (ROOT / "packaging/tex-seed/documents").glob("*.tex")}
+        self.assertEqual(documents, {"blank-10pt", "blank-12pt", "common"})
+        labels = [label for label, _, _ in tex_seed.covered_projects()]
+        self.assertIn("article/en", labels)
+        self.assertEqual(len(labels), len(set(labels)))
+
+    def test_tools_workflow_builds_and_smokes_the_seed(self):
+        tools = (ROOT / ".github/workflows/tools.yml").read_text()
+        for phrase in ("seed:", "needs: seed", "TEX_SEED_DIR", "smoke-tex-seed.sh", "name: tex-seed",
+                       "internal/projects/templates/**", "packaging/tex-seed/**", "scripts/*tex-seed*"):
+            self.assertIn(phrase, tools)
+        self.assertIn("TEX_SEED_DIR", (ROOT / "scripts/build-tools.sh").read_text())
+
     def test_release_builds_and_gates_the_tool_archives(self):
         release = (ROOT / ".github/workflows/release.yml").read_text()
         self.assertIn("uses: ./.github/workflows/tools.yml", release)
@@ -329,7 +382,7 @@ class ToolsArchiveTests(unittest.TestCase):
 
     def test_readme_records_versions_and_git_obligations(self):
         readme = (ROOT / "packaging/README.md").read_text()
-        for phrase in ("packaging/tools.lock", "GPLv2", "source", "windows-arm64", "tools-manifest.json", "git/libexec/git-core"):
+        for phrase in ("packaging/tools.lock", "GPLv2", "source", "windows-arm64", "tools-manifest.json", "git/libexec/git-core", "TeX seed", "files.txt"):
             self.assertIn(phrase, readme)
 
 
