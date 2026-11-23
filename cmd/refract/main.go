@@ -138,6 +138,10 @@ func run(ctx context.Context, opts runOptions) error {
 	if err != nil {
 		return err
 	}
+	publicOnly, err := parseOutbound(os.Getenv("REFRACT_OUTBOUND"))
+	if err != nil {
+		return err
+	}
 	cfg, err := parseCompileConfig(os.Getenv)
 	if err != nil {
 		return err
@@ -224,22 +228,28 @@ func run(ctx context.Context, opts runOptions) error {
 		return err
 	}
 	missing := logTools()
+	if publicOnly {
+		if err := checkGitForPinning(); err != nil {
+			return err
+		}
+	}
 	a := &api{
 		missingTools: missing,
 		base:         session,
 		mode:         deployment,
+		publicOnly:   publicOnly,
 		model:        os.Getenv("REFRACT_MODEL_AGENT"),
 		quick:        os.Getenv("REFRACT_MODEL_QUICK"),
 
 		canSignOut: login != nil,
 
 		providers: &providers.Store{DB: db, Key: key},
-		outbound:  providers.HTTPClient(deployment.PrivateNetwork()),
+		outbound:  providers.HTTPClient(!publicOnly),
 		usage:     &usage.Recorder{DB: db},
 	}
 
 	pa := &projectsAPI{
-		svc: &projects.Service{DB: db, Dir: filepath.Join(dataDir, "projects"), Limits: projects.DefaultLimits, Key: key, PublicRemotes: !deployment.PrivateNetwork()},
+		svc: &projects.Service{DB: db, Dir: filepath.Join(dataDir, "projects"), Limits: projects.DefaultLimits, Key: key, PublicRemotes: publicOnly},
 		tmp: filepath.Join(dataDir, "tmp"),
 	}
 
