@@ -2,8 +2,10 @@
 // universal) FileSystemEntry API. Entries must be taken from the event synchronously.
 
 export type DroppedFile = { file: File; path: string }
-// tooBig: the walk stopped at the guard below (a huge tree, or a symlink loop).
-export type DroppedFolder = { name: string; files: DroppedFile[]; tooBig?: boolean }
+// tooBig: the walk passed the entry limit below (a huge tree, or a symlink loop with wide folders).
+// tooDeep: it passed the depth limit (a loop, or an absurdly nested tree). error: an entry
+// could not be read; the folder is skipped and the rest of the drop goes on.
+export type DroppedFolder = { name: string; files: DroppedFile[]; tooBig?: boolean; tooDeep?: boolean; error?: string }
 export type Dropped = { files: File[]; folders: DroppedFolder[] }
 
 type Entry = {
@@ -33,9 +35,11 @@ export const maxEntries = 50_000
 const maxDepth = 64
 
 class TooBig extends Error {}
+class TooDeep extends Error {}
 
 async function walk(entry: Entry, prefix: string, out: DroppedFile[], seen: { n: number }, depth: number) {
-  if (++seen.n > maxEntries || depth > maxDepth) throw new TooBig()
+  if (depth > maxDepth) throw new TooDeep()
+  if (++seen.n > maxEntries) throw new TooBig()
   const path = prefix + entry.name
   if (entry.isFile) {
     const file = await new Promise<File>((ok, fail) => entry.file!(ok, fail))
@@ -58,8 +62,9 @@ export async function readDropped(items: Item[]): Promise<Dropped> {
         await walk(entry, '', files, { n: 0 }, 0)
         result.folders.push({ name: entry.name, files })
       } catch (e) {
-        if (!(e instanceof TooBig)) throw e
-        result.folders.push({ name: entry.name, files: [], tooBig: true })
+        if (e instanceof TooBig) result.folders.push({ name: entry.name, files: [], tooBig: true })
+        else if (e instanceof TooDeep) result.folders.push({ name: entry.name, files: [], tooDeep: true })
+        else result.folders.push({ name: entry.name, files: [], error: e instanceof Error ? e.message : String(e) })
       }
     } else if (file) {
       result.files.push(file)

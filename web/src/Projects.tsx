@@ -334,9 +334,16 @@ function ProjectList({ status }: { status: ChatGPTStatus | null }) {
     if (dropped.folders.length === 0) return importZips(dropped.files)
     for (const f of dropped.folders) {
       if (f.tooBig) toast.error(t('The folder {name} has too many files to import.', { name: f.name }))
+      else if (f.tooDeep) toast.error(t('The folder {name} is nested too deeply to import.', { name: f.name }))
+      else if (f.error) toast.error(t('Could not read the folder {name}: {error}', { name: f.name, error: f.error }))
       else if (f.files.length) await uploadFolder(f.name, f.files)
+      else toast.error(t('The folder {name} is empty.', { name: f.name }))
     }
-    if (dropped.files.some((f) => f.name.toLowerCase().endsWith('.zip'))) importZips(dropped.files)
+    const zips = dropped.files.filter((f) => f.name.toLowerCase().endsWith('.zip'))
+    if (zips.length) importZips(dropped.files)
+    else if (dropped.files.length) {
+      toast.error(t('Only folders and .zip files can be imported; the other dropped files were ignored.'))
+    }
   }
 
   const sortBy = (key: Sort['key']) => setSort((s) => ({ key, desc: s.key === key ? !s.desc : key === 'updated' }))

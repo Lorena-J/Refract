@@ -58,7 +58,7 @@ test('directories are read until an empty batch, in batches of 100', async () =>
   assert.equal(got.folders[0].files.length, 250)
 })
 
-test('a folder that contains itself stops at the guard instead of looping', async () => {
+test('a folder that contains itself stops at the depth guard instead of looping', async () => {
   const loop: Record<string, unknown> = { isFile: false, isDirectory: true, name: 'loop' }
   loop.createReader = () => {
     let given = false
@@ -70,19 +70,42 @@ test('a folder that contains itself stops at the guard instead of looping', asyn
     }
   }
   const got = await readDropped([{ kind: 'file', getAsFile: () => null, webkitGetAsEntry: () => loop as never }])
-  assert.deepEqual(got.folders, [{ name: 'loop', files: [], tooBig: true }])
+  assert.deepEqual(got.folders, [{ name: 'loop', files: [], tooDeep: true }])
   assert.ok(maxEntries > 5000)
 })
 
-test('a read error rejects', async () => {
+test('a folder nested too deep is reported as such, not as too many files', async () => {
+  let node: unknown = file('x.tex')
+  for (let i = 0; i < 70; i++) node = dir(`d${i}`, [node])
+  const got = await readDropped([{ kind: 'file', getAsFile: () => null, webkitGetAsEntry: () => node as never }])
+  assert.equal(got.folders[0].tooDeep, true)
+  assert.equal(got.folders[0].tooBig, undefined)
+})
+
+test('a read error is recorded for that folder and the others still load', async () => {
   const bad = {
     isFile: false,
     isDirectory: true,
     name: 'bad',
     createReader: () => ({ readEntries: (_ok: unknown, fail: (e: unknown) => void) => fail(new Error('denied')) }),
   }
-  await assert.rejects(
-    readDropped([{ kind: 'file', getAsFile: () => null, webkitGetAsEntry: () => bad as never }]),
-    /denied/,
+  const good = dir('good', [file('a.tex')])
+  const got = await readDropped([
+    { kind: 'file', getAsFile: () => null, webkitGetAsEntry: () => bad as never },
+    { kind: 'file', getAsFile: () => null, webkitGetAsEntry: () => good as never },
+  ])
+  assert.equal(got.folders[0].name, 'bad')
+  assert.equal(got.folders[0].error, 'denied')
+  assert.deepEqual(
+    got.folders[1].files.map((f) => f.path),
+    ['good/a.tex'],
   )
+})
+
+test('a folder with more entries than the limit is reported as too big', async () => {
+  const kids = Array.from({ length: maxEntries + 1 }, (_, i) => file(`f${i}`))
+  const got = await readDropped([
+    { kind: 'file', getAsFile: () => null, webkitGetAsEntry: () => dir('wide', kids) as never },
+  ])
+  assert.deepEqual(got.folders, [{ name: 'wide', files: [], tooBig: true }])
 })
