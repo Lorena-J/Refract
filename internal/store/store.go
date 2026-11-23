@@ -187,9 +187,12 @@ func migrate(db *sql.DB, path string) error {
 		}
 	}
 	if _, err := tx.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, len(migrations))); err != nil {
-		return err
+		return upgradeFailed(len(migrations), version, path, err)
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return upgradeFailed(len(migrations), version, path, err)
+	}
+	return nil
 }
 
 // schemaVersion makes the database's first query. It opens the first
