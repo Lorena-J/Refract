@@ -4,6 +4,15 @@ Notable changes to Refract. The format follows [Keep a Changelog](https://keepac
 
 ## [Unreleased]
 
+### Added
+
+- Refract finds `tectonic`, `synctex`, `rg` and `git` in a bundled `libexec/refract` folder next to the executable (the executable's own folder on Windows) before the `PATH`, and runs them by absolute path; a bundled Git uses only its own helpers and templates. `REFRACT_TECTONIC_BIN`, `REFRACT_SYNCTEX_BIN`, `REFRACT_RG_BIN` and `REFRACT_GIT_BIN` override the lookup. The startup log shows where each was found, and the web app shows one notice when a tool is missing, saying what won't work, on whichever page opens first. On macOS and Linux a bundled tool in a folder that others can write, or that another user owns, is ignored. The same checks cover bundled Git's helpers and templates.
+- `refract local` runs once per data folder: a second start opens the running one (or waits while it starts) instead of starting another, and `refract local --status` prints its state as one JSON line for programs that wrap Refract.
+
+### Changed
+
+- `refract local` keeps its secret key in the system credential store (macOS Keychain, Secret Service on Linux, Windows Credential Manager), one item per data folder, and falls back to an owner-only `secret.key` in the data folder when no store can be reached, saying so in the log. An existing `secret.key` is kept. If the key is gone from the store for a data folder that was used before, Refract logs that stored credentials can't be read instead of failing.
+
 ### Fixed
 
 - A compile that produces the PDF despite TeX errors now saves a version in the history too. Documents imported from Prism often keep a recoverable error on every build, and until now their history never grew.

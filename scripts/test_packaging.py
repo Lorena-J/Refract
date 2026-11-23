@@ -3,6 +3,7 @@
 import hashlib
 import io
 import os
+import re
 from pathlib import Path
 import runpy
 import shutil
@@ -46,7 +47,6 @@ class PackagingTests(unittest.TestCase):
         generate("v1.2.3", self.archives, self.output)
         formula = (self.output / "homebrew/refract.rb").read_text()
         self.assertIn("/releases/download/v1.2.3/", formula)
-        self.assertNotIn("service do", formula)
         self.assertNotIn('depends_on "', formula)
         winget = self.output / "winget/manifests/p/ponytojas/Refract/1.2.3"
         self.assertEqual(len(list(winget.glob("*.yaml"))), 3)
@@ -93,15 +93,89 @@ class PackagingTests(unittest.TestCase):
             self.assertNotIn("Depends:", control)
             contents = subprocess.check_output(["dpkg-deb", "--fsys-tarfile", str(package)])
             with tarfile.open(fileobj=io.BytesIO(contents)) as archive:
-                files = [m for m in archive.getmembers() if m.isfile()]
-                self.assertEqual({m.name for m in files}, {"./usr/bin/refract",
-                                 "./usr/share/doc/refract/copyright", "./usr/share/doc/refract/README.md"})
-                self.assertTrue(all(m.uid == 0 and m.gid == 0 for m in files))
+                self.assert_archive_members(archive, {
+                    ".": tarfile.DIRTYPE,
+                    "./usr": tarfile.DIRTYPE,
+                    "./usr/bin": tarfile.DIRTYPE,
+                    "./usr/bin/refract": tarfile.REGTYPE,
+                    "./usr/share": tarfile.DIRTYPE,
+                    "./usr/share/doc": tarfile.DIRTYPE,
+                    "./usr/share/doc/refract": tarfile.DIRTYPE,
+                    "./usr/share/doc/refract/copyright": tarfile.REGTYPE,
+                    "./usr/share/doc/refract/README.md": tarfile.REGTYPE,
+                })
                 self.assertEqual(archive.getmember("./usr/bin/refract").mode, 0o755)
                 self.assertEqual(archive.extractfile("./usr/bin/refract").read(), binary.read_bytes())
             scripts = subprocess.check_output(["dpkg-deb", "--ctrl-tarfile", str(package)])
             with tarfile.open(fileobj=io.BytesIO(scripts)) as archive:
-                self.assertEqual([m.name for m in archive.getmembers() if m.isfile()], ["./control"])
+                self.assert_archive_members(archive, {
+                    ".": tarfile.DIRTYPE,
+                    "./control": tarfile.REGTYPE,
+                })
+
+    def assert_archive_members(self, archive, expected):
+        members = archive.getmembers()
+        self.assertCountEqual([(member.name, member.type) for member in members], expected.items())
+        for member in members:
+            self.assertEqual((member.uid, member.gid), (0, 0), member.name)
+            # No setuid, setgid or world-writable entries.
+            self.assertFalse(member.mode & 0o6002, member.name)
+
+    def test_policy_documented_and_no_install_time_side_effects(self):
+        policy = (ROOT / "packaging/README.md").read_text()
+        for heading in ("## What a package may contain", "## What a package must not do",
+                        "## Server deployments"):
+            self.assertIn(heading, policy)
+        self.assertIn("../libexec/refract/", policy)
+        readme = (ROOT / "README.md").read_text()
+        for stale in ("not a running server", "Do not add server", "does not start a server"):
+            self.assertNotIn(stale, policy + readme)
+        deb = (ROOT / "scripts/package-deb.sh").read_text()
+        # The only control file the script may write is DEBIAN/control: no maintainer scripts.
+        self.assertEqual(set(re.findall(r"DEBIAN/([\w.-]+)", deb)), {"control"})
+        # Nothing enabled or installed system-wide, and no data or configuration paths.
+        for marker in ("systemctl", "lib/systemd/system", "/etc/", "/var/"):
+            self.assertNotIn(marker, deb)
+        # Homebrew install-time hooks: a formula may declare a service, never run code at install.
+        self.archives_for("v1.2.3")
+        generate("v1.2.3", self.archives, self.output)
+        for formula in (self.output / "homebrew").rglob("*.rb"):
+            for marker in ("post_install", "postflight", "systemctl", "launchctl"):
+                self.assertNotIn(marker, formula.read_text())
+
+    @unittest.skipUnless(shutil.which("ruby"), "Formula install verification needs Ruby")
+    def test_formula_install_only_installs_binary(self):
+        self.archives_for("v1.2.3")
+        generate("v1.2.3", self.archives, self.output)
+        formula = self.output / "homebrew/refract.rb"
+        for existing_data in (False, True):
+            with self.subTest(existing_data=existing_data):
+                sandbox = self.root / f"formula-{existing_data}"
+                home, var, prefix, source = (sandbox / name for name in ("home", "var", "prefix", "source"))
+                for directory in (home, var, prefix, source):
+                    directory.mkdir(parents=True)
+                (source / "refract").write_bytes(b"formula binary\n")
+                (home / "keep").write_bytes(b"home data\n")
+                if existing_data:
+                    (var / "refract").mkdir()
+                    (var / "refract/data").write_bytes(b"existing data\n")
+                env = {**os.environ, "HOME": str(home), "TEST_VAR": str(var), "TEST_PREFIX": str(prefix)}
+                result = subprocess.run(["ruby", str(ROOT / "scripts/formula_install_fixture.rb"), str(formula)],
+                                        cwd=source, env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                expected = {
+                    "home": None, "home/keep": b"home data\n", "var": None,
+                    "prefix": None, "prefix/bin": None, "prefix/bin/refract": b"formula binary\n",
+                    "source": None, "source/refract": b"formula binary\n",
+                }
+                if existing_data:
+                    expected.update({"var/refract": None, "var/refract/data": b"existing data\n"})
+                actual = {}
+                for path in sandbox.rglob("*"):
+                    self.assertFalse(path.is_symlink(), path)
+                    self.assertTrue(path.is_dir() or path.is_file(), path)
+                    actual[path.relative_to(sandbox).as_posix()] = None if path.is_dir() else path.read_bytes()
+                self.assertEqual(actual, expected)
 
     def prepare_bundle(self, dest):
         """Runs prepare-bundle.sh with a fake curl (serves a tiny bundle) and tectonic."""

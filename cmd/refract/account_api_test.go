@@ -45,6 +45,10 @@ type envOpts struct {
 }
 
 func TestMain(m *testing.M) {
+	if os.Getenv("REFRACT_TEST_LOCAL_CHILD") == "1" {
+		// Re-executed by the instance tests: act as `refract local`.
+		os.Exit(localExitCode(runLocal(os.Args[1:])))
+	}
 	users.LowerHashCostForTests()
 	os.Exit(m.Run())
 }

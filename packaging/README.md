@@ -1,18 +1,68 @@
-# CLI packages
+# Packaging policy
 
-The package-manager installations are for `refract login` and other CLI commands.
-They install the existing executable, not a running server. Do not add server
-services, encryption keys, data directories or LaTeX dependencies to these packages.
+This folder covers the installable packages: the CLI packages that exist today
+(Homebrew formula `refract`, WinGet manifests, `.deb`, portable archives) and the
+desktop installers being added (macOS and Windows apps, Debian/Ubuntu package, Homebrew
+cask `refract-app`). `server/` is a separate path for server deployments.
+
 Keep the portable archives and their enclosing `refract-<tag>-<os>-<arch>/` directory:
 WinGet's nested executable paths depend on that layout.
+
+## What a package may contain
+
+- The `refract` executable, which includes the server and its administration commands.
+- Bundled tools, under a fixed layout: a `libexec/refract/` folder next to the binary's
+  `bin/` folder (`../libexec/refract/` from the executable), and the same folder as the
+  executable on Windows. #53 makes `refract` resolve its tools there. Desktop apps
+  (macOS, Windows) ship private copies of Git with the helper executables and libraries
+  it needs, Tectonic, SyncTeX and ripgrep. Debian/Ubuntu packages do not bundle Git:
+  they declare it as a package dependency (`Depends: git`) and use the system copy.
+- Licences and notices, and the documentation.
+- A desktop entry and icons for graphical installs.
+- Versions, checksums and redistribution terms (licences) of every bundled tool must be
+  recorded with the release. #55 implements that record.
+- A per-user service definition that is not enabled: a Homebrew `service` block for
+  `brew services`, or a systemd user unit in `/usr/lib/systemd/user/`. It runs
+  `refract local --no-browser` as the person, and only once they start it.
+
+Today's packages (Homebrew formula, WinGet, `.deb`, portable archives) contain only the
+binary and documentation; #58–#60 add the bundled tools to them.
+
+## What a package must not do
+
+- Enable or start a service, or install a system-wide one. A per-user service runs only
+  when the person starts it (`refract service install` (#57), `brew services start` or
+  `systemctl --user enable --now refract.service`), never from an installer,
+  maintainer script, Homebrew `post_install` or cask `postflight`.
+- Create keys, databases, projects or any data folder at install time. `refract local`
+  creates them on first run, in per-user locations.
+- Store data, the key or caches inside the application directory: they live in
+  per-user locations outside it, so replacing the app's executables leaves them intact.
+- Run as root after installation, or ship setuid or world-writable files.
+- Touch an existing data folder or the stored credentials on install, upgrade or
+  removal. Uninstalling the app keeps the person's data.
+- Add server configuration (secrets, listening addresses or sign-in settings).
+
+The packaging tests (`scripts/test_packaging.py`) enforce the rules that can be
+checked: no Debian maintainer scripts, no Homebrew `post_install` or cask `postflight`,
+no system-wide service or data paths, no setuid or world-writable files, and a payload
+that contains only the allowed paths.
+
+## Server deployments
+
+Server deployments are a distinct path: `server/` (a systemd unit and
+`prepare-bundle.sh` for the compile sandbox) and the Docker image, configured with
+`REFRACT_*` variables as described in "Deploy" in the top-level README. Desktop and CLI
+packages never include `server/` files or the server's system-wide unit.
 
 ## Release artifacts
 
 The release workflow builds the six existing portable archives, including README
 and LICENSE. `scripts/package-deb.sh` packages each Linux binary with `dpkg-deb`
-(available on the Ubuntu runner). Packages contain only `/usr/bin/refract` and
+(available on the Ubuntu runner). Today's CLI packages contain only `/usr/bin/refract` and
 documentation, have no maintainer scripts or required dependencies, and do not
-touch credentials when installed, upgraded or removed. Prerelease tags use Debian's
+touch credentials when installed, upgraded or removed. The desktop Debian/Ubuntu
+package adds the Git dependency and desktop entry under the policy above. Prerelease tags use Debian's
 `~` ordering (`v0.1.2-rc1` becomes `0.1.2~rc1`).
 
 `scripts/package-metadata.py` uses Python 3.11+ and its standard library to verify
@@ -87,12 +137,7 @@ release manifests for the community package.
 python3 -m unittest discover -s scripts -p 'test_*.py' -v
 ```
 
-The Debian payload test needs `dpkg-deb`; it runs in Linux CI and skips if the tool
-is absent locally. `make test` also runs these tests. No tests open the OAuth
-browser or read real credentials.
-
-## Server deployment
-
-`server/` holds what the hosted service needs, which these CLI packages must not:
-a systemd unit and `prepare-bundle.sh`, for the compile sandbox. See "Compile sandbox"
-in the top-level README.
+The Debian payload test uses `dpkg-deb`. The Homebrew formula test uses Ruby to
+run the generated install method against temporary paths. Both tests run in Linux
+CI and skip locally if their tool is missing. `make test` also runs these tests.
+No tests open the OAuth browser or read real credentials.
