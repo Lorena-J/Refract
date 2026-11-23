@@ -7,7 +7,8 @@ final class WebViewController: NSViewController, WKNavigationDelegate, WKUIDeleg
     private let origin: URL
     private let webView: WKWebView
     private var loaded = false
-    private var downloadTargets: [ObjectIdentifier: URL] = [:]
+    /// Where each running download is written (a temporary name) and where it ends up.
+    private var downloadTargets: [ObjectIdentifier: (temp: URL, final: URL)] = [:]
     /// Called when the page can't be shown safely (the origin rules didn't compile).
     private let failed: (String) -> Void
 
@@ -18,6 +19,10 @@ final class WebViewController: NSViewController, WKNavigationDelegate, WKUIDeleg
         // The default store keeps what the web app saves in the browser (its settings), per
         // origin; the app asks for the same port every launch so the origin stays the same.
         config.websiteDataStore = .default()
+        // window.open after an await (the GitHub device-flow page) counts as not user-initiated and
+        // would be dropped. Safe: createWebViewWith never returns a window, and only the main
+        // frame may send anything to the browser.
+        config.preferences.javaScriptCanOpenWindowsAutomatically = true
         webView = WKWebView(frame: .zero, configuration: config)
         super.init(nibName: nil, bundle: nil)
         webView.navigationDelegate = self
@@ -109,11 +114,21 @@ final class WebViewController: NSViewController, WKNavigationDelegate, WKUIDeleg
         let url = navigationAction.request.url
         switch LinkPolicy.classify(url, origin: origin) {
         case .ours:
-            decisionHandler(navigationAction.shouldPerformDownload ? .download : .allow)
+            // data:, blob: and about: are ours only as downloads or inside frames; in the main frame
+            // they would replace the app.
+            let web = ["http", "https"].contains(url?.scheme?.lowercased() ?? "")
+            if navigationAction.shouldPerformDownload {
+                decisionHandler(.download)
+            } else if web || !(navigationAction.targetFrame?.isMainFrame ?? true) {
+                decisionHandler(.allow)
+            } else {
+                AppLog.note("blocked a main-frame navigation to a \(url?.scheme ?? "?"): page")
+                decisionHandler(.cancel)
+            }
         case .external:
             // Only the page itself sends the person elsewhere: a frame inside it (an embed, an ad)
-            // can't open browser tabs on its own.
-            if navigationAction.targetFrame?.isMainFrame ?? true { openExternally(url) }
+            // can't open browser tabs on its own, whatever its target.
+            if navigationAction.sourceFrame.isMainFrame { openExternally(url) }
             decisionHandler(.cancel)
         case .refused:
             AppLog.note("blocked navigation to a \(url?.scheme ?? "?"): link")
@@ -139,17 +154,14 @@ final class WebViewController: NSViewController, WKNavigationDelegate, WKUIDeleg
 
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
         for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        // target="_blank" and window.open never make a window: elsewhere goes to the browser,
-        // the app's own pages load in this view.
+        // target="_blank" and window.open never make a window: elsewhere goes to the browser.
+        // The app's own pages are ignored: loading them here would skip the page's unsaved-work
+        // guard, and nothing in the app needs a second window of itself.
         let url = navigationAction.request.url
         switch LinkPolicy.classify(url, origin: origin) {
-        case .ours:
-            // A blob:, data: or about: page in a new window would replace the app in this view.
-            if let scheme = url?.scheme?.lowercased(), scheme == "http" || scheme == "https",
-                !navigationAction.shouldPerformDownload {
-                webView.load(navigationAction.request)
-            }
-        case .external: openExternally(url)
+        case .ours: AppLog.note("ignored a new window for the app's own page")
+        case .external:
+            if navigationAction.sourceFrame.isMainFrame { openExternally(url) }
         case .refused: AppLog.note("blocked a new window for a \(url?.scheme ?? "?"): link")
         }
         return nil
@@ -165,10 +177,12 @@ final class WebViewController: NSViewController, WKNavigationDelegate, WKUIDeleg
         panel.canCreateDirectories = true
         let finish: (NSApplication.ModalResponse) -> Void = { result in
             if result == .OK, let url = panel.url {
-                // The panel already asked about replacing; WKDownload wants the path free.
-                try? FileManager.default.removeItem(at: url)
-                self.downloadTargets[ObjectIdentifier(download)] = url
-                completionHandler(url)
+                // The panel already asked about replacing, but the old file stays until the new one
+                // is complete: download beside it under a temporary name, then move over it.
+                let temp = url.deletingLastPathComponent()
+                    .appendingPathComponent(".refract-download-\(UUID().uuidString)")
+                self.downloadTargets[ObjectIdentifier(download)] = (temp, url)
+                completionHandler(temp)
             } else {
                 completionHandler(nil)
             }
@@ -181,13 +195,28 @@ final class WebViewController: NSViewController, WKNavigationDelegate, WKUIDeleg
     }
 
     func downloadDidFinish(_ download: WKDownload) {
-        downloadTargets[ObjectIdentifier(download)] = nil
+        guard let target = downloadTargets.removeValue(forKey: ObjectIdentifier(download)) else { return }
+        do {
+            if FileManager.default.fileExists(atPath: target.final.path) {
+                _ = try FileManager.default.replaceItemAt(target.final, withItemAt: target.temp)
+            } else {
+                try FileManager.default.moveItem(at: target.temp, to: target.final)
+            }
+        } catch {
+            try? FileManager.default.removeItem(at: target.temp)
+            reportDownloadFailure(error)
+        }
     }
 
     func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
         let target = downloadTargets.removeValue(forKey: ObjectIdentifier(download))
+        if let target { try? FileManager.default.removeItem(at: target.temp) }
         // Cancelling the save panel ends the download with a cancellation: not an error.
         if (error as NSError).code == NSURLErrorCancelled, target == nil { return }
+        reportDownloadFailure(error)
+    }
+
+    private func reportDownloadFailure(_ error: Error) {
         AppLog.note("download failed: \(error.localizedDescription)")
         let alert = NSAlert()
         alert.alertStyle = .warning
