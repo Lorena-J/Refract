@@ -10,6 +10,7 @@ on:
     branches: [main]
     paths:
       - Dockerfile
+      - packaging/tools.lock
       - internal/compile/**
       - cmd/refract/profile.go
       - cmd/refract/main.go
@@ -19,6 +20,7 @@ on:
   pull_request:
     paths:
       - Dockerfile
+      - packaging/tools.lock
       - internal/compile/**
       - cmd/refract/profile.go
       - cmd/refract/main.go
@@ -55,9 +57,9 @@ jobs:
           load: true
           tags: refract:team
       # Keyed by what the format file depends on: the bundle (prepare-bundle.sh)
-      # and Tectonic's version (Dockerfile).
+      # and Tectonic's version (packaging/tools.lock).
       - id: pins
-        run: echo "tectonic=$(sed -n 's/^ARG TECTONIC_VERSION=//p' Dockerfile)" >> "$GITHUB_OUTPUT"
+        run: echo "tectonic=$(sed -n 's/^TECTONIC_VERSION=//p' packaging/tools.lock)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/tex

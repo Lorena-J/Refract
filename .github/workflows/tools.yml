@@ -1,0 +1,86 @@
+# Builds the pinned tool archives (Tectonic, SyncTeX, ripgrep and, for macOS and
+# Windows, a private Git runtime) for every target and smoke-tests each one.
+# Pins and checksums: packaging/tools.lock. Called by release.yml for every tag;
+# also runs when the pins or the build scripts change, and on demand.
+name: tools
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag used in the archive names
+        required: true
+        type: string
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - packaging/tools.lock
+      - scripts/tools-common.sh
+      - scripts/tools-archive.py
+      - scripts/build-*.sh
+      - scripts/smoke-tools.sh
+      - .github/workflows/tools.yml
+
+permissions:
+  contents: read
+
+env:
+  TAG: ${{ inputs.tag || format('v0.0.0-{0}', github.run_id) }}
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: macos-15, os: darwin, arch: arm64 }
+          - { runner: macos-15-intel, os: darwin, arch: amd64 }
+          - { runner: ubuntu-24.04-arm, os: linux, arch: arm64 }
+          - { runner: ubuntu-latest, os: linux, arch: amd64 }
+          # Cross-built on Linux with llvm-mingw; run by the smoke job on Windows.
+          - { runner: ubuntu-latest, os: windows, arch: amd64 }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build tools archive
+        run: scripts/build-tools.sh '${{ matrix.os }}' '${{ matrix.arch }}' "$TAG" dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: tools-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/refract-tools-*
+
+  # Each archive on a runner of its own system, extracted into a folder and run
+  # with a stripped environment: no PATH entry for the tools or for a system Git.
+  smoke:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: macos-15, os: darwin, arch: arm64 }
+          - { runner: macos-15-intel, os: darwin, arch: amd64 }
+          - { runner: ubuntu-24.04-arm, os: linux, arch: arm64 }
+          - { runner: ubuntu-latest, os: linux, arch: amd64 }
+          - { runner: windows-latest, os: windows, arch: amd64 }
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: tools-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist
+      - name: Extract
+        run: |
+          mkdir runtime
+          if [ '${{ matrix.os }}' = windows ]; then
+            powershell -NoProfile -Command "Expand-Archive -Path dist/refract-tools-$TAG-windows-amd64.zip -DestinationPath runtime"
+          else
+            tar -xzf "dist/refract-tools-$TAG-${{ matrix.os }}-${{ matrix.arch }}.tar.gz" -C runtime
+          fi
+      - name: Packaging check
+        run: python3 -I scripts/tools-archive.py check dist/refract-tools-* '${{ matrix.os }}' '${{ matrix.arch }}'
+      - name: Run every tool
+        run: scripts/smoke-tools.sh "$PWD/runtime" '${{ matrix.os }}'
