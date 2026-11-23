@@ -109,6 +109,12 @@ class Notes(unittest.TestCase):
         with self.assertRaises(mk.Fail):
             self.section("0.9.0")
 
+    def test_link_url_cannot_inject_attributes(self):
+        out = mk.markdown_to_html('[x](https://e.com/a"onmouseover="alert(1)) [y](https://e.com/a&b\'c)')
+        self.assertNotIn('<a href="https://e.com/a"', out)
+        self.assertEqual(out.count("<a "), 1)
+        self.assertIn('href="https://e.com/a&amp;b&#x27;c"', out)
+
     def test_html_is_escaped_and_structured(self):
         out = mk.markdown_to_html(self.section("0.3.0"))
         self.assertIn("<h3>Added</h3>", out)
@@ -198,6 +204,10 @@ class Appcast(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertFalse(os.path.exists(out))
         self.assertIn("prerelease", so)
+
+    def test_build_metadata_is_not_a_prerelease(self):
+        rc, _, _ = self.run_main(self.archive(), version="v0.3.0+1")
+        self.assertIn("version must look like", rc)
 
     def test_missing_secret_fails_without_naming_a_value(self):
         del os.environ["SPARKLE_ED_PRIVATE_KEY"]

@@ -160,7 +160,7 @@ def _inline(text):
     text = html.escape(text, quote=False)
     text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
     text = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", text)
-    return re.sub(r"\[([^\]]+)\]\((https?://[^)\s]+)\)", r'<a href="\2">\1</a>', text)
+    return re.sub(r"\[([^\]]+)\]\((https?://[^)\s\"]+)\)", lambda m: f'<a href="{m.group(2).replace('"', "&quot;").replace("'", "&#x27;")}">{m.group(1)}</a>', text)
 
 
 def markdown_to_html(md):
@@ -285,6 +285,8 @@ def main(argv=None):
     if not m:
         raise Fail(f"version must look like v0.3.0, got {args.version!r}")
     numeric, suffix = m.groups()
+    if suffix and not suffix.startswith("-"):
+        raise Fail(f"version must look like v0.3.0 or v0.3.0-rc.1, got {args.version!r}")
     if suffix:
         print(f"{args.version} is a prerelease: not offered through the update feed, no appcast written")
         return 0
