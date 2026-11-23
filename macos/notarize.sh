@@ -9,6 +9,7 @@
 #   REFRACT_NOTARY_KEY_PATH  path to the App Store Connect API key (.p8), with
 #   REFRACT_NOTARY_KEY_ID    its key id and
 #   REFRACT_NOTARY_ISSUER    the issuer id (CI)
+#   REFRACT_NOTARY_TIMEOUT   how long to wait for Apple, e.g. 45m (default 2h)
 # Without either set the script stops before it uploads anything.
 set -eu
 [ $# -eq 1 ] && [ -d "$1/Contents" ] || { echo "usage: notarize.sh <Refract.app>" >&2; exit 2; }
@@ -37,7 +38,7 @@ ditto -c -k --keepParent "$APP" "$ZIP"
 echo "==> submitting to Apple (waits for the result, usually a few minutes)"
 # The exit status doesn't say whether Apple accepted it (an Invalid result can exit 0): the
 # status in the JSON does. A stuck submission gives up after the timeout, its id printed.
-xcrun notarytool submit "$ZIP" "$@" --wait --timeout 2h --output-format json > "$WORK/result.json" || true
+xcrun notarytool submit "$ZIP" "$@" --wait --timeout "${REFRACT_NOTARY_TIMEOUT:-2h}" --output-format json > "$WORK/result.json" || true
 cat "$WORK/result.json"
 # JSON without jq: plutil reads it.
 STATUS=$(plutil -extract status raw -o - "$WORK/result.json" 2>/dev/null || echo unknown)

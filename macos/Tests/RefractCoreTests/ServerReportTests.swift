@@ -25,6 +25,12 @@ final class ServerReportTests: XCTestCase {
         XCTAssertEqual(info.pid, 7)
     }
 
+    func testStartingInstanceIsUnresponsive() throws {
+        guard case .unresponsive(let info) = try parseServerReport(#"{"state":"starting","pid":8}"#) else { return XCTFail() }
+        XCTAssertEqual(info.pid, 8)
+        XCTAssertNil(info.url)
+    }
+
     func testRejectsWhatIsNotAReport() {
         XCTAssertThrowsError(try parseServerReport("2026/01/01 log line"))
         XCTAssertThrowsError(try parseServerReport(#"{"state":"weird"}"#)) { XCTAssertEqual($0 as? ServerReportError, .unknownState("weird")) }
@@ -41,6 +47,7 @@ final class ServerReportTests: XCTestCase {
     func testServerEnvironmentDropsWhatChangesTheMode() {
         let env = ServerSupervisor.serverEnvironment(from: [
             "HOME": "/h", "PATH": "/usr/bin", "REFRACT_DATA_DIR": "/x", "REFRACT_AUTH": "none", "REFRACT_EMBED_TOKEN": "t", "REFRACT_TECTONIC_BIN": "/t",
+            "REFRACT_APP_LOG_DIR": "/l", "REFRACT_APP_DEFAULTS_SUITE": "s",
         ])
         XCTAssertEqual(env, ["HOME": "/h", "PATH": "/usr/bin", "REFRACT_TECTONIC_BIN": "/t"])
     }
