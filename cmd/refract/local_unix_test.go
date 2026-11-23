@@ -3,10 +3,13 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -41,15 +44,101 @@ func TestReadEmbedTokenFromFD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tok, err := readEmbedToken(fd, os.Getenv, os.Unsetenv)
+	tok, err := readEmbedToken(context.Background(), fd, os.Getenv, os.Unsetenv)
 	if err != nil || tok != testEmbedToken {
 		t.Fatal(tok, err)
 	}
 }
 
+// A launcher that keeps its end of the token pipe open doesn't block
+// startup: the read gives up after embedTokenWait, or as soon as ctx ends.
+func TestReadEmbedTokenGivesUp(t *testing.T) {
+	defer func(d time.Duration) { embedTokenWait = d }(embedTokenWait)
+	for _, tc := range []struct {
+		name, want string
+		wait       time.Duration
+		cancel     bool
+	}{
+		{"timeout", "after", 200 * time.Millisecond, false},
+		{"cancelled", "stopped", time.Minute, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			embedTokenWait = tc.wait
+			r, w, _ := os.Pipe()
+			defer w.Close() // open: the token never ends
+			fd, err := syscall.Dup(int(r.Fd()))
+			r.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			if tc.cancel {
+				time.AfterFunc(100*time.Millisecond, cancel)
+			}
+			defer cancel()
+			errc := make(chan error, 1)
+			go func() {
+				_, err := readEmbedToken(ctx, fd, func(string) string { return "" }, func(string) error { return nil })
+				errc <- err
+			}()
+			select {
+			case err := <-errc:
+				if err == nil || !strings.Contains(err.Error(), tc.want) {
+					t.Fatalf("err = %v", err)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("still waiting for the token")
+			}
+		})
+	}
+}
+
+// SIGTERM, or the parent closing standard input, stops a child that is still
+// waiting for the token, with the error line.
+func TestEmbeddedStopsWhileWaitingForTheToken(t *testing.T) {
+	for _, how := range []string{"sigterm", "stdin"} {
+		t.Run(how, func(t *testing.T) {
+			r, w, _ := os.Pipe()
+			defer w.Close() // never written: the launcher is stuck
+			exe, _ := os.Executable()
+			cmd := exec.Command(exe, "--embedded", "--token-fd", "3")
+			cmd.Env = localEnv(filepath.Join(t.TempDir(), "Refract"))
+			cmd.ExtraFiles = []*os.File{r}
+			var out bytes.Buffer
+			cmd.Stdout = &out
+			stdin, err := cmd.StdinPipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := cmd.Start(); err != nil {
+				t.Fatal(err)
+			}
+			r.Close()
+			done := make(chan struct{})
+			go func() { cmd.Wait(); close(done) }()
+			defer func() { cmd.Process.Kill(); <-done }()
+			time.Sleep(300 * time.Millisecond) // let it reach the read
+			if how == "sigterm" {
+				cmd.Process.Signal(syscall.SIGTERM)
+			} else {
+				stdin.Close()
+			}
+			select {
+			case <-done:
+			case <-time.After(5 * time.Second):
+				t.Fatal("still waiting for the token")
+			}
+			var j errorStatus
+			if err := json.Unmarshal(out.Bytes(), &j); err != nil || j.State != stateError || !strings.Contains(j.Error, "waiting for the token") {
+				t.Errorf("stdout %q (%v)", out.String(), err)
+			}
+		})
+	}
+}
+
 func TestReadEmbedTokenRefusesStandardDescriptors(t *testing.T) {
 	for fd := 0; fd <= 2; fd++ {
-		if _, err := readEmbedToken(fd, func(string) string { return "" }, func(string) error { return nil }); err == nil || !strings.Contains(err.Error(), "3 or more") {
+		if _, err := readEmbedToken(context.Background(), fd, func(string) string { return "" }, func(string) error { return nil }); err == nil || !strings.Contains(err.Error(), "3 or more") {
 			t.Errorf("--token-fd %d: %v", fd, err)
 		}
 	}
