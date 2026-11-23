@@ -14,11 +14,13 @@ final class UpdateController: NSObject, SPUUpdaterDelegate {
     let settings: UpdateSettings
     /// Runs the quit sequence's server part; calls back `true` when the app may go on
     /// (relaunch), `false` when the person chose to keep working.
-    var stopServer: (@escaping (Bool) -> Void) -> Void = { $0(true) }
+    var stopServer: (_ forUpdate: Bool, _ done: @escaping (Bool) -> Void) -> Void = { $1(true) }
     /// Called when an update stopped the server and then didn't go on: start it again.
     var resumeServer: () -> Void = {}
     private var controller: SPUStandardUpdaterController?
     private var stoppedForUpdate = false
+    /// Sparkle's relaunch, kept when the person chose "Don't Quit": Check for Updates… finishes it.
+    private var waitingInstall: (() -> Void)?
 
     init(settings: UpdateSettings) {
         self.settings = settings
@@ -36,7 +38,11 @@ final class UpdateController: NSObject, SPUUpdaterDelegate {
     var isEnabled: Bool { controller != nil }
 
     @objc func checkForUpdates(_ sender: Any?) {
-        if let controller {
+        if let install = waitingInstall {
+            // An update is downloaded and waiting for the person's go-ahead: ask again.
+            waitingInstall = nil
+            relaunch(install)
+        } else if let controller {
             controller.checkForUpdates(sender)
         } else {
             explainDisabled()
@@ -46,7 +52,9 @@ final class UpdateController: NSObject, SPUUpdaterDelegate {
     private func explainDisabled() {
         let alert = NSAlert()
         alert.messageText = L("update.disabled.title", "Updates are turned off in this copy")
-        if case .disabled(.noPublicKey) = settings {
+        if case .disabled(.insecureFeed) = settings {
+            alert.informativeText = L("update.disabled.feed", "This copy's update address isn't https (or a local one for tests), so it can't be used. If you set REFRACT_APP_UPDATE_FEED, remove it or give an https address; otherwise download Refract again from the releases page.")
+        } else if case .disabled(.noPublicKey) = settings {
             alert.informativeText = L("update.disabled.dev", "This copy of Refract was built for development and can't verify updates. Download the current version from the releases page.")
         } else {
             alert.informativeText = L("update.disabled.broken", "This copy of Refract has no valid update settings. Download it again from the releases page; your projects aren't touched.")
@@ -67,15 +75,22 @@ final class UpdateController: NSObject, SPUUpdaterDelegate {
 
     func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem, untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {
         AppLog.note("update \(item.displayVersionString) is ready: stopping the server before relaunching")
-        stopServer { [weak self] proceed in
+        relaunch(installHandler)
+        return true
+    }
+
+    /// Stops the server, then lets Sparkle relaunch. If the person keeps working, the relaunch
+    /// is kept for the next Check for Updates….
+    private func relaunch(_ install: @escaping () -> Void) {
+        stopServer(true) { [weak self] proceed in
             if proceed {
                 self?.stoppedForUpdate = true
-                installHandler()
+                install()
             } else {
                 AppLog.note("update postponed: the person chose to keep working")
+                self?.waitingInstall = install
             }
         }
-        return true
     }
 
     func updaterWillRelaunchApplication(_ updater: SPUUpdater) {

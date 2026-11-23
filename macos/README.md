@@ -200,8 +200,10 @@ the same code as ⌘Q (`AppDelegate.stopServer`): `window.refractFlush()` (and t
 question if it answers false), then standard input closes and the app waits for the server, which
 finishes its requests and closes the database. Only then is the installer released. "Install on
 quit" and ⌘Q during an update go through `applicationShouldTerminate`, the same path. If the person
-answers "Don't Quit", the update waits and the app goes on; if the update fails after the server was
-stopped, the server is started again.
+answers "Not Now" (the wording for an update; ⌘Q says "Don't Quit"), the update waits and the app goes
+on, and Sparkle's relaunch is kept: Check for Updates… asks again and finishes it. If the update fails
+after the server was stopped, the server is started again. A second ⌘Q while a quit is pending waits
+for the same answer instead of asking twice.
 
 **Decisions.**
 

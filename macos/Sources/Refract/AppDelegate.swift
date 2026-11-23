@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow!
     private var quitting = false
     private var pendingStops: [(Bool) -> Void] = []
+    private var terminateReplyPending = false
     private var updates: UpdateController!
     private let portKey = "serverPort"
     /// `REFRACT_APP_DEFAULTS_SUITE` names a separate UserDefaults suite (scratch runs and tests).
@@ -32,7 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         supervisor = ServerSupervisor(config: config)
         updates = UpdateController(settings: UpdateSettings.resolve(
             info: Bundle.main.infoDictionary ?? [:], environment: ProcessInfo.processInfo.environment))
-        updates.stopServer = { [weak self] done in self?.stopServer(then: done) }
+        updates.stopServer = { [weak self] forUpdate, done in self?.stopServer(forUpdate: forUpdate, then: done) }
         updates.resumeServer = { [weak self] in
             guard let self else { return }
             self.quitting = false
@@ -116,7 +117,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .starting, .stopping, .ready: break
         default: return .terminateNow
         }
-        stopServer { proceed in
+        // A second ⌘Q while one is pending waits for the same reply.
+        if terminateReplyPending { return .terminateLater }
+        terminateReplyPending = true
+        stopServer(forUpdate: false) { proceed in
+            self.terminateReplyPending = false
             if proceed { AppLog.note("quitting after the server stopped") }
             NSApp.reply(toApplicationShouldTerminate: proceed)
         }
@@ -128,7 +133,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// finishes its requests and closes the database (killed only after 30 seconds, see
     /// ServerSupervisor). Calls back `true` once the server is gone, `false` if the person
     /// chose to keep working. Calls arriving while one runs wait for its result.
-    private func stopServer(then done: @escaping (Bool) -> Void) {
+    private func stopServer(forUpdate: Bool = false, then done: @escaping (Bool) -> Void) {
         pendingStops.append(done)
         guard pendingStops.count == 1 else { return }
         switch supervisor.state {
@@ -144,9 +149,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let alert = NSAlert()
                 alert.alertStyle = .warning
                 alert.messageText = L("quit.unsaved.title", "Some changes couldn't be saved")
-                alert.informativeText = L("quit.unsaved.message", "Refract couldn't save everything you typed (the project may be locked or gone). Quit anyway and lose it?")
-                alert.addButton(withTitle: L("quit.unsaved.cancel", "Don't Quit"))
-                alert.addButton(withTitle: L("quit.unsaved.quit", "Quit Anyway"))
+                if forUpdate {
+                    alert.informativeText = L("update.unsaved.message", "Refract couldn't save everything you typed (the project may be locked or gone). Install the update anyway and lose it?")
+                    alert.addButton(withTitle: L("update.unsaved.cancel", "Not Now"))
+                    alert.addButton(withTitle: L("update.unsaved.install", "Install Anyway"))
+                } else {
+                    alert.informativeText = L("quit.unsaved.message", "Refract couldn't save everything you typed (the project may be locked or gone). Quit anyway and lose it?")
+                    alert.addButton(withTitle: L("quit.unsaved.cancel", "Don't Quit"))
+                    alert.addButton(withTitle: L("quit.unsaved.quit", "Quit Anyway"))
+                }
                 if alert.runModal() == .alertFirstButtonReturn {
                     quitting = false
                     finishStop(false)
