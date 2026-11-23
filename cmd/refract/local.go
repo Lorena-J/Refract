@@ -20,6 +20,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ponytojas/Refract/internal/localkey"
 	"github.com/ponytojas/Refract/internal/mode"
 	"github.com/ponytojas/Refract/internal/store"
 )
@@ -27,8 +28,9 @@ import (
 // localPort is where refract local listens unless the port is taken.
 const localPort = 8080
 
-// localKeyFile holds the generated secret key inside the data folder, until
-// the system keychain takes over (#51).
+// localKeyFile holds the secret key inside the data folder when the system
+// credential store can't, or when it was already there before the store was
+// used.
 const localKeyFile = "secret.key"
 
 // localStartTimeout bounds the wait for the server to answer before the
@@ -69,6 +71,7 @@ func runLocal(args []string) error {
 	defer stop()
 	return startLocal(ctx, localOptions{
 		getenv:  os.Getenv,
+		keys:    localkey.System(),
 		port:    *port,
 		portSet: portSet,
 		out:     os.Stdout,
@@ -86,6 +89,8 @@ type localOptions struct {
 	portSet bool // false: localPort, or a free one when it is taken
 	out     io.Writer
 	open    func(url string) // opens the browser
+	// keys is the system credential store; nil means the key file only.
+	keys localkey.Store
 	// defaultDir replaces localDataDir's result, for tests.
 	defaultDir string
 }
@@ -126,7 +131,7 @@ func startLocal(ctx context.Context, o localOptions) error {
 	}
 	var key []byte // nil: run reads REFRACT_SECRET_KEY, which wins when set
 	if o.getenv("REFRACT_SECRET_KEY") == "" {
-		if key, err = loadOrCreateKey(filepath.Join(dataDir, localKeyFile)); err != nil {
+		if key, err = resolveLocalKey(o.keys, dataDir); err != nil {
 			return err
 		}
 	}
@@ -176,17 +181,138 @@ func localDataDir(goos string, getenv func(string) string, home string) (string,
 	return filepath.Join(home, ".local", "share", "refract"), nil
 }
 
+// resolveLocalKey finds the secret key of a data folder. An existing
+// secret.key is kept as it is (nothing migrates silently). Otherwise the key
+// lives in the system credential store, and in an owner-only secret.key when
+// the store can't be reached. A missing store item for a folder that already
+// has a database means the old key is gone: a new one is made and the log
+// says stored credentials can't be read. The key is never logged, but the log
+// says where it is and names the store account even when it is in the file,
+// so it can be moved between the two (see the README).
+func resolveLocalKey(ks localkey.Store, dataDir string) ([]byte, error) {
+	path := filepath.Join(dataDir, localKeyFile)
+	if _, err := os.Lstat(path); err == nil {
+		return readKeyFileLogged(path, dataDir)
+	}
+	if ks == nil {
+		return loadOrCreateKey(path)
+	}
+	// Two first starts at once would each make a key and the last save would
+	// win, leaving the other's credentials unreadable: one at a time decides.
+	release, err := lockKeyCreation(dataDir)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	if _, err := os.Lstat(path); err == nil { // the other start fell back to the file
+		return readKeyFileLogged(path, dataDir)
+	}
+	key, found, err := localkey.Load(ks, dataDir)
+	switch {
+	case found:
+		slog.Info("using the secret key in the system credential store", "service", localkey.Service, "account", localkey.Account(dataDir))
+		return key, nil
+	case errors.Is(err, localkey.ErrInvalid):
+		return nil, err
+	case err != nil:
+		if usedBefore(dataDir) {
+			// The key of a folder used before, without a secret.key, is most
+			// likely in the store that didn't answer (locked, or a prompt
+			// left waiting). A new key would make the stored credentials
+			// unreadable for good, so don't make one without being asked.
+			return nil, fmt.Errorf("can't read the secret key of %s from the system credential store (%v). Unlock it and start Refract again. If the key is lost, create a new one as %s (openssl rand -base64 32 > %q; chmod 600 %q): stored ChatGPT sign-ins, API keys and git tokens then can't be read", dataDir, err, localKeyFile, path, path)
+		}
+		slog.Warn("the system credential store is not available; keeping the secret key in an owner-only file instead", "file", path, "err", err)
+		return loadOrCreateKey(path)
+	}
+	warnIfCredentialsLost(dataDir, "the secret key is not in the system credential store")
+	key = make([]byte, 32)
+	rand.Read(key)
+	if err := localkey.Save(ks, dataDir, key); err != nil {
+		// Save the same key: a store call that timed out may still succeed
+		// later, and its item must then match the file.
+		slog.Warn("can't save the secret key in the system credential store; keeping it in an owner-only file instead", "file", path, "err", err)
+		return loadOrSaveKey(path, key)
+	}
+	slog.Info("created the secret key in the system credential store", "service", localkey.Service, "account", localkey.Account(dataDir))
+	return key, nil
+}
+
+// readKeyFileLogged reads an existing secret.key and logs that it is used,
+// with the store account the key would have there.
+func readKeyFileLogged(path, dataDir string) ([]byte, error) {
+	key, err := readKeyFile(path)
+	if err == nil {
+		slog.Info("using the secret key file", "file", path, "account", localkey.Account(dataDir))
+	}
+	return key, err
+}
+
+// localKeyLockFile is locked while a start finds or creates the key of its
+// data folder.
+const localKeyLockFile = "secret.key.lock"
+
+// keyLockWait bounds the wait for another start that holds the key lock; its
+// credential store calls take up to 10 s each.
+var keyLockWait = 30 * time.Second
+
+// lockKeyCreation takes the key lock of dataDir, waiting while another
+// process holds it. The kernel drops the lock if the process ends.
+func lockKeyCreation(dataDir string) (release func(), err error) {
+	f, err := os.OpenFile(filepath.Join(dataDir, localKeyLockFile), os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("opening the key lock: %w", err)
+	}
+	deadline := time.Now().Add(keyLockWait)
+	for {
+		held, err := lockFile(f)
+		switch {
+		case err != nil:
+			f.Close()
+			return nil, fmt.Errorf("locking %s: %w", f.Name(), err)
+		case !held:
+			return func() { f.Close() }, nil
+		case time.Now().After(deadline):
+			f.Close()
+			return nil, fmt.Errorf("another refract local has been finding the secret key of %s for %v; stop it and start again", dataDir, keyLockWait)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// warnIfCredentialsLost reports that a new key is about to be made for a data
+// folder that has been used before, so credentials stored with the old one
+// (ChatGPT sign-in, API keys, git tokens) can't be read back.
+func warnIfCredentialsLost(dataDir, why string) {
+	if usedBefore(dataDir) {
+		slog.Warn("this data folder was used before: "+why+", so a new key is made and stored ChatGPT sign-ins, API keys and git tokens can't be read; add them again in Settings, or restore the old key (see the README)", "data", dataDir)
+	}
+}
+
+// usedBefore reports whether dataDir already has a database.
+func usedBefore(dataDir string) bool {
+	_, err := os.Stat(filepath.Join(dataDir, "refract.db"))
+	return err == nil
+}
+
 // loadOrCreateKey reads the secret key at path, or creates it with a new
 // random key on first run. It never replaces an existing file, even an
 // invalid one: credentials stored with that key would be lost.
-func loadOrCreateKey(path string) ([]byte, error) {
+func loadOrCreateKey(path string) ([]byte, error) { return loadOrSaveKey(path, nil) }
+
+// loadOrSaveKey is loadOrCreateKey saving newKey, or a random key when it is
+// nil, when there is no file yet.
+func loadOrSaveKey(path string, newKey []byte) ([]byte, error) {
 	for range 2 {
 		key, err := readKeyFile(path)
 		if !errors.Is(err, fs.ErrNotExist) {
 			return key, err
 		}
-		key = make([]byte, 32)
-		rand.Read(key)
+		key = newKey
+		if key == nil {
+			key = make([]byte, 32)
+			rand.Read(key)
+		}
 		switch err := createExclusive(path, []byte(base64.StdEncoding.EncodeToString(key)+"\n")); {
 		case err == nil:
 			return key, nil
