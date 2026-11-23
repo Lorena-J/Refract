@@ -158,10 +158,15 @@ refract local
 It needs no configuration. It opens Refract in your browser and keeps running until you press <kbd>Ctrl</kbd>+<kbd>C</kbd>. By default the address is <http://127.0.0.1:8080>, or another free port if 8080 is taken; it prints the one it uses. `--port` chooses the port and fails if it is taken; `--no-browser` doesn't open the browser.
 
 - **Your data** goes in your user folder: `~/Library/Application Support/Refract` on macOS, `~/.local/share/refract` on Linux (or `$XDG_DATA_HOME/refract`), `%LocalAppData%\Refract` on Windows. `REFRACT_DATA_DIR` chooses another folder.
-- **The secret key** that protects stored passwords and API keys is created on first run as `secret.key` in that folder, readable only by you (Refract refuses to start if other users can read it). Back it up with the folder: without it, stored credentials can't be read back. If `REFRACT_SECRET_KEY` is set, Refract uses it instead and doesn't create the file. On Windows the file has the folder's permissions; `%LocalAppData%` is private to your account, so choose an equally private folder if you set `REFRACT_DATA_DIR`.
+- **The secret key** that protects stored passwords and API keys lives in your system's credential store when there is one: macOS Keychain, the Secret Service on Linux (GNOME Keyring, KWallet) or Windows Credential Manager. It is the item `Refract` with an account name derived from the data folder (`data-` and a hash of its path), so two data folders keep two keys. The first run creates it; Refract never prints or logs it. When no store can be reached (headless Linux, no D-Bus session, a locked store), Refract says so once in the log and keeps the key in an owner-only `secret.key` in the data folder instead; it refuses to start if other users can read that file. On Windows the file has the folder's permissions; `%LocalAppData%` is private to your account, so choose an equally private folder if you set `REFRACT_DATA_DIR`. If `REFRACT_SECRET_KEY` is set, Refract uses it instead and stores nothing.
+  - **A `secret.key` that already exists is kept**, even when a credential store works: nothing moves silently.
+  - **Back it up with the data.** With a credential store, the data folder alone is not enough: restoring it on another computer, or after the item is deleted, starts with a new key and the stored ChatGPT sign-in, API keys and git tokens can't be read (Refract logs this when it happens; add them again in Settings). Every start logs where the key is and its `account` (`data-` and a hash of the folder's real path), also when the key is in `secret.key`. The account follows the folder's path: moving or renaming the data folder starts with a new key, like restoring it elsewhere, so move the key with it (below). To read the key in the same form as `secret.key`: on macOS `v=$(security find-generic-password -s Refract -a <account> -w); case $v in go-keyring-base64:*) printf %s "${v#go-keyring-base64:}" | base64 -D;; *) printf '%s\n' "$v";; esac` (an item Refract created carries that prefix; one you added by hand, as below, doesn't); on Linux `secret-tool lookup service Refract username <account>`. Windows Credential Manager lists the item as `Refract:<account>` but can't show its value: on Windows, if you want a key you can back up, create `secret.key` yourself before the first run (`openssl rand -base64 32`), since an existing file always wins.
+  - **From keychain to file:** save that value as `secret.key` in the data folder (`chmod 600`) and Refract uses the file from then on. **From file to keychain:** with Refract stopped, store the file's contents as the `Refract` item for that account, then delete `secret.key`. On macOS run `security add-generic-password -s Refract -a <account> -w` and paste the contents when it asks (passing the key after `-w` would show it to other processes); on Linux `secret-tool store --label=Refract service Refract username <account> < secret.key`.
 - **There is no sign-in**, so Refract only listens on this computer's loopback address: other computers can't reach it. `REFRACT_ADDR` may choose another address on `127.0.0.1` or `[::1]` instead of `--port` (not both); any other address is refused before anything listens. `REFRACT_AUTH` is ignored, and `REFRACT_MODE=saas` and `REFRACT_PROFILE=team` are refused: they are for the server, `refract` without `local`. Other `REFRACT_*` variables work as for the server.
+- **One instance per data folder.** `refract local` holds an exclusive lock on `local.lock` in the data folder and records its `pid` and `version` there as soon as it takes the lock, and the address it serves (`url`) once it listens. The file is never opened through a symbolic link. A second `refract local` on the same folder prints `Refract is already running at <address>`, opens the browser there (unless `--no-browser`) and exits 0. While the first one is still starting (it may be waiting for the credential store or upgrading the database), the second says so and waits up to a minute. If the lock is held but nothing answers `/healthz` with a direct `200` (only loopback addresses are ever contacted, and redirects aren't followed), it explains which process to stop (the `pid` in `local.lock`) and exits 1; it never deletes anything. The operating system drops the lock when the process ends, even after `kill -9`, so a leftover `local.lock` never blocks the next start and is safe to leave (but don't delete it while Refract runs: a new file would let a second one start). Different data folders run side by side. Server-mode `refract` doesn't take the lock.
+- **`refract local --status`** is for programs that wrap Refract, such as the desktop app. It starts nothing and prints one JSON line, for example `{"state":"running","url":"http://127.0.0.1:8080","pid":1234,"version":"v0.2.0","dataDir":"...","lockFile":"..."}`. `state` is `running` (exit code 0), `starting` (the lock is held and `pid` recorded, but it doesn't listen yet; exit code 2, so a wrapper can wait and ask again), `stopped` (nobody holds the lock) or `unresponsive` (the lock is held but the recorded address doesn't answer; `url` may be missing); the last two exit 1. It waits a few seconds for an instance that is about to answer or stopping. It creates and changes nothing: a data folder with no `local.lock` (never started) reports `stopped`.
 
-Run one `refract local` per data folder at a time. To share Refract with other people, [deploy](#deploy) it with sign-in instead.
+To share Refract with other people, [deploy](#deploy) it with sign-in instead.
 
 ### Run it with Docker
 
@@ -507,6 +512,32 @@ All settings are environment variables.
 | `REFRACT_GITHUB_CLIENT_ID` | Client ID of your GitHub OAuth App, to connect GitHub accounts (see below). |
 | `REFRACT_OPENALEX_API_KEY` | A free [OpenAlex key](https://openalex.org/settings/api). Without one, paper searches share a small daily budget per IP address. |
 | `REFRACT_TECTONIC_BUNDLE` | The Tectonic bundle: a URL (pinned in the image), or a local folder (required with the sandbox). |
+| `REFRACT_TECTONIC_BIN`, `REFRACT_SYNCTEX_BIN`, `REFRACT_RG_BIN`, `REFRACT_GIT_BIN` | Use this program instead of the one [Refract finds](#where-refract-finds-its-tools). A path, or a name looked up on the `PATH`. If it isn't runnable, the tool counts as missing: Refract doesn't fall back to another. |
+
+### Where Refract finds its tools
+
+Refract runs `tectonic` (compiling), `synctex` (source ↔ PDF jumps), `rg` (the assistant's search) and `git` (history). For each it looks, in this order, at:
+
+1. its `REFRACT_<NAME>_BIN` variable (see [Configuration](#configuration));
+2. the folder of bundled tools next to the program: `../libexec/refract/` relative to the `refract` executable on macOS and Linux, and the executable's own folder on Windows (symbolic links of the executable are resolved first);
+3. the `PATH`.
+
+It always runs the absolute path it found, and the startup log says what was found and where (`tool name=git path=… source=bundled|env|path`). The desktop packages ship private copies in the bundled folder:
+
+```text
+libexec/refract/
+  tectonic  synctex  rg          (.exe on Windows)
+  git/
+    bin/git                      macOS and Linux
+    libexec/git-core/            Git's helpers
+    share/git-core/templates/    optional: Git's init templates
+```
+
+For a Git found in `git/bin/`, Refract sets `GIT_EXEC_PATH` to `git/libexec/git-core`, `GIT_TEMPLATE_DIR` to the templates folder when there is one, and `GIT_CONFIG_NOSYSTEM=1`, so it never uses helpers or configuration from the system. On Windows `git/` is an unmodified [MinGit](https://github.com/git-for-windows/git/releases) tree: Refract runs `git\cmd\git.exe`, which finds its own helpers under `git\ucrt64\`, and sets only `GIT_CONFIG_NOSYSTEM=1`. A Git from `REFRACT_GIT_BIN` or the `PATH` is run as it is.
+
+**Trust.** Whoever can replace a bundled program runs code as the user running Refract. On macOS and Linux Refract therefore ignores the bundled folder, or any single bundled tool, when it or any folder up to `libexec/` is writable by group or others, or owned by neither the current user nor root, and logs why once (it then falls back to the `PATH`). Bundled Git also requires its helper directory and checks its supporting files and templates under `git/`. On Windows Refract trusts the executable's own folder as it is and can't check its permissions: install it where only administrators can write (for example under `Program Files`), because anyone who can write there can make Refract run their programs.
+
+A missing tool doesn't stop Refract: it logs what won't work without it and the web app shows one notice. Without `git`, creating projects and using project history are unavailable (whoever installed Refract can repair the installation or install Git); without `tectonic`, compiling doesn't work; without `synctex`, jumping between source and PDF is unavailable; without `rg`, the assistant can't search the project. The compile sandbox resolves Tectonic the same way.
 
 ### Connect GitHub
 
@@ -566,7 +597,7 @@ Found a vulnerability? Please report it privately through the repository's **Sec
 
 ## Development
 
-You need Go, Node.js, git, ripgrep, Tectonic and `synctex` (and Google Chrome for the browser test). The image bundles all of them. Packaging tests also use Python 3.11+; `dpkg-deb` is optional locally and required in Linux CI to verify Debian packages. [AGENTS.md](AGENTS.md) lists how to check and install the development tools, and the conventions to follow when changing the code.
+You need Go, Node.js, git, ripgrep, Tectonic and `synctex` (and Google Chrome for the browser tests). The image bundles all of them. Packaging tests also use Python 3.11+; `dpkg-deb` is optional locally and required in Linux CI to verify Debian packages. [AGENTS.md](AGENTS.md) lists how to check and install the development tools, and the conventions to follow when changing the code.
 
 ```sh
 make dev                                  # API on 127.0.0.1:8080 (REFRACT_ADDR overrides) and Vite on :5173; open http://localhost:5173
@@ -574,9 +605,15 @@ make dev AUTH=builtin                     # the same, with the sign-in page
 make users ARGS="add you@example.com"     # accounts in the development data
 make login                                # refract login, for ChatGPT
 make test                                 # go vet, Go tests and web unit tests
-make e2e                                  # build, then a Playwright smoke test
+make e2e                                  # build, then the Playwright browser tests in Chrome
+make e2e BROWSER=webkit                   # the same in WebKit (once: cd web && npx playwright install webkit)
+make e2e BROWSER=all                      # both, as CI does
 make docker                               # images for amd64 and arm64, each smoke-tested
 ```
+
+Set `REFRACT_E2E_PORT` and `REFRACT_E2E_MODEL_PORT` to override ports 18090 and 18091 when running two checkouts side by side.
+After `make build`, run `npx playwright test` from `web/` to select Chrome, or set `REFRACT_E2E_BROWSER=webkit` to select WebKit.
+The results go to `web/test-results/chrome` and `web/test-results/webkit`.
 
 Development data lives in `./data`, with its own key in `data/dev.key`. To contribute, see [CONTRIBUTING.md](CONTRIBUTING.md).
 

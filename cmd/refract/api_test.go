@@ -166,3 +166,18 @@ func TestUsage(t *testing.T) {
 		}
 	}
 }
+
+func TestMeListsMissingTools(t *testing.T) {
+	h, _ := newAIServerDB(t, mode.SelfHost)
+	var me struct {
+		Missing []string `json:"missing_tools"`
+	}
+	if call(t, h, "GET", "/api/me", &me); me.Missing == nil || len(me.Missing) != 0 {
+		t.Errorf("missing_tools = %#v, want []", me.Missing)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/me", nil))
+	if !strings.Contains(w.Body.String(), `"missing_tools":[]`) {
+		t.Errorf("body = %s", w.Body)
+	}
+}

@@ -88,11 +88,7 @@ func main() {
 		return
 	}
 	if len(os.Args) > 1 && os.Args[1] == "local" {
-		if err := runLocal(os.Args[2:]); err != nil {
-			fmt.Fprintln(os.Stderr, "refract local:", err)
-			os.Exit(1)
-		}
-		return
+		os.Exit(localExitCode(runLocal(os.Args[2:])))
 	}
 	if len(os.Args) > 1 && os.Args[1] == "login" {
 		if err := runLogin(os.Args[2:]); err != nil {
@@ -225,11 +221,13 @@ func run(ctx context.Context, opts runOptions) error {
 	if _, err := session.HostID(ctx); err != nil {
 		return err
 	}
+	missing := logTools()
 	a := &api{
-		base:  session,
-		mode:  deployment,
-		model: os.Getenv("REFRACT_MODEL_AGENT"),
-		quick: os.Getenv("REFRACT_MODEL_QUICK"),
+		missingTools: missing,
+		base:         session,
+		mode:         deployment,
+		model:        os.Getenv("REFRACT_MODEL_AGENT"),
+		quick:        os.Getenv("REFRACT_MODEL_QUICK"),
 
 		canSignOut: login != nil,
 

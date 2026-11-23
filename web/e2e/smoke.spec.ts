@@ -287,7 +287,8 @@ test('opening a trashed project shows the banner, and a purged one says it was d
   await page.goto(`/p/${project.id}`)
   const banner = page.getByRole('status').filter({ hasText: 'This project is in the trash' })
   await expect(banner).toBeVisible()
-  await expect(page.locator('[data-sonner-toast]')).toHaveCount(0)
+  // No error toast; the missing-tools notice may appear when this machine lacks one (e.g. synctex).
+  await expect(page.locator('[data-sonner-toast]').filter({ hasNotText: 'Some tools are missing' })).toHaveCount(0)
 
   expect((await request.delete(`/api/projects/${project.id}/purge`, { headers: api })).ok()).toBeTruthy()
   await banner.getByRole('button', { name: 'Restore' }).click()

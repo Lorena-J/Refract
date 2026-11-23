@@ -12,6 +12,8 @@ import (
 	"slices"
 	"sync"
 	"time"
+
+	"github.com/ponytojas/Refract/internal/tools"
 )
 
 // git runs the git CLI in dir, isolated from any system/global config and
@@ -39,9 +41,14 @@ func runGit(ctx context.Context, dir string, base0, env []string, args ...string
 	// the timeout only guards against a hang.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", append(base, args...)...)
+	bin, err := tools.Path("git")
+	if err != nil {
+		return "", fmt.Errorf("git %v: %w", args, err)
+	}
+	cmd := exec.CommandContext(ctx, bin, append(base, args...)...)
 	cmd.Dir = dir
 	cmd.Env = append(slices.Clone(base0), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_TERMINAL_PROMPT=0")
+	cmd.Env = append(cmd.Env, tools.GitEnv(cmd.Path)...)
 	cmd.Env = append(cmd.Env, env...)
 	var out, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &stderr
