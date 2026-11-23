@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -44,11 +45,13 @@ func runLocal(args []string) error {
 	fl := flag.NewFlagSet("refract local", flag.ContinueOnError)
 	port := fl.Int("port", 0, "port to listen on, on 127.0.0.1 (default 8080, or a free port when 8080 is taken)")
 	noBrowser := fl.Bool("no-browser", false, "don't open the browser")
+	status := fl.Bool("status", false, "print one JSON line telling whether a refract local is running on the data folder, and exit (0 when it is, 2 while it starts, 1 otherwise)")
 	fl.Usage = func() {
-		fmt.Fprint(fl.Output(), "Usage: refract local [--port N] [--no-browser]\n\n"+
+		fmt.Fprint(fl.Output(), "Usage: refract local [--port N] [--no-browser] [--status]\n\n"+
 			"Runs Refract on this computer with no configuration: data in your user\n"+
 			"folder (REFRACT_DATA_DIR overrides it), no sign-in, 127.0.0.1 only.\n"+
-			"REFRACT_ADDR may choose another address on 127.0.0.1 or ::1 instead of --port.\n\n")
+			"REFRACT_ADDR may choose another address on 127.0.0.1 or ::1 instead of --port.\n"+
+			"Only one refract local runs per data folder: a second start opens the first.\n\n")
 		fl.PrintDefaults()
 	}
 	if err := fl.Parse(args); err != nil {
@@ -74,6 +77,7 @@ func runLocal(args []string) error {
 		keys:    localkey.System(),
 		port:    *port,
 		portSet: portSet,
+		status:  *status,
 		out:     os.Stdout,
 		open: func(u string) {
 			if !*noBrowser {
@@ -87,6 +91,7 @@ type localOptions struct {
 	getenv  func(string) string
 	port    int  // with portSet, the port asked for with --port
 	portSet bool // false: localPort, or a free one when it is taken
+	status  bool // report the instance on the data folder and return
 	out     io.Writer
 	open    func(url string) // opens the browser
 	// keys is the system credential store; nil means the key file only.
@@ -126,9 +131,43 @@ func startLocal(ctx context.Context, o localOptions) error {
 	if v := o.getenv("REFRACT_AUTH"); v != "" && authMode(v) != "none" {
 		slog.Warn("refract local runs without sign-in; REFRACT_AUTH is ignored", "REFRACT_AUTH", v)
 	}
+	if o.status {
+		return reportLocalStatus(ctx, o.out, dataDir)
+	}
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return fmt.Errorf("creating the data folder: %w", err)
 	}
+	// The lock comes before the database and the key: a second start must
+	// not touch either while the first one is using them.
+	var lock *instanceLock
+	for lock == nil {
+		l, held, err := lockInstance(dataDir)
+		if err != nil {
+			return err
+		}
+		if !held {
+			lock = l
+			break
+		}
+		st := checkInstance(ctx, dataDir, 0)
+		if st.State == stateStarting {
+			fmt.Fprintf(o.out, "Another refract local (pid %d) is still starting on %s; waiting for it…\n", st.PID, dataDir)
+			st = checkInstance(ctx, dataDir, instanceStartingWait)
+		}
+		switch st.State {
+		case stateRunning:
+			fmt.Fprintf(o.out, "Refract is already running at %s\nData folder: %s\n", st.URL, dataDir)
+			o.open(st.URL)
+			return nil
+		case stateStarting, stateUnresponsive:
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return errors.New(recoveryHelp(st))
+		}
+		// The other one stopped meanwhile: take the lock again.
+	}
+	defer lock.Release()
 	var key []byte // nil: run reads REFRACT_SECRET_KEY, which wins when set
 	if o.getenv("REFRACT_SECRET_KEY") == "" {
 		if key, err = resolveLocalKey(o.keys, dataDir); err != nil {
@@ -144,6 +183,9 @@ func startLocal(ctx context.Context, o localOptions) error {
 		},
 		ready: func(ctx context.Context, addr net.Addr) {
 			u := "http://" + addr.String()
+			if err := lock.Record(u); err != nil {
+				slog.Warn("can't record the address in the lock file; a second refract local won't find this one", "err", err)
+			}
 			waitCtx, cancel := context.WithTimeout(ctx, localStartTimeout)
 			defer cancel()
 			if !waitHealthy(waitCtx, u+"/healthz") {
@@ -481,4 +523,28 @@ func localLogHandler(w *os.File) slog.Handler {
 		return slog.NewTextHandler(w, nil)
 	}
 	return slog.NewJSONHandler(w, nil)
+}
+
+// reportLocalStatus prints the instance status as one JSON line. It creates
+// and changes nothing. It returns nil only when a refract local is running
+// and answering, an errExit with statusExitStarting while one is starting,
+// and with 1 otherwise.
+func reportLocalStatus(ctx context.Context, out io.Writer, dataDir string) error {
+	held, err := lockHeld(dataDir)
+	if err != nil {
+		return err
+	}
+	st := instanceStatus{State: stateStopped, DataDir: dataDir, Lock: filepath.Join(dataDir, localLockFile)}
+	if held {
+		st = checkInstance(ctx, dataDir, 0)
+	}
+	b, _ := json.Marshal(st)
+	fmt.Fprintf(out, "%s\n", b)
+	switch st.State {
+	case stateRunning:
+		return nil
+	case stateStarting:
+		return errExit{code: statusExitStarting}
+	}
+	return errExit{code: 1}
 }

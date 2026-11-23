@@ -88,11 +88,7 @@ func main() {
 		return
 	}
 	if len(os.Args) > 1 && os.Args[1] == "local" {
-		if err := runLocal(os.Args[2:]); err != nil {
-			fmt.Fprintln(os.Stderr, "refract local:", err)
-			os.Exit(1)
-		}
-		return
+		os.Exit(localExitCode(runLocal(os.Args[2:])))
 	}
 	if len(os.Args) > 1 && os.Args[1] == "login" {
 		if err := runLogin(os.Args[2:]); err != nil {
