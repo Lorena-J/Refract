@@ -34,6 +34,8 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { effects } from './ToolsNotice'
+import { getMissingTools } from '@/lib/tools'
 import {
   api,
   download,
@@ -535,6 +537,8 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  const syncError = (e: unknown) => (getMissingTools().includes('synctex') ? effects.synctex() : errorText(e))
+
   // Forward sync: editor position → PDF.
   async function syncToPDF(path: string, line: number, col: number) {
     try {
@@ -543,7 +547,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
       )
       setHighlight((h) => ({ ...boxes[0], n: (h?.n ?? 0) + 1 }))
     } catch (e) {
-      toast(errorText(e))
+      toast(syncError(e))
     }
   }
 
@@ -555,7 +559,7 @@ export default function Workspace({ id, status }: { id: string; status: ChatGPTS
       )
       await jumpTo(r.file, r.line)
     } catch (e) {
-      toast(errorText(e))
+      toast(syncError(e))
     }
   }
 

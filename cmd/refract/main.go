@@ -221,11 +221,13 @@ func run(ctx context.Context, opts runOptions) error {
 	if _, err := session.HostID(ctx); err != nil {
 		return err
 	}
+	missing := logTools()
 	a := &api{
-		base:  session,
-		mode:  deployment,
-		model: os.Getenv("REFRACT_MODEL_AGENT"),
-		quick: os.Getenv("REFRACT_MODEL_QUICK"),
+		missingTools: missing,
+		base:         session,
+		mode:         deployment,
+		model:        os.Getenv("REFRACT_MODEL_AGENT"),
+		quick:        os.Getenv("REFRACT_MODEL_QUICK"),
 
 		canSignOut: login != nil,
 

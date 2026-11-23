@@ -223,18 +223,31 @@ func localDataDir(goos string, getenv func(string) string, home string) (string,
 // lives in the system credential store, and in an owner-only secret.key when
 // the store can't be reached. A missing store item for a folder that already
 // has a database means the old key is gone: a new one is made and the log
-// says stored credentials can't be read. The key is never logged.
+// says stored credentials can't be read. The key is never logged, but the log
+// says where it is and names the store account even when it is in the file,
+// so it can be moved between the two (see the README).
 func resolveLocalKey(ks localkey.Store, dataDir string) ([]byte, error) {
 	path := filepath.Join(dataDir, localKeyFile)
 	if _, err := os.Lstat(path); err == nil {
-		return readKeyFile(path)
+		return readKeyFileLogged(path, dataDir)
 	}
 	if ks == nil {
 		return loadOrCreateKey(path)
 	}
+	// Two first starts at once would each make a key and the last save would
+	// win, leaving the other's credentials unreadable: one at a time decides.
+	release, err := lockKeyCreation(dataDir)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	if _, err := os.Lstat(path); err == nil { // the other start fell back to the file
+		return readKeyFileLogged(path, dataDir)
+	}
 	key, found, err := localkey.Load(ks, dataDir)
 	switch {
 	case found:
+		slog.Info("using the secret key in the system credential store", "service", localkey.Service, "account", localkey.Account(dataDir))
 		return key, nil
 	case errors.Is(err, localkey.ErrInvalid):
 		return nil, err
@@ -260,6 +273,48 @@ func resolveLocalKey(ks localkey.Store, dataDir string) ([]byte, error) {
 	}
 	slog.Info("created the secret key in the system credential store", "service", localkey.Service, "account", localkey.Account(dataDir))
 	return key, nil
+}
+
+// readKeyFileLogged reads an existing secret.key and logs that it is used,
+// with the store account the key would have there.
+func readKeyFileLogged(path, dataDir string) ([]byte, error) {
+	key, err := readKeyFile(path)
+	if err == nil {
+		slog.Info("using the secret key file", "file", path, "account", localkey.Account(dataDir))
+	}
+	return key, err
+}
+
+// localKeyLockFile is locked while a start finds or creates the key of its
+// data folder.
+const localKeyLockFile = "secret.key.lock"
+
+// keyLockWait bounds the wait for another start that holds the key lock; its
+// credential store calls take up to 10 s each.
+var keyLockWait = 30 * time.Second
+
+// lockKeyCreation takes the key lock of dataDir, waiting while another
+// process holds it. The kernel drops the lock if the process ends.
+func lockKeyCreation(dataDir string) (release func(), err error) {
+	f, err := os.OpenFile(filepath.Join(dataDir, localKeyLockFile), os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("opening the key lock: %w", err)
+	}
+	deadline := time.Now().Add(keyLockWait)
+	for {
+		held, err := lockFile(f)
+		switch {
+		case err != nil:
+			f.Close()
+			return nil, fmt.Errorf("locking %s: %w", f.Name(), err)
+		case !held:
+			return func() { f.Close() }, nil
+		case time.Now().After(deadline):
+			f.Close()
+			return nil, fmt.Errorf("another refract local has been finding the secret key of %s for %v; stop it and start again", dataDir, keyLockWait)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 // warnIfCredentialsLost reports that a new key is about to be made for a data
