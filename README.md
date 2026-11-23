@@ -668,7 +668,7 @@ The first `make mac` compiles the bundled Git and SyncTeX with `scripts/build-to
 
 ### CI and releases
 
-Every push to `main` and every pull request runs the Go tests (with the race detector), the web tests and the browser tests (`.github/workflows/ci.yml`).
+Every push to `main` and every pull request runs the Go tests (with the race detector), the web tests and the browser tests (`.github/workflows/ci.yml`). A pull request or push that changes the macOS app (`macos/`) also runs its Swift tests on a macOS runner (`make mac-test`, `.github/workflows/macos.yml`).
 
 Pushing a tag such as `v0.1.0` builds `refract` for macOS, Linux and Windows (amd64 and arm64) and publishes the archives with checksums on GitHub Releases. It also builds, smoke-tests and scans the Docker image for amd64 and arm64 before publishing it to GitHub Container Registry (`.github/workflows/release.yml`): see [Release image scanning](#release-image-scanning).
 
