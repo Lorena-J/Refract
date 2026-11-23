@@ -35,8 +35,12 @@ case "$OS" in
     for f in tectonic synctex rg git/bin/git git/libexec/git-core/git git/libexec/git-core/git-remote-http; do
       bad=$(otool -L "$DIR/$f" | tail -n +2 | awk '{print $1}' | grep -v -e '^/usr/lib/' -e '^/System/Library/' || true)
       [ -z "$bad" ] || fail "$f links libraries that are not part of macOS: $bad"
-      minos=$(vtool -show-build "$DIR/$f" 2>/dev/null | awk '/minos/{print $2; exit}')
-      [ "${minos%%.*}" -le "${want%%.*}" ] 2>/dev/null || fail "$f needs macOS $minos, newer than the supported $want"
+      # LC_BUILD_VERSION says `minos X`; older binaries (Tectonic's x86_64 build) have
+      # LC_VERSION_MIN_MACOSX, which says `version X`. Either comes before any tool version.
+      minos=$(vtool -show-build "$DIR/$f" 2>/dev/null | awk '$1 == "minos" || $1 == "version" {print $2; exit}')
+      [ -n "$minos" ] || fail "$f declares no minimum macOS version"
+      newer=$(awk -v a="$minos" -v b="$want" 'BEGIN { split(a, x, "."); split(b, y, "."); print (x[1] > y[1] || (x[1] == y[1] && x[2] + 0 > y[2] + 0)) }')
+      [ "$newer" = 0 ] || fail "$f needs macOS $minos, newer than the supported $want"
     done
     ;;
   linux)
