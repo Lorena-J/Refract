@@ -9,6 +9,8 @@ final class WebViewController: NSViewController, WKNavigationDelegate, WKUIDeleg
     private var loaded = false
     /// Where each running download is written (a temporary name) and where it ends up.
     private var downloadTargets: [ObjectIdentifier: (temp: URL, final: URL)] = [:]
+    /// When the page process last ended: reloading stops after 3 in a minute.
+    private var reloads: [Date] = []
     /// Called when the page can't be shown safely (the origin rules didn't compile).
     private let failed: (String) -> Void
 
@@ -81,19 +83,24 @@ final class WebViewController: NSViewController, WKNavigationDelegate, WKUIDeleg
     /// of it couldn't be (or the page didn't answer in time), nil when no page is loaded.
     func flush() async -> Bool? {
         guard loaded else { return nil }
-        return await withTaskGroup(of: Bool.self) { group in
-            group.addTask { @MainActor in
+        // callAsyncJavaScript ignores cancellation, so a task group would wait for it past the
+        // limit: whichever of the call and the timer finishes first resumes, once.
+        return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+            var resumed = false
+            let finish: @MainActor (Bool) -> Void = { value in
+                guard !resumed else { return }
+                resumed = true
+                continuation.resume(returning: value)
+            }
+            Task { @MainActor in
                 let result = try? await self.webView.callAsyncJavaScript(
                     "return await window.refractFlush?.() ?? true", arguments: [:], in: nil, contentWorld: .page)
-                return (result as? Bool) ?? false
+                finish((result as? Bool) ?? false)
             }
-            group.addTask {
+            Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 8_000_000_000)
-                return false
+                finish(false)
             }
-            let first = await group.next() ?? false
-            group.cancelAll()
-            return first
         }
     }
 
@@ -309,6 +316,13 @@ final class WebViewController: NSViewController, WKNavigationDelegate, WKUIDeleg
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        let now = Date()
+        reloads = reloads.filter { now.timeIntervalSince($0) < 60 }
+        guard reloads.count < 3 else {
+            refuse("the web content process keeps ending")
+            return
+        }
+        reloads.append(now)
         AppLog.note("the web content process ended: reloading")
         webView.reload()
     }

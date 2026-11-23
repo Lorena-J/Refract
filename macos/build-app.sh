@@ -33,8 +33,11 @@ OUT=$(cd "$OUT" && pwd)
 APP="$OUT/Refract.app"
 
 # CFBundleVersion must be dotted numbers: take them from the tag, 0.0.0 for a development build.
-NUM=$(printf '%s' "${VERSION#v}" | sed -n 's/^\([0-9][0-9]*\(\.[0-9][0-9]*\)\{0,2\}\).*/\1/p')
-NUM=${NUM:-0.0.0}
+NUM=0.0.0
+if printf '%s' "$VERSION" | grep -Eq '^v?[0-9]+(\.[0-9]+){0,2}($|[-+])'; then
+  NUM=${VERSION#v}
+  NUM=${NUM%%[-+]*}
+fi
 
 echo "==> tools ($ARCH)"
 if [ -n "${TOOLS_ARCHIVE:-}" ]; then
