@@ -88,11 +88,7 @@ func main() {
 		return
 	}
 	if len(os.Args) > 1 && os.Args[1] == "local" {
-		if err := runLocal(os.Args[2:]); err != nil {
-			fmt.Fprintln(os.Stderr, "refract local:", err)
-			os.Exit(1)
-		}
-		return
+		os.Exit(localExitCode(runLocal(os.Args[2:])))
 	}
 	if len(os.Args) > 1 && os.Args[1] == "login" {
 		if err := runLogin(os.Args[2:]); err != nil {
@@ -122,6 +118,8 @@ type runOptions struct {
 	// ready runs in its own goroutine once the server is about to accept
 	// connections on addr; ctx ends when the server stops.
 	ready func(ctx context.Context, addr net.Addr)
+	// wrap, when set, goes around every route, inside the host check.
+	wrap func(http.Handler) http.Handler
 }
 
 // run serves Refract until ctx ends, then shuts down gracefully.
@@ -359,7 +357,11 @@ func run(ctx context.Context, opts runOptions) error {
 	}
 	mux.Handle("/", guard(people.Middleware(auth.RequireCSRFHeader(app))))
 
-	srv := newServer(mux, hosts)
+	var root http.Handler = mux
+	if opts.wrap != nil {
+		root = opts.wrap(mux)
+	}
+	srv := newServer(root, hosts)
 	slog.Info("listening", "addr", cmp.Or(logAddr, ln.Addr().String()), "data_dir", dataDir)
 	if opts.ready != nil {
 		readyCtx, stopReady := context.WithCancel(ctx)

@@ -18,6 +18,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 LOCK = ROOT / "packaging" / "tools.lock"
+# The licence files the TeX seed needs (scripts/tex-seed.py writes and checks it).
+SEED_LICENSES = ROOT / "packaging" / "tex-seed" / "licenses.txt"
 MANIFEST = "tools-manifest.json"
 TARGETS = [
     ("darwin", "arm64"),
@@ -42,6 +44,11 @@ def load_lock(path=LOCK):
     return values
 
 
+def hash_file_name(url):
+    """Tectonic's name for a bundle URL in bundles/hashes/ (same as scripts/tex-seed.py)."""
+    return url.replace(":", ",58,").replace("/", ",47,")
+
+
 def required(os_name, arch):
     """Relative paths that must exist in the archive of a target."""
     lock = load_lock()
@@ -57,7 +64,13 @@ def required(os_name, arch):
         "licenses/ripgrep/UNLICENSE",
         "licenses/synctex/LICENSE",
         "licenses/zlib/LICENSE",
+        # The TeX seed (scripts/tex-seed.py): the cache fragment and its licences.
+        "tex-seed/seed.json",
+        f"tex-seed/cache/bundles/hashes/{hash_file_name(lock['TECTONIC_BUNDLE_URL'])}",
+        f"tex-seed/cache/bundles/data/{lock['TECTONIC_BUNDLE_DIGEST']}.index",
+        "licenses/tex/NOTICE.md",
     ]
+    seed_prefixes = [f"tex-seed/cache/bundles/data/{lock['TECTONIC_BUNDLE_DIGEST']}/", "licenses/tex/"]
     if os_name == "darwin":
         files += [
             "git/bin/git",
@@ -86,7 +99,7 @@ def required(os_name, arch):
         prefixes = ["git/ucrt64/libexec/git-core/", "git/ucrt64/share/git-core/templates/"]
     else:
         prefixes = []
-    return files, prefixes
+    return files, prefixes + seed_prefixes
 
 
 def components(os_name, arch):
@@ -115,6 +128,12 @@ def components(os_name, arch):
             "source": "https://github.com/madler/zlib/releases/tag/v" + lock["ZLIB_VERSION"],
             "sha256": lock["ZLIB_SHA256"],
             "license": "Zlib",
+        },
+        "tex-seed": {
+            "version": "TeX Live 2022 (" + lock["TECTONIC_BUNDLE_URL"].rsplit("/", 1)[-1] + ")",
+            "source": lock["TECTONIC_BUNDLE_URL"],
+            "sha256": lock["TECTONIC_BUNDLE_DIGEST"],
+            "license": "various free licences, per file (licenses/tex/NOTICE.md)",
         },
     }
     if os_name == "darwin":
@@ -206,9 +225,43 @@ def check(archive, os_name, arch):
                 problems.append(f"manifest lacks {name}")
             elif got != component:
                 problems.append(f"manifest {name} does not match packaging/tools.lock")
-        for rel in files:
-            if rel != MANIFEST and rel in found and data.get("files", {}).get(rel) != found[rel][0]:
+        # Every file, not only the required ones: nothing changed, added or dropped after the build.
+        listed = data.get("files", {})
+        for rel, (digest, _) in sorted(found.items()):
+            if rel == MANIFEST:
+                continue
+            if rel not in listed:
+                problems.append(f"{rel} is not in the manifest")
+            elif listed[rel] != digest:
                 problems.append(f"manifest checksum of {rel} does not match")
+        for rel in sorted(set(listed) - set(found)):
+            problems.append(f"manifest lists {rel}, which is not in the archive")
+    problems += check_seed_licenses(archive, found)
+    return problems
+
+
+def check_seed_licenses(archive, found):
+    """The licence files the seed needs (seed.json "licenses", which must equal the committed
+    packaging/tex-seed/licenses.txt) are in the archive with those checksums."""
+    if "tex-seed/seed.json" not in found:
+        return []  # reported as missing above
+    with tarfile_or_zip_member(archive, "tex-seed/seed.json") as handle:
+        listed = json.load(handle).get("licenses")
+    if not isinstance(listed, dict) or not listed:
+        return ["tex-seed/seed.json lists no licence files"]
+    committed = {}
+    for line in SEED_LICENSES.read_text().splitlines():
+        if line.strip():
+            digest, _, rel = line.partition("  ")
+            committed[rel] = digest
+    problems = []
+    if listed != committed:
+        problems.append("tex-seed/seed.json licence files differ from packaging/tex-seed/licenses.txt")
+    for rel, digest in sorted(listed.items()):
+        if rel not in found:
+            problems.append(f"missing {rel} (a licence of the TeX seed)")
+        elif found[rel][0] != digest:
+            problems.append(f"{rel} does not match its checksum in tex-seed/seed.json")
     return problems
 
 

@@ -1,0 +1,16 @@
+\documentclass{article}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amsthm,graphicx,booktabs,xcolor,tikz,siunitx,listings,natbib,hyperref,cleveref}
+\newtheorem{theorem}{Theorem}
+\begin{document}
+\section{Common packages}\label{sec:common}
+\begin{theorem}A theorem.\end{theorem}
+\SI{3}{\metre} in \cref{sec:common}.
+\tikz\draw (0,0) -- (1,1);
+\begin{lstlisting}
+x = 1
+\end{lstlisting}
+\begin{tabular}{@{}ll@{}}\toprule a & b \\ \midrule 1 & 2 \\ \bottomrule\end{tabular}
+\textcolor{red}{red} \href{https://example.com}{link}
+\end{document}
