@@ -82,6 +82,13 @@ jobs:
             dist/refract.rb
             dist/refract-winget-manifests.tar.gz
 
+  # Tool archives (Tectonic, SyncTeX, ripgrep, private Git) for every target, built
+  # from packaging/tools.lock and smoke-tested on each system; see tools.yml.
+  tools:
+    uses: ./.github/workflows/tools.yml
+    with:
+      tag: ${{ github.ref_name }}
+
   # Exercise the CLI without any server configuration or LaTeX tools. OAuth
   # itself is interactive; --help checks the login entry point without signing in.
   cli-smoke:
@@ -125,7 +132,7 @@ jobs:
   # Waits for the image's scan, so a blocked image stops the whole release,
   # and attaches each architecture's scan report.
   release:
-    needs: [build, metadata, cli-smoke, image]
+    needs: [build, metadata, cli-smoke, tools, image]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7 # for CHANGELOG.md
@@ -134,6 +141,12 @@ jobs:
           path: dist
           pattern: '!*.dockerbuild'
           merge-multiple: true
+      # A release lacking a required tool or licence in any archive stops here;
+      # the targets without an archive are listed in the attached gaps file.
+      - name: Check the tool archives
+        run: |
+          python3 -I scripts/tools-archive.py release dist "$GITHUB_REF_NAME"
+          python3 -I scripts/tools-archive.py gaps "$GITHUB_REF_NAME" > "dist/refract-tools-${GITHUB_REF_NAME}-gaps.txt"
       # The notes are the version's section of CHANGELOG.md ("## [0.1.0] - …"),
       # minus the link definitions at the end of the file. Without that
       # section, GitHub lists the commits instead.

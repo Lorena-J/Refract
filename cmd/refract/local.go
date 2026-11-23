@@ -70,7 +70,7 @@ func runLocalTo(args []string, stdout io.Writer) error {
 	noBrowser := fl.Bool("no-browser", false, "don't open the browser")
 	embedded := fl.Bool("embedded", false, "for a program that embeds Refract: no browser, a free port, one JSON line on standard output when ready, stops when standard input closes; needs --token-fd or REFRACT_EMBED_TOKEN")
 	tokenFD := fl.Int("token-fd", -1, "with --embedded: the inherited file descriptor to read the per-launch token from (default: REFRACT_EMBED_TOKEN)")
-	status := fl.Bool("status", false, "print one JSON line telling whether a refract local is running on the data folder, and exit (0 when it is, 1 otherwise)")
+	status := fl.Bool("status", false, "print one JSON line telling whether a refract local is running on the data folder, and exit (0 when it is, 2 while it starts, 1 otherwise)")
 	fl.Usage = func() {
 		fmt.Fprint(fl.Output(), "Usage: refract local [--port N] [--no-browser] [--status] [--embedded [--token-fd N]]\n\n"+
 			"Runs Refract on this computer with no configuration: data in your user\n"+
@@ -196,7 +196,12 @@ func startLocal(ctx context.Context, o localOptions) error {
 			lock = l
 			break
 		}
-		switch st := checkInstance(ctx, dataDir); st.State {
+		st := checkInstance(ctx, dataDir, 0)
+		if st.State == stateStarting {
+			fmt.Fprintf(o.out, "Another refract local (pid %d) is still starting on %s; waiting for it…\n", st.PID, dataDir)
+			st = checkInstance(ctx, dataDir, instanceStartingWait)
+		}
+		switch st.State {
 		case stateRunning:
 			if o.embedded {
 				printJSON(o.out, st)
@@ -210,7 +215,7 @@ func startLocal(ctx context.Context, o localOptions) error {
 			fmt.Fprintf(o.out, "Refract is already running at %s\nData folder: %s\n", st.URL, dataDir)
 			o.open(st.URL)
 			return nil
-		case stateUnresponsive:
+		case stateStarting, stateUnresponsive:
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
@@ -307,18 +312,31 @@ func localDataDir(goos string, getenv func(string) string, home string) (string,
 // lives in the system credential store, and in an owner-only secret.key when
 // the store can't be reached. A missing store item for a folder that already
 // has a database means the old key is gone: a new one is made and the log
-// says stored credentials can't be read. The key is never logged.
+// says stored credentials can't be read. The key is never logged, but the log
+// says where it is and names the store account even when it is in the file,
+// so it can be moved between the two (see the README).
 func resolveLocalKey(ks localkey.Store, dataDir string) ([]byte, error) {
 	path := filepath.Join(dataDir, localKeyFile)
 	if _, err := os.Lstat(path); err == nil {
-		return readKeyFile(path)
+		return readKeyFileLogged(path, dataDir)
 	}
 	if ks == nil {
 		return loadOrCreateKey(path)
 	}
+	// Two first starts at once would each make a key and the last save would
+	// win, leaving the other's credentials unreadable: one at a time decides.
+	release, err := lockKeyCreation(dataDir)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	if _, err := os.Lstat(path); err == nil { // the other start fell back to the file
+		return readKeyFileLogged(path, dataDir)
+	}
 	key, found, err := localkey.Load(ks, dataDir)
 	switch {
 	case found:
+		slog.Info("using the secret key in the system credential store", "service", localkey.Service, "account", localkey.Account(dataDir))
 		return key, nil
 	case errors.Is(err, localkey.ErrInvalid):
 		return nil, err
@@ -344,6 +362,48 @@ func resolveLocalKey(ks localkey.Store, dataDir string) ([]byte, error) {
 	}
 	slog.Info("created the secret key in the system credential store", "service", localkey.Service, "account", localkey.Account(dataDir))
 	return key, nil
+}
+
+// readKeyFileLogged reads an existing secret.key and logs that it is used,
+// with the store account the key would have there.
+func readKeyFileLogged(path, dataDir string) ([]byte, error) {
+	key, err := readKeyFile(path)
+	if err == nil {
+		slog.Info("using the secret key file", "file", path, "account", localkey.Account(dataDir))
+	}
+	return key, err
+}
+
+// localKeyLockFile is locked while a start finds or creates the key of its
+// data folder.
+const localKeyLockFile = "secret.key.lock"
+
+// keyLockWait bounds the wait for another start that holds the key lock; its
+// credential store calls take up to 10 s each.
+var keyLockWait = 30 * time.Second
+
+// lockKeyCreation takes the key lock of dataDir, waiting while another
+// process holds it. The kernel drops the lock if the process ends.
+func lockKeyCreation(dataDir string) (release func(), err error) {
+	f, err := os.OpenFile(filepath.Join(dataDir, localKeyLockFile), os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("opening the key lock: %w", err)
+	}
+	deadline := time.Now().Add(keyLockWait)
+	for {
+		held, err := lockFile(f)
+		switch {
+		case err != nil:
+			f.Close()
+			return nil, fmt.Errorf("locking %s: %w", f.Name(), err)
+		case !held:
+			return func() { f.Close() }, nil
+		case time.Now().After(deadline):
+			f.Close()
+			return nil, fmt.Errorf("another refract local has been finding the secret key of %s for %v; stop it and start again", dataDir, keyLockWait)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 // warnIfCredentialsLost reports that a new key is about to be made for a data
@@ -549,33 +609,26 @@ func localLogHandler(w *os.File) slog.Handler {
 	return slog.NewJSONHandler(w, nil)
 }
 
-// reportLocalStatus prints the instance status as one JSON line. It returns
-// nil only when a refract local is running and answering.
+// reportLocalStatus prints the instance status as one JSON line. It creates
+// and changes nothing. It returns nil only when a refract local is running
+// and answering, an errExit with statusExitStarting while one is starting,
+// and with 1 otherwise.
 func reportLocalStatus(ctx context.Context, out io.Writer, dataDir string) error {
-	var st instanceStatus
-	var l *instanceLock
-	held := false
-	_, err := os.Stat(filepath.Join(dataDir, localLockFile))
-	if err == nil { // without the file nobody holds the lock; don't create it
-		l, held, err = lockInstance(dataDir)
-	} else if errors.Is(err, fs.ErrNotExist) {
-		err = nil
-	}
-	switch {
-	case err != nil:
+	held, err := lockHeld(dataDir)
+	if err != nil {
 		return err
-	case held:
-		st = checkInstance(ctx, dataDir)
-	default:
-		if l != nil {
-			l.Release()
-		}
-		st = instanceStatus{State: stateStopped, DataDir: dataDir, Lock: filepath.Join(dataDir, localLockFile)}
+	}
+	st := instanceStatus{State: stateStopped, DataDir: dataDir, Lock: filepath.Join(dataDir, localLockFile)}
+	if held {
+		st = checkInstance(ctx, dataDir, 0)
 	}
 	b, _ := json.Marshal(st)
 	fmt.Fprintf(out, "%s\n", b)
-	if st.State != stateRunning {
-		return errExit{code: 1}
+	switch st.State {
+	case stateRunning:
+		return nil
+	case stateStarting:
+		return errExit{code: statusExitStarting}
 	}
-	return nil
+	return errExit{code: 1}
 }

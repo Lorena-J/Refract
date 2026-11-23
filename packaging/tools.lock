@@ -1,0 +1,51 @@
+# The one place that pins the bundled tools: versions, sources and SHA-256 of
+# everything downloaded. Plain KEY=VALUE lines (no quoting, no spaces), so it is
+# read by `. packaging/tools.lock` in shell and by scripts/test_packaging.py.
+# Read by: scripts/install-tex-tools.sh, scripts/build-tools.sh, scripts/build-synctex.sh,
+# scripts/build-git-macos.sh, the Dockerfile and the release workflow.
+# Every hash below comes from the upstream release page or file, not from a
+# local guess. To bump a tool: change its version and hashes here, nothing else.
+# Keys: <TOOL>_SHA256_<os>_<arch> (os: darwin linux windows; arch: amd64 arm64).
+
+# Tectonic: official release assets (musl static on Linux, MSVC static CRT on Windows).
+# Upstream publishes no Windows arm64 build: windows-arm64 is a documented gap.
+TECTONIC_VERSION=0.17.0
+TECTONIC_SHA256_darwin_arm64=a3f1cac7c5678f01661a92212f58480ae3b0634115d880dbc59e2953ded45667
+TECTONIC_SHA256_darwin_amd64=7c90ef5b6ddb1eb1937e4337add5237b79338e4b9676459fa91187d24d6cdf80
+TECTONIC_SHA256_linux_arm64=b10954a95404f3ab2328d2fa59a5ebab8e657f893fab096f98be8db7c0c979b8
+TECTONIC_SHA256_linux_amd64=8533d07f9ccbd7a65824b9e0459041bca34af1eb33daba48f59215593753a3b7
+TECTONIC_SHA256_windows_amd64=f61ce51f0b0ade1015b7de7ef368541c5424e9756ecbd0d7af97d6d48030845f
+TECTONIC_LICENSE_SHA256=814a258f76e420b25cb3c07172eb2b3956f34cefbf0a650413b78e65c425f306
+
+# ripgrep: official release assets (musl static on Linux).
+RIPGREP_VERSION=15.2.0
+RIPGREP_SHA256_darwin_arm64=3750b2e93f37e0c692657da574d7019a101c0084da05a790c83fd335bad973e4
+RIPGREP_SHA256_darwin_amd64=af7825fcc69a2afc7a7aea55fc9af90e26421d8f20fe59df32e233c0b8a231c1
+RIPGREP_SHA256_linux_arm64=800b1e7206afe799dfb5a6901f23147cfaabe0e52210538100f61e86e1740915
+RIPGREP_SHA256_linux_amd64=33e15bcf1624b25cdd2a55813a47a2f95dbe126268203e76aa6a585d1e7b149c
+RIPGREP_SHA256_windows_amd64=71b2fef860abe467217a538ff31de02f5258807c0129f771846f87bd029aafc5
+
+# synctex CLI: built from the official parser sources (Tectonic ships none).
+# Tag 2023.4(TeXLive); the commit hash pins the content.
+SYNCTEX_REPO=https://github.com/jlaurens/synctex.git
+SYNCTEX_COMMIT=c3641da45b41cd61f9e625fe722d0a8d54cedaa9
+
+# zlib, compiled statically into synctex on every target (no system zlib needed).
+ZLIB_VERSION=1.4
+ZLIB_SHA256=02dd159783677a749c04adbdd02b55b8a2bcc7e054f51b76b549199a916ad584
+
+# Git for macOS: built from the official source tarball, relocatable
+# (RUNTIME_PREFIX), without curl, OpenSSL, expat, Perl, Python, Tcl or gettext.
+GIT_VERSION=2.56.1
+GIT_SOURCE_SHA256=f0b0bf89264b9bd2e1c640363e7529643989da76281600473c50745cd34a607f
+
+# Git for Windows: MinGit, the minimal redistributable runtime, kept unmodified
+# (its tree is tied together: git.exe finds sh.exe and the helpers relative to it).
+MINGIT_TAG=v2.56.1.windows.1
+MINGIT_VERSION=2.56.1
+MINGIT_SHA256_windows_amd64=4a92850b6e917da4fd010669b614b55dccf5b0ec333a534cc4be4700dfefdafd
+MINGIT_SHA256_windows_arm64=96571e442e90523a90e5fd8661b4c4e43bc192910f3c6db938816e6955b4cc8c
+
+# llvm-mingw (Linux x86_64 host): cross compiler for the Windows synctex only; not shipped.
+LLVM_MINGW_TAG=20261117
+LLVM_MINGW_SHA256_linux_amd64=e7a15a49a2ea95e9f3d8a9d0cfabe5052a4b10fb4777cc54de5a8c27b64bb701

@@ -12,7 +12,12 @@ test('the assistant proposes a change that is reviewed and accepted', async ({ p
   await request.patch(`/api/projects/${project.id}`, { headers: api, data: { main_file: 'main.tex' } })
   const provider = await request.put('/api/providers/test', {
     headers: api,
-    data: { kind: 'openrouter', name: 'Test', api_key: 'test', base_url: 'http://127.0.0.1:18091/api/v1' },
+    data: {
+      kind: 'openrouter',
+      name: 'Test',
+      api_key: 'test',
+      base_url: `http://127.0.0.1:${process.env.REFRACT_E2E_MODEL_PORT || 18091}/api/v1`,
+    },
   })
   expect(provider.ok()).toBeTruthy()
 
