@@ -6,6 +6,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var root: RootViewController!
     private var window: NSWindow!
     private var quitting = false
+    /// A restart was asked for: only then is "stopping" the first half of one.
+    private var restarting = false
     private let portKey = "serverPort"
     /// `REFRACT_APP_DEFAULTS_SUITE` names a separate UserDefaults suite (scratch runs and tests).
     private static let defaults: UserDefaults = {
@@ -34,7 +36,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         supervisor.preferredPort = saved > 0 ? saved : nil
 
         root = RootViewController(
-            restart: { [weak self] in self?.supervisor.restart() },
+            restart: { [weak self] in
+                self?.restarting = true
+                self?.supervisor.restart()
+            },
             showLogs: { NSWorkspace.shared.activateFileViewerSelecting([AppLog.store.file]) },
             reinstall: { NSWorkspace.shared.open(URL(string: "https://github.com/ponytojas/Refract/releases/latest")!) })
         window = NSWindow(contentViewController: root)
@@ -67,9 +72,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !quitting else { return }
         switch state {
         case .idle, .starting:
+            restarting = false
             root.showLoading(L("loading.starting", "Starting Refract…"))
         case .stopping, .stopped:
-            root.showLoading(L("loading.restarting", "Restarting Refract…"))
+            // A stop that isn't a restart (a damaged install) goes on to its own view.
+            if restarting { root.showLoading(L("loading.restarting", "Restarting Refract…")) }
         case .ready(let url, let owns):
             if owns, let port = url.port {
                 Self.defaults.set(port, forKey: portKey)
@@ -120,6 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 alert.addButton(withTitle: L("quit.unsaved.quit", "Quit Anyway"))
                 if alert.runModal() == .alertFirstButtonReturn {
                     quitting = false
+                    apply(supervisor.state)
                     NSApp.reply(toApplicationShouldTerminate: false)
                     return
                 }
