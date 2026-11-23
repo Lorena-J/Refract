@@ -233,12 +233,19 @@ type Activity struct {
 	Retrying   bool   `json:"retrying"`   // the last fetch failed and Tectonic is trying again
 }
 
-// Activity returns what key's compile is doing; idle when none runs.
+// Activity returns what key's compile is doing; idle when none runs. A
+// download that started longer than downloadQuiet ago is over: TeX is
+// compiling again (Tectonic announces downloads, not their end), so the chip
+// doesn't keep naming the last file for the rest of a long compile.
 func (r *Runner) Activity(key string) Activity {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if a := r.act[key]; a != nil {
-		return a.Activity
+		act := a.Activity
+		if act.State == "downloading" && time.Since(a.lastDownload) >= downloadQuiet {
+			act.State, act.File = "compiling", ""
+		}
+		return act
 	}
 	return Activity{State: "idle"}
 }
@@ -246,7 +253,8 @@ func (r *Runner) Activity(key string) Activity {
 // liveActivity is the activity of one compile; seen counts its distinct downloads.
 type liveActivity struct {
 	Activity
-	seen map[string]bool
+	seen         map[string]bool
+	lastDownload time.Time
 }
 
 func (r *Runner) startActivity(key string) *liveActivity {
@@ -275,6 +283,7 @@ func (r *Runner) onEvent(a *liveActivity, e Event) {
 	case Downloading:
 		a.seen[e.File] = true
 		a.State, a.File, a.Downloaded, a.Retrying = "downloading", e.File, len(a.seen), false
+		a.lastDownload = time.Now()
 	case FetchFailed:
 		a.Retrying = !e.Network
 	}

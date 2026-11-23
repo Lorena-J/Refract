@@ -210,3 +210,29 @@ func TestRunnerActivity(t *testing.T) {
 		t.Fatalf("after: %+v", got)
 	}
 }
+
+// Once the last download is over (Tectonic doesn't say when: downloadQuiet
+// after it started), the activity is compiling again, keeping the count.
+func TestRunnerActivityAfterTheDownloads(t *testing.T) {
+	defer func(q time.Duration) { downloadQuiet = q }(downloadQuiet)
+	downloadQuiet = 300 * time.Millisecond
+	bin, _ := fakeTectonic(t, "echo 'note: downloading a.sty'\nsleep 30\n")
+	dir := t.TempDir()
+	write(t, dir, "main.tex", "x")
+	r := &Runner{Compiler: &Tectonic{Bin: bin, Timeout: time.Minute}}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { r.Compile(ctx, "p", dir, "main.tex"); close(done) }()
+	defer func() { cancel(); <-done }()
+	deadline := time.Now().Add(5 * time.Second)
+	for r.Activity("p").Downloaded != 1 && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if got := r.Activity("p"); got.State != "downloading" || got.File != "a.sty" {
+		t.Fatalf("during the download: %+v", got)
+	}
+	time.Sleep(400 * time.Millisecond)
+	if got := r.Activity("p"); got.State != "compiling" || got.File != "" || got.Downloaded != 1 {
+		t.Fatalf("after the download: %+v", got)
+	}
+}
