@@ -537,7 +537,7 @@ func TestEmbeddedFailedReadinessStopsTheServer(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "Refract")
 	exe, _ := os.Executable()
 	cmd := exec.Command(exe, "--embedded")
-	cmd.Env = append(localEnv(dir), embedTokenEnv+"="+testEmbedToken, "REFRACT_TEST_NEVER_HEALTHY=1")
+	cmd.Env = append(localEnv(dir), embedTokenEnv+"="+testEmbedToken, "REFRACT_TEST_NEVER_HEALTHY=300ms")
 	var out, errOut bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errOut
 	stdin, err := cmd.StdinPipe() // open, as the app keeps it
@@ -565,6 +565,55 @@ func TestEmbeddedFailedReadinessStopsTheServer(t *testing.T) {
 	}
 	if held, err := lockHeld(dir); err != nil || held {
 		t.Errorf("lock still held: %v %v", held, err)
+	}
+}
+
+// Closing standard input before the server is ready still leaves one line.
+func TestEmbeddedStoppedBeforeReadyPrintsTheErrorLine(t *testing.T) {
+	exe, _ := os.Executable()
+	cmd := exec.Command(exe, "--embedded")
+	cmd.Env = append(localEnv(filepath.Join(t.TempDir(), "Refract")), embedTokenEnv+"="+testEmbedToken, "REFRACT_TEST_NEVER_HEALTHY=1m")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	listening := make(chan struct{})
+	go func() {
+		sc := bufio.NewScanner(stderr)
+		for sc.Scan() {
+			if strings.Contains(sc.Text(), "listening") {
+				close(listening)
+				break
+			}
+		}
+		io.Copy(io.Discard, stderr)
+	}()
+	done := make(chan struct{})
+	go func() { cmd.Wait(); close(done) }()
+	defer func() { cmd.Process.Kill(); <-done }()
+	select {
+	case <-listening:
+	case <-time.After(10 * time.Second):
+		t.Fatal("never listened")
+	}
+	stdin.Close()
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("still running after stdin closed")
+	}
+	var j errorStatus
+	if err := json.Unmarshal(out.Bytes(), &j); err != nil || j.State != stateError || !strings.Contains(j.Error, "before Refract was ready") {
+		t.Errorf("stdout %q (%v)", out.String(), err)
 	}
 }
 

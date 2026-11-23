@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -242,6 +243,7 @@ func startLocal(ctx context.Context, o localOptions) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var readyErr error // set before cancel, read after run returns
+	var readyPrinted atomic.Bool
 	var wrap func(http.Handler) http.Handler
 	if o.embedded {
 		wrap = requireEmbedToken(o.token)
@@ -276,6 +278,7 @@ func startLocal(ctx context.Context, o localOptions) error {
 			}
 			if o.embedded {
 				printJSON(o.out, instanceStatus{State: stateReady, URL: u, PID: os.Getpid(), Version: version, DataDir: dataDir, Lock: lock.f.Name()})
+				readyPrinted.Store(true)
 				return
 			}
 			fmt.Fprintf(o.out, "\nRefract is running at %s\nData folder: %s\nThere is no sign-in: only this computer can open it. Press Ctrl+C to stop.\n\n", u, dataDir)
@@ -284,6 +287,11 @@ func startLocal(ctx context.Context, o localOptions) error {
 	})
 	if err == nil && readyErr != nil {
 		return readyErr
+	}
+	if err == nil && o.embedded && !readyPrinted.Load() {
+		// Stopped (standard input closed, SIGTERM) before it answered: the
+		// parent still gets its one line.
+		return errors.New("stopped before Refract was ready")
 	}
 	return err
 }
