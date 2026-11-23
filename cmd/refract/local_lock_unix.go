@@ -25,3 +25,6 @@ func lockFile(f *os.File) (held bool, err error) {
 		}
 	}
 }
+
+// noFollow makes opening the lock file fail on a symbolic link.
+const noFollow = syscall.O_NOFOLLOW

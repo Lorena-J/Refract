@@ -28,3 +28,7 @@ func lockFile(f *os.File) (held bool, err error) {
 	}
 	return false, err
 }
+
+// noFollow is 0 on Windows, which has no such flag: openLockFile checks the
+// file with Lstat before opening it and compares the two afterwards.
+const noFollow = 0

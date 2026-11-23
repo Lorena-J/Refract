@@ -110,6 +110,7 @@ jobs:
         run: |
           go test ./internal/compile/ -run 'OpenOutput|ReadsThroughChecked' -v
           go test ./cmd/refract/ -run 'OutputDownloads' -v
-          go test ./cmd/refract/ -run 'SecondLocal|LocalStartsAfterKill|LocalDifferentFolders|LocalLock|LocalCheck|LocalStatus' -v
+      - name: One local instance per data folder
+        run: go test ./cmd/refract/ -run 'SecondLocal|LocalStartsAfterKill|LocalDifferentFolders|LocalLock|LocalCheck|LocalStatus|LocalWaits|LocalGivesUp' -v
       - name: Local secret key
         run: go test ./cmd/refract/ -run 'ResolveLocalKey' -v

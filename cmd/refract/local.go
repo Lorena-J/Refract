@@ -45,7 +45,7 @@ func runLocal(args []string) error {
 	fl := flag.NewFlagSet("refract local", flag.ContinueOnError)
 	port := fl.Int("port", 0, "port to listen on, on 127.0.0.1 (default 8080, or a free port when 8080 is taken)")
 	noBrowser := fl.Bool("no-browser", false, "don't open the browser")
-	status := fl.Bool("status", false, "print one JSON line telling whether a refract local is running on the data folder, and exit (0 when it is, 1 otherwise)")
+	status := fl.Bool("status", false, "print one JSON line telling whether a refract local is running on the data folder, and exit (0 when it is, 2 while it starts, 1 otherwise)")
 	fl.Usage = func() {
 		fmt.Fprint(fl.Output(), "Usage: refract local [--port N] [--no-browser] [--status]\n\n"+
 			"Runs Refract on this computer with no configuration: data in your user\n"+
@@ -149,12 +149,17 @@ func startLocal(ctx context.Context, o localOptions) error {
 			lock = l
 			break
 		}
-		switch st := checkInstance(ctx, dataDir); st.State {
+		st := checkInstance(ctx, dataDir, 0)
+		if st.State == stateStarting {
+			fmt.Fprintf(o.out, "Another refract local (pid %d) is still starting on %s; waiting for it…\n", st.PID, dataDir)
+			st = checkInstance(ctx, dataDir, instanceStartingWait)
+		}
+		switch st.State {
 		case stateRunning:
 			fmt.Fprintf(o.out, "Refract is already running at %s\nData folder: %s\n", st.URL, dataDir)
 			o.open(st.URL)
 			return nil
-		case stateUnresponsive:
+		case stateStarting, stateUnresponsive:
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
@@ -520,33 +525,26 @@ func localLogHandler(w *os.File) slog.Handler {
 	return slog.NewJSONHandler(w, nil)
 }
 
-// reportLocalStatus prints the instance status as one JSON line. It returns
-// nil only when a refract local is running and answering.
+// reportLocalStatus prints the instance status as one JSON line. It creates
+// and changes nothing. It returns nil only when a refract local is running
+// and answering, an errExit with statusExitStarting while one is starting,
+// and with 1 otherwise.
 func reportLocalStatus(ctx context.Context, out io.Writer, dataDir string) error {
-	var st instanceStatus
-	var l *instanceLock
-	held := false
-	_, err := os.Stat(filepath.Join(dataDir, localLockFile))
-	if err == nil { // without the file nobody holds the lock; don't create it
-		l, held, err = lockInstance(dataDir)
-	} else if errors.Is(err, fs.ErrNotExist) {
-		err = nil
-	}
-	switch {
-	case err != nil:
+	held, err := lockHeld(dataDir)
+	if err != nil {
 		return err
-	case held:
-		st = checkInstance(ctx, dataDir)
-	default:
-		if l != nil {
-			l.Release()
-		}
-		st = instanceStatus{State: stateStopped, DataDir: dataDir, Lock: filepath.Join(dataDir, localLockFile)}
+	}
+	st := instanceStatus{State: stateStopped, DataDir: dataDir, Lock: filepath.Join(dataDir, localLockFile)}
+	if held {
+		st = checkInstance(ctx, dataDir, 0)
 	}
 	b, _ := json.Marshal(st)
 	fmt.Fprintf(out, "%s\n", b)
-	if st.State != stateRunning {
-		return errExit{code: 1}
+	switch st.State {
+	case stateRunning:
+		return nil
+	case stateStarting:
+		return errExit{code: statusExitStarting}
 	}
-	return nil
+	return errExit{code: 1}
 }
