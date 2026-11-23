@@ -102,17 +102,33 @@ class PackagingTests(unittest.TestCase):
             self.assertNotIn("Depends:", control)
             contents = subprocess.check_output(["dpkg-deb", "--fsys-tarfile", str(package)])
             with tarfile.open(fileobj=io.BytesIO(contents)) as archive:
-                files = [m for m in archive.getmembers() if m.isfile()]
-                self.assertEqual({m.name for m in files}, {"./usr/bin/refract",
-                                 "./usr/share/doc/refract/copyright", "./usr/share/doc/refract/README.md"})
-                self.assertTrue(all(m.uid == 0 and m.gid == 0 for m in files))
-                # No setuid, setgid or world-writable entries.
-                self.assertFalse([m.name for m in archive.getmembers() if m.mode & 0o6002 and not m.issym()])
+                self.assert_archive_members(archive, {
+                    ".": tarfile.DIRTYPE,
+                    "./usr": tarfile.DIRTYPE,
+                    "./usr/bin": tarfile.DIRTYPE,
+                    "./usr/bin/refract": tarfile.REGTYPE,
+                    "./usr/share": tarfile.DIRTYPE,
+                    "./usr/share/doc": tarfile.DIRTYPE,
+                    "./usr/share/doc/refract": tarfile.DIRTYPE,
+                    "./usr/share/doc/refract/copyright": tarfile.REGTYPE,
+                    "./usr/share/doc/refract/README.md": tarfile.REGTYPE,
+                })
                 self.assertEqual(archive.getmember("./usr/bin/refract").mode, 0o755)
                 self.assertEqual(archive.extractfile("./usr/bin/refract").read(), binary.read_bytes())
             scripts = subprocess.check_output(["dpkg-deb", "--ctrl-tarfile", str(package)])
             with tarfile.open(fileobj=io.BytesIO(scripts)) as archive:
-                self.assertEqual([m.name for m in archive.getmembers() if m.isfile()], ["./control"])
+                self.assert_archive_members(archive, {
+                    ".": tarfile.DIRTYPE,
+                    "./control": tarfile.REGTYPE,
+                })
+
+    def assert_archive_members(self, archive, expected):
+        members = archive.getmembers()
+        self.assertCountEqual([(member.name, member.type) for member in members], expected.items())
+        for member in members:
+            self.assertEqual((member.uid, member.gid), (0, 0), member.name)
+            # No setuid, setgid or world-writable entries.
+            self.assertFalse(member.mode & 0o6002, member.name)
 
     def test_policy_documented_and_no_install_time_side_effects(self):
         policy = (ROOT / "packaging/README.md").read_text()
@@ -135,6 +151,40 @@ class PackagingTests(unittest.TestCase):
         for formula in (self.output / "homebrew").rglob("*.rb"):
             for marker in ("post_install", "postflight", "systemctl", "launchctl"):
                 self.assertNotIn(marker, formula.read_text())
+
+    @unittest.skipUnless(shutil.which("ruby"), "Formula install verification needs Ruby")
+    def test_formula_install_only_installs_binary(self):
+        self.archives_for("v1.2.3")
+        generate("v1.2.3", self.archives, self.output)
+        formula = self.output / "homebrew/refract.rb"
+        for existing_data in (False, True):
+            with self.subTest(existing_data=existing_data):
+                sandbox = self.root / f"formula-{existing_data}"
+                home, var, prefix, source = (sandbox / name for name in ("home", "var", "prefix", "source"))
+                for directory in (home, var, prefix, source):
+                    directory.mkdir(parents=True)
+                (source / "refract").write_bytes(b"formula binary\n")
+                (home / "keep").write_bytes(b"home data\n")
+                if existing_data:
+                    (var / "refract").mkdir()
+                    (var / "refract/data").write_bytes(b"existing data\n")
+                env = {**os.environ, "HOME": str(home), "TEST_VAR": str(var), "TEST_PREFIX": str(prefix)}
+                result = subprocess.run(["ruby", str(ROOT / "scripts/formula_install_fixture.rb"), str(formula)],
+                                        cwd=source, env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                expected = {
+                    "home": None, "home/keep": b"home data\n", "var": None,
+                    "prefix": None, "prefix/bin": None, "prefix/bin/refract": b"formula binary\n",
+                    "source": None, "source/refract": b"formula binary\n",
+                }
+                if existing_data:
+                    expected.update({"var/refract": None, "var/refract/data": b"existing data\n"})
+                actual = {}
+                for path in sandbox.rglob("*"):
+                    self.assertFalse(path.is_symlink(), path)
+                    self.assertTrue(path.is_dir() or path.is_file(), path)
+                    actual[path.relative_to(sandbox).as_posix()] = None if path.is_dir() else path.read_bytes()
+                self.assertEqual(actual, expected)
 
     def prepare_bundle(self, dest):
         """Runs prepare-bundle.sh with a fake curl (serves a tiny bundle) and tectonic."""
@@ -272,6 +322,24 @@ class ToolsArchiveTests(unittest.TestCase):
         (stage / "tools-manifest.json").write_text(json.dumps(manifest))
         problems = tools_archive.check(self.pack(stage, "linux", "arm64"), "linux", "arm64")
         self.assertIn("manifest tectonic does not match packaging/tools.lock", problems)
+
+    def test_every_file_is_checked_against_the_manifest(self):
+        stage = self.stage("darwin", "arm64")
+        helper = stage / "git/share/git-core/templates/x"  # not a required path
+        helper.write_text("replaced")
+        (stage / "extra").write_text("added after the build")
+        (stage / "licenses/zlib/LICENSE").unlink()
+        problems = tools_archive.check(self.pack(stage, "darwin", "arm64"), "darwin", "arm64")
+        self.assertIn("manifest checksum of git/share/git-core/templates/x does not match", problems)
+        self.assertIn("extra is not in the manifest", problems)
+        self.assertIn("manifest lists licenses/zlib/LICENSE, which is not in the archive", problems)
+
+    def test_workflow_builds_every_target(self):
+        workflow = (ROOT / ".github/workflows/tools.yml").read_text()
+        for job in ("build", "smoke"):
+            section = workflow.split(f"\n  {job}:\n", 1)[1].split("\n  # ", 1)[0]
+            pairs = set(re.findall(r"os: (\w+), arch: (\w+)", section))
+            self.assertEqual(pairs, set(tools_archive.TARGETS), job)
 
     def test_non_executable_tool_fails(self):
         stage = self.stage("linux", "amd64")

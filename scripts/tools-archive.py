@@ -223,9 +223,17 @@ def check(archive, os_name, arch):
                 problems.append(f"manifest lacks {name}")
             elif got != component:
                 problems.append(f"manifest {name} does not match packaging/tools.lock")
-        for rel in files:
-            if rel != MANIFEST and rel in found and data.get("files", {}).get(rel) != found[rel][0]:
+        # Every file, not only the required ones: nothing changed, added or dropped after the build.
+        listed = data.get("files", {})
+        for rel, (digest, _) in sorted(found.items()):
+            if rel == MANIFEST:
+                continue
+            if rel not in listed:
+                problems.append(f"{rel} is not in the manifest")
+            elif listed[rel] != digest:
                 problems.append(f"manifest checksum of {rel} does not match")
+        for rel in sorted(set(listed) - set(found)):
+            problems.append(f"manifest lists {rel}, which is not in the archive")
     return problems
 
 
