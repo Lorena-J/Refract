@@ -55,7 +55,8 @@ public enum DownloadName {
     /// characters (an RTL override can disguise "fdp.exe" as "exe.pdf"), never empty or hidden,
     /// at most 255 bytes with its extension kept. The server's names come from project names.
     public static func sanitize(_ suggested: String, fallback: String = "download") -> String {
-        let last = suggested.split(whereSeparator: { $0 == "/" || $0 == "\\" || $0 == ":" }).last.map(String.init) ?? ""
+        // Separators become "-" so "Thesis: Draft 2.zip" keeps its whole name.
+        let last = String(suggested.map { $0 == "/" || $0 == "\\" || $0 == ":" ? "-" : $0 })
         // controlCharacters is Cc and Cf, so bidi overrides and zero-width characters go too.
         let cleaned = String(last.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) })
             .trimmingCharacters(in: .whitespaces)

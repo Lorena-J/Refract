@@ -47,8 +47,9 @@ final class LinkPolicyTests: XCTestCase {
 
     func testDownloadNames() {
         XCTAssertEqual(DownloadName.sanitize("My thesis.zip"), "My thesis.zip")
-        XCTAssertEqual(DownloadName.sanitize("../../etc/passwd"), "passwd")
-        XCTAssertEqual(DownloadName.sanitize("a:b\\c.pdf"), "c.pdf")
+        XCTAssertEqual(DownloadName.sanitize("../../etc/passwd"), "-..-etc-passwd")
+        XCTAssertEqual(DownloadName.sanitize("a:b\\c.pdf"), "a-b-c.pdf")
+        XCTAssertEqual(DownloadName.sanitize("Thesis: Draft 2.zip"), "Thesis- Draft 2.zip")
         XCTAssertEqual(DownloadName.sanitize(""), "download")
         XCTAssertEqual(DownloadName.sanitize("..."), "download")
         XCTAssertEqual(DownloadName.sanitize(".hidden"), "hidden")
