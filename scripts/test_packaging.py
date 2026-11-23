@@ -317,6 +317,24 @@ class ToolsArchiveTests(unittest.TestCase):
         problems = tools_archive.check(self.pack(stage, "linux", "arm64"), "linux", "arm64")
         self.assertIn("manifest tectonic does not match packaging/tools.lock", problems)
 
+    def test_every_file_is_checked_against_the_manifest(self):
+        stage = self.stage("darwin", "arm64")
+        helper = stage / "git/share/git-core/templates/x"  # not a required path
+        helper.write_text("replaced")
+        (stage / "extra").write_text("added after the build")
+        (stage / "licenses/zlib/LICENSE").unlink()
+        problems = tools_archive.check(self.pack(stage, "darwin", "arm64"), "darwin", "arm64")
+        self.assertIn("manifest checksum of git/share/git-core/templates/x does not match", problems)
+        self.assertIn("extra is not in the manifest", problems)
+        self.assertIn("manifest lists licenses/zlib/LICENSE, which is not in the archive", problems)
+
+    def test_workflow_builds_every_target(self):
+        workflow = (ROOT / ".github/workflows/tools.yml").read_text()
+        for job in ("build", "smoke"):
+            section = workflow.split(f"\n  {job}:\n", 1)[1].split("\n  # ", 1)[0]
+            pairs = set(re.findall(r"os: (\w+), arch: (\w+)", section))
+            self.assertEqual(pairs, set(tools_archive.TARGETS), job)
+
     def test_non_executable_tool_fails(self):
         stage = self.stage("linux", "amd64")
         (stage / "synctex").chmod(0o644)

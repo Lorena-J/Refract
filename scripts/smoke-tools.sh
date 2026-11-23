@@ -87,5 +87,11 @@ g gc -q
 [ "$(g --exec-path)" = "$WANT_EXEC" ] || fail "git exec path is $(g --exec-path), not $WANT_EXEC"
 # HTTPS remotes (Refract's push and pull) work with the bundled runtime alone:
 # macOS's libcurl and certificates, MinGit's Schannel libcurl and the Windows store.
-g ls-remote https://github.com/git/git HEAD | grep -q 'HEAD$' || fail "git cannot read an HTTPS remote"
+# Retried, so a passing network hiccup isn't mistaken for a broken runtime.
+remote_ok=
+for attempt in 1 2 3; do
+  if g ls-remote https://github.com/git/git HEAD | grep -q 'HEAD$'; then remote_ok=1; break; fi
+  [ "$attempt" = 3 ] || sleep $((attempt * 5))
+done
+[ -n "$remote_ok" ] || fail "git cannot read an HTTPS remote (3 attempts)"
 echo "smoke: ok ($OS)"

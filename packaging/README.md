@@ -107,6 +107,13 @@ is in the Tectonic source tag recorded in the manifest. Installers that ship the
 keep `licenses/` and the manifest and show them (for example in an About or Licences screen).
 Review the Windows and Tectonic notices again when bumping a pin.
 
+**Security updates are manual.** The libraries compiled into the tools (zlib in SyncTeX; the
+Rust crates in Tectonic and ripgrep; Git and MinGit's components) are invisible to image and
+package scanners, and nothing upgrades them: the release ships exactly what `tools.lock` pins.
+Watch the security advisories of zlib, Git and Git for Windows, Tectonic and ripgrep, and bump
+the pin (version and checksums in `tools.lock`) when one affects a bundled tool; each archive's
+`tools-manifest.json` records which versions a release shipped.
+
 **Gaps.** `windows-arm64` has no tools archive: upstream Tectonic publishes no Windows arm64
 build. The release attaches `refract-tools-<tag>-gaps.txt` listing it, and no Windows arm64
 desktop installer may be advertised as complete until Tectonic runs there. The macOS amd64
