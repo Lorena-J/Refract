@@ -13,6 +13,10 @@ Notable changes to Refract. The format follows [Keep a Changelog](https://keepac
 
 - `refract local` keeps its secret key in the system credential store (macOS Keychain, Secret Service on Linux, Windows Credential Manager), one item per data folder, and falls back to an owner-only `secret.key` in the data folder when no store can be reached, saying so in the log. An existing `secret.key` is kept. If the key is gone from the store for a data folder that was used before, Refract logs that stored credentials can't be read instead of failing.
 
+### Fixed
+
+- A compile that produces the PDF despite TeX errors now saves a version in the history too. Documents imported from Prism often keep a recoverable error on every build, and until now their history never grew.
+
 ## [0.2.0] - 2026-11-20
 
 ### Added
