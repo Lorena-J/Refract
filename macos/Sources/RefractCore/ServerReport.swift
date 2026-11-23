@@ -16,7 +16,7 @@ public enum ServerReport: Equatable {
     /// Another `refract local` holds the data folder. With `embedded` it is another app
     /// launch's instance (its token is unknown here), otherwise one started from a terminal.
     case running(ServerInfo)
-    /// The lock is held but nothing answers.
+    /// The lock is held but nothing answers (another instance may still be starting: state "starting").
     case unresponsive(ServerInfo)
     /// Starting failed; the message says what to fix.
     case error(String)
@@ -43,7 +43,7 @@ public func parseServerReport(_ line: String) throws -> ServerReport {
     case "ready", "running":
         guard info.url != nil else { throw ServerReportError.missingURL(state) }
         return state == "ready" ? .ready(info) : .running(info)
-    case "unresponsive":
+    case "unresponsive", "starting":
         return .unresponsive(info)
     case "error":
         return .error(object["error"] as? String ?? "")
