@@ -7,9 +7,12 @@ final class WebViewController: NSViewController, WKNavigationDelegate, WKUIDeleg
     private let origin: URL
     private let webView: WKWebView
     private var loaded = false
+    /// Called when the page can't be shown safely (the origin rules didn't compile).
+    private let failed: (String) -> Void
 
-    init(origin: URL) {
+    init(origin: URL, failed: @escaping (String) -> Void) {
         self.origin = origin
+        self.failed = failed
         let config = WKWebViewConfiguration()
         // The default store keeps what the web app saves in the browser (its settings), per
         // origin; the app asks for the same port every launch so the origin stays the same.
@@ -28,6 +31,20 @@ final class WebViewController: NSViewController, WKNavigationDelegate, WKUIDeleg
     /// first request already carries it. token is nil for a terminal instance, which has none.
     func load(token: String?) {
         Task { @MainActor in
+            // Nothing outside the origin loads, subresources included: the cookie would go
+            // with it. Without the rules nothing loads at all.
+            guard let rules = originOnlyRules(origin: origin) else {
+                return refuse("no port in \(origin.absoluteString)")
+            }
+            do {
+                let list = try await WKContentRuleListStore.default().compileContentRuleList(
+                    forIdentifier: "refract-origin-only", encodedContentRuleList: rules)
+                guard let list else { return refuse("the origin rules compiled to nothing") }
+                webView.configuration.userContentController.removeAllContentRuleLists()
+                webView.configuration.userContentController.add(list)
+            } catch {
+                return refuse("the origin rules don't compile: \(error.localizedDescription)")
+            }
             let store = webView.configuration.websiteDataStore.httpCookieStore
             // Cookies ignore ports: drop the token of an earlier launch so that it never
             // goes to another server on this host (a terminal instance gets none).
@@ -47,6 +64,11 @@ final class WebViewController: NSViewController, WKNavigationDelegate, WKUIDeleg
             }
             webView.load(URLRequest(url: origin))
         }
+    }
+
+    private func refuse(_ reason: String) {
+        AppLog.note("not loading the web app: \(reason)")
+        failed(reason)
     }
 
     /// Calls window.refractFlush(): true when everything typed is saved, false when some

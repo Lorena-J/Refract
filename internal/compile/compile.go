@@ -4,7 +4,6 @@ package compile
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"errors"
 	"io"
@@ -102,17 +101,21 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 	}
 
 	workDir := filepath.Join(sourceDir, filepath.FromSlash(path.Dir(mainFile)))
+	bin, err := t.bin()
+	if err != nil {
+		return nil, err
+	}
 	var cmd *exec.Cmd
 	if t.Sandbox != nil {
 		cmd, err = t.Sandbox.command(runCtx, sandboxJob{
-			Tectonic: t.bin(), Args: args, Bundle: t.Bundle, Cache: t.CacheDir,
+			Tectonic: bin, Args: args, Bundle: t.Bundle, Cache: t.CacheDir,
 			Project: projectDir, OutDir: outDir, Out: sandboxDir(out), WorkDir: workDir, Timeout: t.Timeout,
 		})
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		cmd = exec.CommandContext(runCtx, t.bin(), args...)
+		cmd = exec.CommandContext(runCtx, bin, args...)
 		cmd.Dir = workDir
 		// A minimal environment: the document must not be able to \input
 		// /proc/self/environ and read secrets like REFRACT_SECRET_KEY.
@@ -126,6 +129,13 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 	var stderr limitedBuffer
 	cmd.Stderr = &stderr
 
+	// The previous build's PDF stays for the preview; this run's counts only if
+	// it created or rewrote the file (a failed retry within the same second
+	// would otherwise pass the coarse mtime check below with the old PDF).
+	prevPDF, err := statIn(out, stem+".pdf")
+	if err != nil {
+		prevPDF = nil
+	}
 	start := time.Now()
 	runErr := cmd.Run()
 	if setup != "" {
@@ -157,7 +167,7 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 
 	res.OK = runErr == nil && !hasError(res.Problems)
 	if fi, err := statIn(out, stem+".pdf"); err == nil && !fi.ModTime().Before(start.Truncate(time.Second)) && // coarse-mtime filesystems
-		!res.TimedOut && !res.Superseded {
+		changed(prevPDF, fi) && !res.TimedOut && !res.Superseded {
 		res.PDF = path.Join(BuildDir, stem+".pdf") // produced by this run, possibly with errors
 	}
 	if !res.OK && !hasError(res.Problems) {
@@ -207,6 +217,11 @@ func readIn(dir *dirHandle, name string) ([]byte, error) {
 	}
 	defer f.Close()
 	return io.ReadAll(f)
+}
+
+// changed reports whether cur is not the file prev described, unchanged.
+func changed(prev, cur os.FileInfo) bool {
+	return prev == nil || !os.SameFile(prev, cur) || !cur.ModTime().Equal(prev.ModTime()) || cur.Size() != prev.Size()
 }
 
 // statIn describes name, a file directly in dir; a symlink is refused.
@@ -295,4 +310,4 @@ func (r *Runner) Compile(ctx context.Context, key, projectDir, mainFile string) 
 }
 
 // bin is the tectonic to run: Bin, else the one internal/tools finds.
-func (t *Tectonic) bin() string { return cmp.Or(t.Bin, tools.Path("tectonic")) }
+func (t *Tectonic) bin() (string, error) { return tools.Resolve("tectonic", t.Bin) }

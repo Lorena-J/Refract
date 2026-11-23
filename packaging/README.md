@@ -29,7 +29,7 @@ WinGet's nested executable paths depend on that layout.
   recorded with the release. #55 implements that record.
 - A per-user service definition that is not enabled: a Homebrew `service` block for
   `brew services`, or a systemd user unit in `/usr/lib/systemd/user/`. It runs
-  `refract local` as the person, and only once they start it.
+  `refract local --no-browser` as the person, and only once they start it.
 
 Today's packages (Homebrew formula, WinGet, `.deb`, portable archives) contain only the
 binary and documentation; #58–#60 add the bundled tools to them.
@@ -38,8 +38,8 @@ binary and documentation; #58–#60 add the bundled tools to them.
 
 - Enable or start a service, or install a system-wide one. A per-user service runs only
   when the person starts it (`refract service install` (#57), `brew services start` or
-  `systemctl --user enable`), never from an installer, maintainer script, Homebrew
-  `post_install` or cask `postflight`.
+  `systemctl --user enable --now refract.service`), never from an installer,
+  maintainer script, Homebrew `post_install` or cask `postflight`.
 - Create keys, databases, projects or any data folder at install time. `refract local`
   creates them on first run, in per-user locations.
 - Store data, the key or caches inside the application directory: they live in
@@ -112,6 +112,13 @@ many Rust crates and TeX components; its `LICENSE` points to their licences, and
 is in the Tectonic source tag recorded in the manifest. Installers that ship the archive must
 keep `licenses/` and the manifest and show them (for example in an About or Licences screen).
 Review the Windows and Tectonic notices again when bumping a pin.
+
+**Security updates are manual.** The libraries compiled into the tools (zlib in SyncTeX; the
+Rust crates in Tectonic and ripgrep; Git and MinGit's components) are invisible to image and
+package scanners, and nothing upgrades them: the release ships exactly what `tools.lock` pins.
+Watch the security advisories of zlib, Git and Git for Windows, Tectonic and ripgrep, and bump
+the pin (version and checksums in `tools.lock`) when one affects a bundled tool; each archive's
+`tools-manifest.json` records which versions a release shipped.
 
 **Gaps.** `windows-arm64` has no tools archive: upstream Tectonic publishes no Windows arm64
 build. The release attaches `refract-tools-<tag>-gaps.txt` listing it, and no Windows arm64
@@ -231,6 +238,7 @@ release manifests for the community package.
 python3 -m unittest discover -s scripts -p 'test_*.py' -v
 ```
 
-The Debian payload test needs `dpkg-deb`; it runs in Linux CI and skips if the tool
-is absent locally. `make test` also runs these tests. No tests open the OAuth
-browser or read real credentials.
+The Debian payload test uses `dpkg-deb`. The Homebrew formula test uses Ruby to
+run the generated install method against temporary paths. Both tests run in Linux
+CI and skip locally if their tool is missing. `make test` also runs these tests.
+No tests open the OAuth browser or read real credentials.

@@ -66,6 +66,12 @@ used last (`--port`) and, if it is taken, goes back to a free one.
   process group and inherits nothing else from the app.
 - `ready`: the token goes into the web view's cookie store (`refract_embed`, host only, HttpOnly,
   SameSite=Strict) and the page loads. `running` from a terminal: its URL is loaded as it is.
+  Either way, before the first load the web view gets a `WKContentRuleList` (`originOnlyRules` in
+  RefractCore) that blocks every request outside that exact origin (scheme, host and port),
+  subresources included, and allows only `blob:`, `data:` and `about:` besides: a host-only cookie
+  goes to every port of the host, so this is what keeps the token away from other local services
+  (project files are served under a `sandbox` CSP, which doesn't restrict loads). If the rules
+  don't compile, nothing loads and the error view shows.
   `running` with `embedded`, `unresponsive`, `error` or no line: the error view.
 - Quit (also `osascript -e 'quit app "Refract"'`): `window.refractFlush()`; if it answers
   false the person is asked; then standard input is closed, a progress view shows after one second,
