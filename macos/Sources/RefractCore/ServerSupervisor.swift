@@ -403,6 +403,7 @@ public final class ServerSupervisor {
             "REFRACT_DATA_DIR", "REFRACT_SECRET_KEY", "REFRACT_AUTH", "REFRACT_MODE", "REFRACT_PROFILE",
             "REFRACT_EMBED_TOKEN", "REFRACT_ADDR",
         ]
-        return env.filter { !blocked.contains($0.key) }
+        // REFRACT_APP_* configure the app itself, not the server.
+        return env.filter { !blocked.contains($0.key) && !$0.key.hasPrefix("REFRACT_APP_") }
     }
 }
