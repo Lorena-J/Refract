@@ -37,7 +37,13 @@ if [ "$RELEASE" = 1 ] && /usr/libexec/PlistBuddy -c 'Print :RefractAllowsUpdateF
 fi
 if [ -n "$KEY" ]; then
   [ "$(printf '%s' "$KEY" | base64 -D 2>/dev/null | wc -c | tr -d ' ')" = 32 ] || fail "SUPublicEDKey is not a 32-byte Ed25519 public key"
-  case "$FEED" in https://*) ;; *) fail "SUFeedURL must be an https URL, got: ${FEED:-nothing}" ;; esac
+  case "$FEED" in
+    https://*) ;;
+    # A test build (REFRACT_UPDATE_FEED_BASE, macos/README.md) may serve its feed from this computer.
+    http://127.0.0.1[:/]*|http://localhost[:/]*|"http://[::1]"[:/]*)
+      [ "$RELEASE" = 1 ] && fail "SUFeedURL must be an https URL in a release, got: $FEED" ;;
+    *) fail "SUFeedURL must be an https URL, got: ${FEED:-nothing}" ;;
+  esac
   echo "ok: updates on, feed $FEED"
 elif [ "$RELEASE" = 1 ]; then
   fail "no SUPublicEDKey: a release can't verify updates (set REFRACT_SPARKLE_PUBLIC_KEY)"
