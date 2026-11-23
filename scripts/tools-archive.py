@@ -18,6 +18,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 LOCK = ROOT / "packaging" / "tools.lock"
+# The licence files the TeX seed needs (scripts/tex-seed.py writes and checks it).
+SEED_LICENSES = ROOT / "packaging" / "tex-seed" / "licenses.txt"
 MANIFEST = "tools-manifest.json"
 TARGETS = [
     ("darwin", "arm64"),
@@ -234,6 +236,32 @@ def check(archive, os_name, arch):
                 problems.append(f"manifest checksum of {rel} does not match")
         for rel in sorted(set(listed) - set(found)):
             problems.append(f"manifest lists {rel}, which is not in the archive")
+    problems += check_seed_licenses(archive, found)
+    return problems
+
+
+def check_seed_licenses(archive, found):
+    """The licence files the seed needs (seed.json "licenses", which must equal the committed
+    packaging/tex-seed/licenses.txt) are in the archive with those checksums."""
+    if "tex-seed/seed.json" not in found:
+        return []  # reported as missing above
+    with tarfile_or_zip_member(archive, "tex-seed/seed.json") as handle:
+        listed = json.load(handle).get("licenses")
+    if not isinstance(listed, dict) or not listed:
+        return ["tex-seed/seed.json lists no licence files"]
+    committed = {}
+    for line in SEED_LICENSES.read_text().splitlines():
+        if line.strip():
+            digest, _, rel = line.partition("  ")
+            committed[rel] = digest
+    problems = []
+    if listed != committed:
+        problems.append("tex-seed/seed.json licence files differ from packaging/tex-seed/licenses.txt")
+    for rel, digest in sorted(listed.items()):
+        if rel not in found:
+            problems.append(f"missing {rel} (a licence of the TeX seed)")
+        elif found[rel][0] != digest:
+            problems.append(f"{rel} does not match its checksum in tex-seed/seed.json")
     return problems
 
 
