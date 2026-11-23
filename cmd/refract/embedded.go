@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"strings"
 	"sync/atomic"
+	"time"
 )
 
 // Embedding contract (refract local --embedded), for the desktop app.
@@ -32,11 +33,17 @@ const (
 
 const embedTokenMin = 16
 
+// embedTokenWait bounds the wait for the token on --token-fd: a launcher
+// that keeps its end of the pipe open must not leave Refract waiting forever.
+var embedTokenWait = 10 * time.Second
+
 // readEmbedToken takes the per-launch token from the inherited file descriptor
 // fd (when fd >= 0) or from REFRACT_EMBED_TOKEN, and removes the variable from
 // the environment either way, so programs started later (tectonic, git) never
-// see it. It is never logged: errors don't contain it.
-func readEmbedToken(fd int, getenv func(string) string, unsetenv func(string) error) (string, error) {
+// see it. Reading the descriptor gives up after embedTokenWait or when ctx
+// ends (SIGTERM, or standard input closing). It is never logged: errors don't
+// contain it.
+func readEmbedToken(ctx context.Context, fd int, getenv func(string) string, unsetenv func(string) error) (string, error) {
 	fromEnv := getenv(embedTokenEnv)
 	unsetenv(embedTokenEnv)
 	tok := fromEnv
@@ -53,12 +60,31 @@ func readEmbedToken(fd int, getenv func(string) string, unsetenv func(string) er
 		if f == nil {
 			return "", fmt.Errorf("--token-fd %d is not an open file descriptor", fd)
 		}
-		b, err := io.ReadAll(io.LimitReader(f, 1<<10))
-		f.Close()
-		if err != nil {
-			return "", fmt.Errorf("reading the token from --token-fd %d: %w", fd, err)
+		type read struct {
+			b   []byte
+			err error
 		}
-		tok = string(b)
+		done := make(chan read, 1)
+		go func() {
+			// A blocked read can't be interrupted portably; when the wait
+			// ends first the process is about to exit with an error anyway.
+			b, err := io.ReadAll(io.LimitReader(f, 1<<10))
+			f.Close()
+			done <- read{b, err}
+		}()
+		timer := time.NewTimer(embedTokenWait)
+		defer timer.Stop()
+		select {
+		case r := <-done:
+			if r.err != nil {
+				return "", fmt.Errorf("reading the token from --token-fd %d: %w", fd, r.err)
+			}
+			tok = string(r.b)
+		case <-timer.C:
+			return "", fmt.Errorf("no token on --token-fd %d after %s: write it and close your end of the pipe", fd, embedTokenWait)
+		case <-ctx.Done():
+			return "", fmt.Errorf("stopped while waiting for the token on --token-fd %d", fd)
+		}
 	}
 	tok = strings.TrimSpace(tok)
 	if tok == "" {

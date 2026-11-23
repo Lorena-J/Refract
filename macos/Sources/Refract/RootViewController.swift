@@ -50,7 +50,9 @@ final class RootViewController: NSViewController {
 
     func showWeb(url: URL, token: String?) {
         if web != nil, current === web?.view { return }
-        let controller = WebViewController(origin: url)
+        let controller = WebViewController(origin: url) { [weak self] reason in
+            self?.showError(.startFailed(reason))
+        }
         web = controller
         addChild(controller)
         show(controller.view)
