@@ -103,3 +103,5 @@ jobs:
         run: |
           go test ./internal/compile/ -run 'OpenOutput|ReadsThroughChecked' -v
           go test ./cmd/refract/ -run 'OutputDownloads' -v
+      - name: Local secret key
+        run: go test ./cmd/refract/ -run 'ResolveLocalKey' -v
