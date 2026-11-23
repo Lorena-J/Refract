@@ -86,9 +86,12 @@ case "$OS" in
         cat "$probe/log" >&2
         fail "the firewall rule doesn't block tectonic.exe: it compiled with an empty cache"
       fi
-      # Why it failed, in the log: a network error, not some other problem.
-      echo "smoke-tex-seed: probe output (expected to fail on the network):"
-      tail -n 5 "$probe/log" | sed 's/^/  /'
+      # It must have failed on the network (Tectonic: "this bundle isn't cached, and we couldn't
+      # get it from the internet. Error: error sending request for url ..."), not on something else.
+      if ! grep -q "couldn't get it from the internet" "$probe/log"; then
+        cat "$probe/log" >&2
+        fail "the network probe failed, but not on the network: can't tell whether tectonic.exe is blocked"
+      fi
       NET="firewall rule on tectonic.exe, probed (an empty cache can't reach the bundle)"
     fi
     ;;
