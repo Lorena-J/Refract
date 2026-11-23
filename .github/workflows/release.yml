@@ -151,10 +151,23 @@ jobs:
       # architecture, each pointing at an archive this release attaches. A feed that points anywhere
       # else would send people's apps to the wrong file, so it stops here. Feeds are looked up at
       # releases/latest/download/appcast-<arch>.xml: publish them as assets of a full (not pre-)release.
+      # A full release that attaches the app must carry both feeds (checked below); until the app is
+      # part of every release (#71), one without the app has none and is allowed.
       - name: Check the appcasts
         run: |
           set -- dist/appcast-*.xml
-          [ -e "$1" ] || { echo "no appcasts in this release"; exit 0; }
+          if [ ! -e "$1" ]; then
+            # Installed apps read releases/latest/download/appcast-<arch>.xml: a full release that
+            # carries the app (Refract-<arch>.zip) but no appcast would become "latest" and break
+            # every installed app's feed (404). Only a prerelease (a '-' in the tag) may go without.
+            case "$GITHUB_REF_NAME" in
+              *-*) echo "no appcasts in this prerelease"; exit 0 ;;
+            esac
+            if ls dist/Refract-arm64.zip dist/Refract-amd64.zip >/dev/null 2>&1; then
+              echo "::error::this release attaches the macOS app but no appcast-<arch>.xml: as the latest release it would break every installed app's update feed"; exit 1
+            fi
+            echo "no appcasts in this release (it has no macOS app)"; exit 0
+          fi
           for arch in arm64 amd64; do
             [ -f "dist/appcast-$arch.xml" ] || { echo "::error::appcast-$arch.xml is missing: an app of that architecture could never update"; exit 1; }
           done
