@@ -133,16 +133,18 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 	cmd.WaitDelay = 2 * time.Second
 	var stderr limitedBuffer
 	var dl downloadState
-	var dlMu sync.Mutex
+	var dlMu sync.Mutex // one event at a time, reporter included
 	report := reporterFrom(ctx)
+	stopped := false
 	onEvent := func(e Event) {
 		dlMu.Lock()
+		defer dlMu.Unlock()
 		dl.add(e, time.Now())
-		dlMu.Unlock()
 		if report != nil {
 			report(e)
 		}
-		if e.stops() {
+		if e.stops() && !dl.finishing {
+			stopped = true
 			stopRun() // before xdvipdfmx: the previous good PDF stays
 		}
 	}
@@ -165,7 +167,7 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 	po.close()
 	pw.close()
 	dlMu.Lock()
-	downloads := dl
+	downloads, wasStopped := dl, stopped
 	dlMu.Unlock()
 	if setup != "" {
 		if err := restoreSyncPaths(out, stem+".synctex.gz", sourceDir, projectDir); err != nil {
@@ -174,8 +176,13 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 	}
 	res := &Result{DurationMS: time.Since(start).Milliseconds(), Output: stderr.String()}
 	res.Downloads = Downloads{Missing: []string{}, Offline: downloads.offline}
+	// A download cut off by the time limit, a newer compile or the early stop didn't finish.
+	cutOff := ""
+	if wasStopped || ctx.Err() != nil || runCtx.Err() != nil {
+		cutOff = downloads.inProgress()
+	}
 	for f := range downloads.fetched {
-		if !slices.Contains(downloads.missing, f) {
+		if f != cutOff && !slices.Contains(downloads.missing, f) {
 			res.Downloads.Fetched++
 		}
 	}
@@ -203,7 +210,7 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 		res.Problems = append(res.Problems, parseLog(string(log))...)
 	}
 	if res.Downloads.Offline {
-		res.Problems = dropDownloadNoise(res.Problems)
+		res.Problems = dropDownloadNoise(res.Problems, res.Downloads.Missing)
 		res.Problems = append([]Problem{{Severity: "error", Kind: "download", Message: downloadMessage(res.Downloads.Missing)}}, res.Problems...)
 	}
 	locate(res.Problems, projectDir, mainFile)
@@ -364,7 +371,11 @@ func (r *Runner) Compile(ctx context.Context, key, projectDir, mainFile string) 
 	if ctx.Err() != nil { // superseded while waiting for the previous build
 		return &Result{Superseded: true, Problems: []Problem{}}, nil
 	}
-	act := r.startActivity(key)
+	state := "compiling"
+	if _, queued := r.Compiler.(*Queue); queued {
+		state = "queued" // until the queue grants a slot
+	}
+	act := r.startActivity(key, state)
 	defer r.endActivity(key, act)
 	ctx = WithReporter(ctx, func(e Event) { r.onEvent(act, e) })
 	return r.Compiler.Compile(ctx, projectDir, mainFile)
