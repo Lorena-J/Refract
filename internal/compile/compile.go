@@ -129,6 +129,13 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 	var stderr limitedBuffer
 	cmd.Stderr = &stderr
 
+	// The previous build's PDF stays for the preview; this run's counts only if
+	// it created or rewrote the file (a failed retry within the same second
+	// would otherwise pass the coarse mtime check below with the old PDF).
+	prevPDF, err := statIn(out, stem+".pdf")
+	if err != nil {
+		prevPDF = nil
+	}
 	start := time.Now()
 	runErr := cmd.Run()
 	if setup != "" {
@@ -160,7 +167,7 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 
 	res.OK = runErr == nil && !hasError(res.Problems)
 	if fi, err := statIn(out, stem+".pdf"); err == nil && !fi.ModTime().Before(start.Truncate(time.Second)) && // coarse-mtime filesystems
-		!res.TimedOut && !res.Superseded {
+		changed(prevPDF, fi) && !res.TimedOut && !res.Superseded {
 		res.PDF = path.Join(BuildDir, stem+".pdf") // produced by this run, possibly with errors
 	}
 	if !res.OK && !hasError(res.Problems) {
@@ -210,6 +217,11 @@ func readIn(dir *dirHandle, name string) ([]byte, error) {
 	}
 	defer f.Close()
 	return io.ReadAll(f)
+}
+
+// changed reports whether cur is not the file prev described, unchanged.
+func changed(prev, cur os.FileInfo) bool {
+	return prev == nil || !os.SameFile(prev, cur) || !cur.ModTime().Equal(prev.ModTime()) || cur.Size() != prev.Size()
 }
 
 // statIn describes name, a file directly in dir; a symlink is refused.

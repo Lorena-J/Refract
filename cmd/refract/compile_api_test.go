@@ -74,6 +74,7 @@ func TestCompileCheckpointsPDFWithErrors(t *testing.T) {
 		{"clean", compile.Result{OK: true, PDF: ".refract/build/main.pdf"}, true},
 		{"pdf with errors", compile.Result{OK: false, PDF: ".refract/build/main.pdf"}, true},
 		{"no pdf", compile.Result{OK: false}, false},
+		{"clean without pdf", compile.Result{OK: true}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()

@@ -75,7 +75,7 @@ func syncError(w http.ResponseWriter, err error) {
 }
 
 // compile builds the main file. A build triggered by the user that produced a
-// PDF is a checkpoint commit, even with TeX errors: documents imported from
+// PDF in this run is a checkpoint commit, even with TeX errors: documents imported from
 // Prism often carry recoverable errors on every build, and their history must
 // still grow (the AI's compiles in M6 call the Compiler directly).
 func (a *compileAPI) compile(w http.ResponseWriter, r *http.Request) {
@@ -107,7 +107,7 @@ func (a *compileAPI) compile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	committed := false
-	if res.OK || res.PDF != "" {
+	if res.PDF != "" { // produced by this run; OK alone doesn't mean a PDF exists
 		if committed, err = a.svc.Checkpoint(r.Context(), p.ID, "checkpoint: compile"); err != nil {
 			slog.Error("checkpoint", "project", p.ID, "err", err)
 		}
