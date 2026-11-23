@@ -531,9 +531,46 @@ func TestEmbeddedFailuresPrintOneJSONLine(t *testing.T) {
 	}
 }
 
+// A server that never answers /healthz stops on its own and leaves the error
+// line, even though the parent keeps standard input open and waits.
+func TestEmbeddedFailedReadinessStopsTheServer(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "Refract")
+	exe, _ := os.Executable()
+	cmd := exec.Command(exe, "--embedded")
+	cmd.Env = append(localEnv(dir), embedTokenEnv+"="+testEmbedToken, "REFRACT_TEST_NEVER_HEALTHY=1")
+	var out, errOut bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errOut
+	stdin, err := cmd.StdinPipe() // open, as the app keeps it
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stdin.Close()
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() { cmd.Wait(); close(done) }()
+	defer func() { cmd.Process.Kill(); <-done }()
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		t.Fatalf("still running after the readiness failure; stdout %q", out.String())
+	}
+	if code := cmd.ProcessState.ExitCode(); code != 1 {
+		t.Errorf("exit %d; stderr %q", code, errOut.String())
+	}
+	var j errorStatus
+	if err := json.Unmarshal(out.Bytes(), &j); err != nil || j.State != stateError || !strings.Contains(j.Error, "doesn't answer") || strings.Count(out.String(), "\n") != 1 {
+		t.Errorf("stdout %q (%v)", out.String(), err)
+	}
+	if held, err := lockHeld(dir); err != nil || held {
+		t.Errorf("lock still held: %v %v", held, err)
+	}
+}
+
 func TestReadEmbedTokenUnsetsTheEnvironment(t *testing.T) {
 	t.Setenv(embedTokenEnv, testEmbedToken)
-	tok, err := readEmbedToken(-1, os.Getenv, os.Unsetenv)
+	tok, err := readEmbedToken(context.Background(), -1, os.Getenv, os.Unsetenv)
 	if err != nil || tok != testEmbedToken {
 		t.Fatal(tok, err)
 	}
@@ -545,12 +582,12 @@ func TestReadEmbedTokenUnsetsTheEnvironment(t *testing.T) {
 	if strings.Contains(string(out), testEmbedToken) {
 		t.Fatal("child inherited the token")
 	}
-	if _, err := readEmbedToken(-1, os.Getenv, os.Unsetenv); err == nil {
+	if _, err := readEmbedToken(context.Background(), -1, os.Getenv, os.Unsetenv); err == nil {
 		t.Fatal("no token should fail")
 	}
 	for _, bad := range []string{"short", strings.Repeat("a;", 10), strings.Repeat("a b", 10)} {
 		t.Setenv(embedTokenEnv, bad)
-		if _, err := readEmbedToken(-1, os.Getenv, os.Unsetenv); err == nil {
+		if _, err := readEmbedToken(context.Background(), -1, os.Getenv, os.Unsetenv); err == nil {
 			t.Errorf("%q accepted", bad)
 		}
 	}

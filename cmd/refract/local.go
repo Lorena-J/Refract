@@ -36,7 +36,10 @@ const localKeyFile = "secret.key"
 
 // localStartTimeout bounds the wait for the server to answer before the
 // address is printed and the browser opened.
-const localStartTimeout = 30 * time.Second
+var localStartTimeout = 30 * time.Second
+
+// localHealthy waits for the server to answer; tests replace it.
+var localHealthy = waitHealthy
 
 // runLocal is `refract local`: Refract on this computer with nothing to
 // configure. Data lives in the per-user data folder, the secret key is made
@@ -105,14 +108,15 @@ func runLocalTo(args []string, stdout io.Writer) error {
 	defer stop()
 	var token string
 	if *embedded {
-		var err error
-		if token, err = readEmbedToken(*tokenFD, os.Getenv, os.Unsetenv); err != nil {
-			return err
-		}
-		// The parent going away (standard input closing) stops the server like SIGTERM.
+		// The parent going away (standard input closing) stops the server like
+		// SIGTERM, also while the token is still awaited.
 		var cancel context.CancelFunc
 		ctx, cancel = watchStdin(ctx, os.Stdin)
 		defer cancel()
+		var err error
+		if token, err = readEmbedToken(ctx, *tokenFD, os.Getenv, os.Unsetenv); err != nil {
+			return err
+		}
 	}
 	return startLocal(ctx, localOptions{
 		embedded: *embedded,
@@ -258,14 +262,14 @@ func startLocal(ctx context.Context, o localOptions) error {
 			if err := lock.Record(u); err != nil {
 				slog.Warn("can't record the address in the lock file; a second refract local won't find this one", "err", err)
 			}
-			waitCtx, cancel := context.WithTimeout(ctx, localStartTimeout)
-			defer cancel()
-			if !waitHealthy(waitCtx, u+"/healthz") {
+			waitCtx, stopWait := context.WithTimeout(ctx, localStartTimeout)
+			defer stopWait()
+			if !localHealthy(waitCtx, u+"/healthz") {
 				if ctx.Err() == nil {
 					slog.Error("Refract is listening but doesn't answer; the browser was not opened", "url", u, "waited", localStartTimeout.String())
 					if o.embedded {
 						readyErr = fmt.Errorf("Refract is listening on %s but doesn't answer after %s", u, localStartTimeout)
-						cancel()
+						cancel() // stop the server: the parent waits for this error line
 					}
 				}
 				return
