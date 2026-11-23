@@ -94,8 +94,8 @@ identity, a secure timestamp, then the app that seals them. Symlinks (Git's `git
 not signed. `verify-app.sh` runs `codesign --verify --deep --strict`, then checks every Mach-O:
 valid signature, hardened runtime, no entitlements, no symlink leaving the bundle, and with
 `--release` also: not ad hoc, a Developer ID Application authority, a secure timestamp and the same
-TeamIdentifier as the app. `build-app.sh` runs both (`--release` when `REFRACT_SIGN_IDENTITY` is a
-real identity), so a build with an unsigned or foreign-signed binary fails. `notarize.sh` zips with
+TeamIdentifier as the app. `build-app.sh` runs both (`--release` is left to `notarize.sh`, so `make mac` also works with an Apple Development or self-signed identity; only a
+`Developer ID Application:` identity gets the secure timestamp), so a build with an unsigned binary fails. `notarize.sh` zips with
 `ditto`, submits with `notarytool --wait`, prints `notarytool log` when Apple rejects it, staples,
 runs `stapler validate` and `spctl --assess --type execute -vv`, and verifies again.
 
@@ -169,7 +169,7 @@ ad hoc build) and `tools-artifact: true` (it signs the `tools-darwin-<arch>` arc
 `tools.yml` built and smoke-tested earlier in the same run, instead of building another). When the
 secrets are missing (a fork's pull request, or none set) and `require-signed` is off, and always on
 pull requests, it builds ad hoc, says so in a notice and uploads `Refract-app-adhoc-<arch>`, which
-Gatekeeper rejects. Pull requests never get the secrets.
+Gatekeeper rejects. Pull requests never sign: the workflow skips the signing steps for them.
 
 Secrets never appear in a log or a file in the repository: the scripts read them from the
 environment and never print them, the p12 and the key are written to the runner's temp folder with

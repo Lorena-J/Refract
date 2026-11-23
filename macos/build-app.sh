@@ -1,6 +1,6 @@
 #!/bin/sh
 # Assembles Refract.app for one architecture: the Swift app, the refract server built
-# with the web app inside, and the bundled tools, signed ad hoc, or with the Developer ID in
+# with the web app inside, and the bundled tools, signed ad hoc, or with the identity in
 # REFRACT_SIGN_IDENTITY (macos/sign-app.sh, then macos/verify-app.sh). Run through `make mac`;
 # needs Xcode (swift, codesign), Go, and the web app built (`make web`).
 #
@@ -19,6 +19,7 @@
 #   Refract.app/Contents/Resources/{en,es}.lproj/Localizable.strings
 #   Refract.app/Contents/Info.plist
 set -eu
+[ -z "${CODESIGN_IDENTITY:-}" ] || { echo "error: CODESIGN_IDENTITY is no longer used: set REFRACT_SIGN_IDENTITY instead" >&2; exit 2; }
 [ $# -eq 3 ] || { echo "usage: build-app.sh <arm64|amd64> <version> <output-dir>" >&2; exit 2; }
 ARCH=$1 VERSION=$2 OUT=$3
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -75,9 +76,6 @@ chmod -R go-w "$APP"
 chmod 755 "$APP/Contents/MacOS/Refract" "$APP/Contents/Resources/Server/bin/refract"
 
 "$ROOT/macos/sign-app.sh" "$APP"
-if [ "${REFRACT_SIGN_IDENTITY:--}" = "-" ]; then
-  "$ROOT/macos/verify-app.sh" "$APP"
-else
-  "$ROOT/macos/verify-app.sh" --release "$APP"
-fi
+# The release checks (Developer ID, timestamp) run in notarize.sh, from `make mac-release`.
+"$ROOT/macos/verify-app.sh" "$APP"
 echo "$APP"
