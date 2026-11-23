@@ -6,19 +6,27 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/ponytojas/Refract/internal/localkey"
 )
 
 type fakeKeys struct {
+	mu     sync.Mutex
 	items  map[string]string
 	err    error // unreachable store
 	setErr error
+	delay  time.Duration // each call takes this long, to let starts overlap
 }
 
 func (f *fakeKeys) Get(service, account string) (string, error) {
+	time.Sleep(f.delay)
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if f.err != nil {
 		return "", f.err
 	}
@@ -30,6 +38,9 @@ func (f *fakeKeys) Get(service, account string) (string, error) {
 }
 
 func (f *fakeKeys) Set(service, account, secret string) error {
+	time.Sleep(f.delay)
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if f.err != nil {
 		return f.err
 	}
@@ -62,6 +73,38 @@ func TestResolveLocalKeyUsesKeychain(t *testing.T) {
 	}
 }
 
+func TestResolveLocalKeyConcurrentFirstStartsAgree(t *testing.T) {
+	for name, ks := range map[string]*fakeKeys{
+		"keychain":    {delay: 20 * time.Millisecond},
+		"cannot save": {delay: 20 * time.Millisecond, setErr: errors.New("locked")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			keys := make([][]byte, 4)
+			var wg sync.WaitGroup
+			for i := range keys {
+				wg.Go(func() {
+					k, err := resolveLocalKey(ks, dir)
+					if err != nil {
+						t.Error(err)
+					}
+					keys[i] = k
+				})
+			}
+			wg.Wait()
+			for _, k := range keys[1:] {
+				if !bytes.Equal(k, keys[0]) {
+					t.Fatal("concurrent first starts use different keys")
+				}
+			}
+			again, err := resolveLocalKey(ks, dir)
+			if err != nil || !bytes.Equal(again, keys[0]) {
+				t.Fatalf("the persisted key differs from the one in use: %v", err)
+			}
+		})
+	}
+}
+
 func TestResolveLocalKeyTwoFoldersTwoKeys(t *testing.T) {
 	ks := &fakeKeys{}
 	a, _ := resolveLocalKey(ks, t.TempDir())
@@ -87,7 +130,8 @@ func TestResolveLocalKeyFallsBackToFile(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if fi.Mode().Perm()&0o077 != 0 {
+			// Windows keeps the folder's ACL; the mode bits don't reflect it.
+			if runtime.GOOS != "windows" && fi.Mode().Perm()&0o077 != 0 {
 				t.Fatalf("key file mode %v", fi.Mode().Perm())
 			}
 			again, err := resolveLocalKey(ks, dir)

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"net"
@@ -179,7 +180,7 @@ func TestLocalIgnoresNonLoopbackAddressInLockFile(t *testing.T) {
 	old := instanceWait
 	instanceWait = 300 * time.Millisecond
 	defer func() { instanceWait = old }()
-	if st := checkInstance(context.Background(), dir); st.State != stateUnresponsive || st.URL != "" {
+	if st := checkInstance(context.Background(), dir, 0); st.State != stateUnresponsive || st.URL != "" {
 		t.Errorf("status = %+v", st)
 	}
 }
@@ -215,8 +216,115 @@ func TestLocalLockClearsAStaleAddress(t *testing.T) {
 		t.Fatal(err, held)
 	}
 	defer l.Release()
-	if b, _ := os.ReadFile(filepath.Join(dir, localLockFile)); len(b) != 0 {
-		t.Errorf("stale address kept: %q", b)
+	info, err := readInstanceInfo(dir)
+	if err != nil || info.URL != "" || info.PID != os.Getpid() {
+		t.Errorf("lock file after locking: %+v %v", info, err)
+	}
+}
+
+func TestLocalLockRefusesASymlink(t *testing.T) {
+	dir := t.TempDir()
+	victim := filepath.Join(t.TempDir(), "victim")
+	os.WriteFile(victim, []byte("keep me"), 0o600)
+	if err := os.Symlink(victim, filepath.Join(dir, localLockFile)); err != nil {
+		t.Skip("symlinks unavailable:", err)
+	}
+	if _, _, err := lockInstance(dir); err == nil {
+		t.Error("locked through a symbolic link")
+	}
+	var out bytes.Buffer
+	if err := reportLocalStatus(context.Background(), &out, dir); err == nil {
+		t.Error("status accepted a symbolic link")
+	}
+	if b, _ := os.ReadFile(victim); string(b) != "keep me" {
+		t.Errorf("the link's target changed: %q", b)
+	}
+}
+
+func TestLocalStatusChangesNothing(t *testing.T) {
+	dir := t.TempDir()
+	want := []byte(`{"url":"http://127.0.0.1:1","pid":1}` + "\n")
+	os.WriteFile(filepath.Join(dir, localLockFile), want, 0o600)
+	var out bytes.Buffer
+	if err := reportLocalStatus(context.Background(), &out, dir); err == nil || !strings.Contains(out.String(), `"state":"stopped"`) {
+		t.Fatalf("status: %v %q", err, out.String())
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, localLockFile)); !bytes.Equal(b, want) {
+		t.Errorf("status rewrote the lock file: %q", b)
+	}
+}
+
+func TestLocalCheckDoesNotFollowRedirects(t *testing.T) {
+	dir := t.TempDir()
+	other := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok")) })}
+	oln, _ := net.Listen("tcp", "127.0.0.1:0")
+	go other.Serve(oln)
+	defer other.Close()
+	redirect := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://"+oln.Addr().String()+"/healthz", http.StatusFound)
+	})}
+	rln, _ := net.Listen("tcp", "127.0.0.1:0")
+	go redirect.Serve(rln)
+	defer redirect.Close()
+	l, _, _ := lockInstance(dir)
+	defer l.Release()
+	l.Record("http://" + rln.Addr().String())
+	old := instanceWait
+	instanceWait = 300 * time.Millisecond
+	defer func() { instanceWait = old }()
+	if st := checkInstance(context.Background(), dir, 0); st.State != stateUnresponsive {
+		t.Errorf("a redirect counted as an answer: %+v", st)
+	}
+}
+
+func TestLocalWaitsForAnInstanceThatIsStarting(t *testing.T) {
+	dir := t.TempDir()
+	l, _, _ := lockInstance(dir) // holds the lock, records its pid, doesn't listen yet
+	defer l.Release()
+	oldWait, oldStarting := instanceWait, instanceStartingWait
+	instanceWait, instanceStartingWait = 200*time.Millisecond, 10*time.Second
+	defer func() { instanceWait, instanceStartingWait = oldWait, oldStarting }()
+
+	var out bytes.Buffer
+	err := reportLocalStatus(context.Background(), &out, dir)
+	if e, ok := err.(errExit); !ok || e.code != statusExitStarting {
+		t.Fatalf("status err = %v", err)
+	}
+	var st instanceStatus
+	if json.Unmarshal(out.Bytes(), &st); st.State != stateStarting || st.PID != os.Getpid() {
+		t.Fatalf("status = %q", out.String())
+	}
+
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok")) })}
+	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	go srv.Serve(ln)
+	defer srv.Close()
+	u := "http://" + ln.Addr().String()
+	go func() { time.Sleep(time.Second); l.Record(u) }() // starts listening after the plain wait
+	var opened string
+	out.Reset()
+	err = startLocal(context.Background(), localOptions{
+		getenv: func(string) string { return "" }, defaultDir: dir,
+		out: &out, open: func(u string) { opened = u },
+	})
+	if err != nil || opened != u || !strings.Contains(out.String(), "still starting") {
+		t.Fatalf("err = %v, opened = %q, out = %q", err, opened, out.String())
+	}
+}
+
+func TestLocalGivesUpOnAnInstanceStuckStarting(t *testing.T) {
+	dir := t.TempDir()
+	l, _, _ := lockInstance(dir)
+	defer l.Release()
+	oldWait, oldStarting := instanceWait, instanceStartingWait
+	instanceWait, instanceStartingWait = 100*time.Millisecond, 400*time.Millisecond
+	defer func() { instanceWait, instanceStartingWait = oldWait, oldStarting }()
+	err := startLocal(context.Background(), localOptions{
+		getenv: func(string) string { return "" }, defaultDir: dir,
+		out: &bytes.Buffer{}, open: func(string) {},
+	})
+	if err == nil || !strings.Contains(err.Error(), "still starting") || !strings.Contains(err.Error(), fmt.Sprintf("pid %d", os.Getpid())) {
+		t.Fatalf("err = %v", err)
 	}
 }
 
@@ -232,7 +340,7 @@ func TestLocalCheckSeesAHolderThatStops(t *testing.T) {
 	instanceWait = 5 * time.Second
 	defer func() { instanceWait = old }()
 	t0 := time.Now()
-	if st := checkInstance(context.Background(), dir); st.State != stateStopped {
+	if st := checkInstance(context.Background(), dir, 0); st.State != stateStopped {
 		t.Errorf("status = %+v", st)
 	}
 	if took := time.Since(t0); took > 3*time.Second {
@@ -423,9 +531,95 @@ func TestEmbeddedFailuresPrintOneJSONLine(t *testing.T) {
 	}
 }
 
+// A server that never answers /healthz stops on its own and leaves the error
+// line, even though the parent keeps standard input open and waits.
+func TestEmbeddedFailedReadinessStopsTheServer(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "Refract")
+	exe, _ := os.Executable()
+	cmd := exec.Command(exe, "--embedded")
+	cmd.Env = append(localEnv(dir), embedTokenEnv+"="+testEmbedToken, "REFRACT_TEST_NEVER_HEALTHY=300ms")
+	var out, errOut bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errOut
+	stdin, err := cmd.StdinPipe() // open, as the app keeps it
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stdin.Close()
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() { cmd.Wait(); close(done) }()
+	defer func() { cmd.Process.Kill(); <-done }()
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		t.Fatalf("still running after the readiness failure; stdout %q", out.String())
+	}
+	if code := cmd.ProcessState.ExitCode(); code != 1 {
+		t.Errorf("exit %d; stderr %q", code, errOut.String())
+	}
+	var j errorStatus
+	if err := json.Unmarshal(out.Bytes(), &j); err != nil || j.State != stateError || !strings.Contains(j.Error, "doesn't answer") || strings.Count(out.String(), "\n") != 1 {
+		t.Errorf("stdout %q (%v)", out.String(), err)
+	}
+	if held, err := lockHeld(dir); err != nil || held {
+		t.Errorf("lock still held: %v %v", held, err)
+	}
+}
+
+// Closing standard input before the server is ready still leaves one line.
+func TestEmbeddedStoppedBeforeReadyPrintsTheErrorLine(t *testing.T) {
+	exe, _ := os.Executable()
+	cmd := exec.Command(exe, "--embedded")
+	cmd.Env = append(localEnv(filepath.Join(t.TempDir(), "Refract")), embedTokenEnv+"="+testEmbedToken, "REFRACT_TEST_NEVER_HEALTHY=1m")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	listening := make(chan struct{})
+	go func() {
+		sc := bufio.NewScanner(stderr)
+		for sc.Scan() {
+			if strings.Contains(sc.Text(), "listening") {
+				close(listening)
+				break
+			}
+		}
+		io.Copy(io.Discard, stderr)
+	}()
+	done := make(chan struct{})
+	go func() { cmd.Wait(); close(done) }()
+	defer func() { cmd.Process.Kill(); <-done }()
+	select {
+	case <-listening:
+	case <-time.After(10 * time.Second):
+		t.Fatal("never listened")
+	}
+	stdin.Close()
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("still running after stdin closed")
+	}
+	var j errorStatus
+	if err := json.Unmarshal(out.Bytes(), &j); err != nil || j.State != stateError || !strings.Contains(j.Error, "before Refract was ready") {
+		t.Errorf("stdout %q (%v)", out.String(), err)
+	}
+}
+
 func TestReadEmbedTokenUnsetsTheEnvironment(t *testing.T) {
 	t.Setenv(embedTokenEnv, testEmbedToken)
-	tok, err := readEmbedToken(-1, os.Getenv, os.Unsetenv)
+	tok, err := readEmbedToken(context.Background(), -1, os.Getenv, os.Unsetenv)
 	if err != nil || tok != testEmbedToken {
 		t.Fatal(tok, err)
 	}
@@ -437,12 +631,12 @@ func TestReadEmbedTokenUnsetsTheEnvironment(t *testing.T) {
 	if strings.Contains(string(out), testEmbedToken) {
 		t.Fatal("child inherited the token")
 	}
-	if _, err := readEmbedToken(-1, os.Getenv, os.Unsetenv); err == nil {
+	if _, err := readEmbedToken(context.Background(), -1, os.Getenv, os.Unsetenv); err == nil {
 		t.Fatal("no token should fail")
 	}
 	for _, bad := range []string{"short", strings.Repeat("a;", 10), strings.Repeat("a b", 10)} {
 		t.Setenv(embedTokenEnv, bad)
-		if _, err := readEmbedToken(-1, os.Getenv, os.Unsetenv); err == nil {
+		if _, err := readEmbedToken(context.Background(), -1, os.Getenv, os.Unsetenv); err == nil {
 			t.Errorf("%q accepted", bad)
 		}
 	}

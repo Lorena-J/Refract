@@ -30,8 +30,8 @@ fetch() {
   [ "$got" = "$2" ] || die "checksum mismatch for $1 (expected $2, got $got)"
 }
 
-# Release asset names per upstream's naming.
-tectonic_asset() { # os arch -> triple|ext
+# Release asset names: Tectonic and ripgrep both name their builds by Rust target triple.
+rust_asset() { # os arch -> triple|ext
   case "$1-$2" in
     darwin-arm64) echo "aarch64-apple-darwin|tar.gz" ;;
     darwin-amd64) echo "x86_64-apple-darwin|tar.gz" ;;
@@ -41,13 +41,5 @@ tectonic_asset() { # os arch -> triple|ext
     *) return 1 ;;
   esac
 }
-ripgrep_asset() {
-  case "$1-$2" in
-    darwin-arm64) echo "aarch64-apple-darwin|tar.gz" ;;
-    darwin-amd64) echo "x86_64-apple-darwin|tar.gz" ;;
-    linux-arm64) echo "aarch64-unknown-linux-musl|tar.gz" ;;
-    linux-amd64) echo "x86_64-unknown-linux-musl|tar.gz" ;;
-    windows-amd64) echo "x86_64-pc-windows-msvc|zip" ;;
-    *) return 1 ;;
-  esac
-}
+tectonic_asset() { rust_asset "$@"; }
+ripgrep_asset() { rust_asset "$@"; }
