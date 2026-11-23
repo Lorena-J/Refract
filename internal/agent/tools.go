@@ -21,6 +21,7 @@ import (
 	"github.com/ponytojas/Refract/internal/compile"
 	"github.com/ponytojas/Refract/internal/projects"
 	"github.com/ponytojas/Refract/internal/refs"
+	"github.com/ponytojas/Refract/internal/tools"
 )
 
 const (
@@ -223,7 +224,11 @@ func (t *Tools) search(ctx context.Context, query string, glob *string) (string,
 	if glob != nil && *glob != "" {
 		args = append(args, "--glob="+*glob)
 	}
-	cmd := exec.CommandContext(ctx, "rg", append(args, "--", query, ".")...)
+	bin, err := tools.Path("rg")
+	if err != nil {
+		return "", fmt.Errorf("search failed: %w", err)
+	}
+	cmd := exec.CommandContext(ctx, bin, append(args, "--", query, ".")...)
 	cmd.Dir = t.Dir
 	out, err := cmd.Output()
 	var exit *exec.ExitError

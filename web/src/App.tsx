@@ -6,6 +6,7 @@ import Projects from './Projects'
 import SettingsDialog from './Settings'
 import { getPrefs, openSettings, setPref } from '@/lib/prefs'
 import Welcome from './Welcome'
+import ToolsNotice from './ToolsNotice'
 import CommandPalette from './CommandPalette'
 import ShortcutsOverlay from './ShortcutsOverlay'
 import { getOverlay, setOverlay, useCommands } from '@/lib/commands'
@@ -135,6 +136,7 @@ export default function App() {
       <SettingsDialog status={status} onChange={setStatus} />
       <CommandPalette />
       <ShortcutsOverlay />
+      <ToolsNotice />
       <Toaster position="bottom-right" />
     </TooltipProvider>
   )

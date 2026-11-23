@@ -432,7 +432,7 @@ To restrict a server to one ChatGPT account, set `REFRACT_ALLOWED_SUBJECT` to th
 
 ### Install the CLI
 
-The CLI lets you run `refract login` on your computer and upload the resulting credential file to an existing Refract instance. Login does not need Docker, Go, Node.js, git or LaTeX tools. Installing a package does not start a server or create a background service. The same executable also includes the server and its administration commands; those need the server configuration described in [Deploy](#deploy).
+The CLI lets you run `refract login` on your computer and upload the resulting credential file to an existing Refract instance. Login does not need Docker, Go, Node.js, git or LaTeX tools. Installing a package never starts a service, creates a key or writes data; see the [packaging policy](packaging/README.md). The same executable also includes the server and its administration commands (and `refract local`, a local-only instance); a server needs the configuration described in [Deploy](#deploy).
 
 **macOS (Apple Silicon or Intel):**
 
@@ -510,6 +510,32 @@ All settings are environment variables.
 | `REFRACT_GITHUB_CLIENT_ID` | Client ID of your GitHub OAuth App, to connect GitHub accounts (see below). |
 | `REFRACT_OPENALEX_API_KEY` | A free [OpenAlex key](https://openalex.org/settings/api). Without one, paper searches share a small daily budget per IP address. |
 | `REFRACT_TECTONIC_BUNDLE` | The Tectonic bundle: a URL (pinned in the image), or a local folder (required with the sandbox). |
+| `REFRACT_TECTONIC_BIN`, `REFRACT_SYNCTEX_BIN`, `REFRACT_RG_BIN`, `REFRACT_GIT_BIN` | Use this program instead of the one [Refract finds](#where-refract-finds-its-tools). A path, or a name looked up on the `PATH`. If it isn't runnable, the tool counts as missing: Refract doesn't fall back to another. |
+
+### Where Refract finds its tools
+
+Refract runs `tectonic` (compiling), `synctex` (source ↔ PDF jumps), `rg` (the assistant's search) and `git` (history). For each it looks, in this order, at:
+
+1. its `REFRACT_<NAME>_BIN` variable (see [Configuration](#configuration));
+2. the folder of bundled tools next to the program: `../libexec/refract/` relative to the `refract` executable on macOS and Linux, and the executable's own folder on Windows (symbolic links of the executable are resolved first);
+3. the `PATH`.
+
+It always runs the absolute path it found, and the startup log says what was found and where (`tool name=git path=… source=bundled|env|path`). The desktop packages ship private copies in the bundled folder:
+
+```text
+libexec/refract/
+  tectonic  synctex  rg          (.exe on Windows)
+  git/
+    bin/git                      macOS and Linux
+    libexec/git-core/            Git's helpers
+    share/git-core/templates/    optional: Git's init templates
+```
+
+For a Git found in `git/bin/`, Refract sets `GIT_EXEC_PATH` to `git/libexec/git-core`, `GIT_TEMPLATE_DIR` to the templates folder when there is one, and `GIT_CONFIG_NOSYSTEM=1`, so it never uses helpers or configuration from the system. On Windows `git/` is an unmodified [MinGit](https://github.com/git-for-windows/git/releases) tree: Refract runs `git\cmd\git.exe`, which finds its own helpers under `git\ucrt64\`, and sets only `GIT_CONFIG_NOSYSTEM=1`. A Git from `REFRACT_GIT_BIN` or the `PATH` is run as it is.
+
+**Trust.** Whoever can replace a bundled program runs code as the user running Refract. On macOS and Linux Refract therefore ignores the bundled folder, or any single bundled tool, when it or any folder up to `libexec/` is writable by group or others, or owned by neither the current user nor root, and logs why once (it then falls back to the `PATH`). Bundled Git also requires its helper directory and checks its supporting files and templates under `git/`. On Windows Refract trusts the executable's own folder as it is and can't check its permissions: install it where only administrators can write (for example under `Program Files`), because anyone who can write there can make Refract run their programs.
+
+A missing tool doesn't stop Refract: it logs what won't work without it and the web app shows one notice. Without `git`, creating projects and using project history are unavailable (whoever installed Refract can repair the installation or install Git); without `tectonic`, compiling doesn't work; without `synctex`, jumping between source and PDF is unavailable; without `rg`, the assistant can't search the project. The compile sandbox resolves Tectonic the same way.
 
 ### Connect GitHub
 
@@ -569,7 +595,7 @@ Found a vulnerability? Please report it privately through the repository's **Sec
 
 ## Development
 
-You need Go, Node.js, git, ripgrep, Tectonic and `synctex` (and Google Chrome for the browser test). The image bundles all of them. Packaging tests also use Python 3.11+; `dpkg-deb` is optional locally and required in Linux CI to verify Debian packages. [AGENTS.md](AGENTS.md) lists how to check and install the development tools, and the conventions to follow when changing the code.
+You need Go, Node.js, git, ripgrep, Tectonic and `synctex` (and Google Chrome for the browser tests). The image bundles all of them. Packaging tests also use Python 3.11+; `dpkg-deb` is optional locally and required in Linux CI to verify Debian packages. [AGENTS.md](AGENTS.md) lists how to check and install the development tools, and the conventions to follow when changing the code.
 
 ```sh
 make dev                                  # API on 127.0.0.1:8080 (REFRACT_ADDR overrides) and Vite on :5173; open http://localhost:5173
@@ -577,9 +603,15 @@ make dev AUTH=builtin                     # the same, with the sign-in page
 make users ARGS="add you@example.com"     # accounts in the development data
 make login                                # refract login, for ChatGPT
 make test                                 # go vet, Go tests and web unit tests
-make e2e                                  # build, then a Playwright smoke test
+make e2e                                  # build, then the Playwright browser tests in Chrome
+make e2e BROWSER=webkit                   # the same in WebKit (once: cd web && npx playwright install webkit)
+make e2e BROWSER=all                      # both, as CI does
 make docker                               # images for amd64 and arm64, each smoke-tested
 ```
+
+Set `REFRACT_E2E_PORT` and `REFRACT_E2E_MODEL_PORT` to override ports 18090 and 18091 when running two checkouts side by side.
+After `make build`, run `npx playwright test` from `web/` to select Chrome, or set `REFRACT_E2E_BROWSER=webkit` to select WebKit.
+The results go to `web/test-results/chrome` and `web/test-results/webkit`.
 
 Development data lives in `./data`, with its own key in `data/dev.key`. To contribute, see [CONTRIBUTING.md](CONTRIBUTING.md).
 

@@ -67,6 +67,7 @@ Check each tool and install what's missing. Versions are those the project build
 | Tectonic | `tectonic --version` | Compiles LaTeX. macOS: `brew install tectonic`; elsewhere see <https://tectonic-typesetting.github.io/book/latest/installation/>. |
 | synctex | `synctex help` | Optional: without it, only jumping between source and PDF fails. It comes with TeX Live and MacTeX; otherwise build it as the `synctex` stage of the [Dockerfile](Dockerfile) does (drop `-static` on macOS). |
 | Google Chrome | | Only for `make e2e`. |
+| Playwright WebKit | | Only for `make e2e BROWSER=webkit` or `all`: `cd web && npx playwright install webkit`. |
 
 ### Run it
 
@@ -93,7 +94,7 @@ cd web && npx tsc --noEmit    # type-check the web app
 cd web && npm run fmt && npm run lint   # format (oxfmt) and lint (oxlint) the web app
 ```
 
-`make e2e` builds the binary and runs a Playwright smoke test (needs Tectonic and Chrome).
+`make e2e` builds the binary and runs the Playwright browser tests in Chrome (needs Tectonic and Chrome). `make e2e BROWSER=webkit` runs them in WebKit, the engine of the macOS app, and `BROWSER=all` in both; CI runs both. A WebKit-only failure is a bug in the app: fix it, or skip the test with a link to an open issue.
 
 Use `npx tsc --noEmit`, not `npx tsc -b`: the latter writes `.js` files next to the sources.
 
@@ -130,6 +131,7 @@ Then start the container from the published image (`ghcr.io/ponytojas/refract:0.
 | The page says `Refract doesn't answer to the host name …` | Add that name to `REFRACT_ALLOWED_HOSTS`, or set `REFRACT_PUBLIC_URL` to the address people open. |
 | Compiling fails with `executable file not found` for `tectonic` | Tectonic isn't installed, or isn't on the server's `PATH`. |
 | Jumping between source and PDF does nothing | `synctex` is missing (see Prerequisites). |
+| The app says some tools are missing | Refract looks for `tectonic`, `synctex`, `rg` and `git` in `REFRACT_<NAME>_BIN`, then the bundled `../libexec/refract/` folder, then the `PATH` (README, *Where Refract finds its tools*). The startup log shows what it found; install the missing tool or set its variable. |
 | The first compile is slow or fails offline | Tectonic downloads packages on first use; it needs internet once per package. |
 | The assistant answers "No AI connected" | Connect ChatGPT or add an API provider in **Settings → Assistant**. |
 | The assistant's answer arrives all at once behind a proxy | The proxy buffers responses: turn buffering off (README, *Behind a reverse proxy*). |

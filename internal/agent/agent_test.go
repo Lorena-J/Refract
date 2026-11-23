@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -337,5 +338,19 @@ func TestCompileBusyIsAToolResult(t *testing.T) {
 	other := &Tools{Dir: t.TempDir(), MainFile: "main.tex", Compiler: failingCompiler{errors.New("boom")}}
 	if out, _ := other.Call(context.Background(), "compile", "{}"); !strings.HasPrefix(out, "Error:") {
 		t.Errorf("other errors stay errors: %q", out)
+	}
+}
+
+func TestSearchUsesTheResolvedRipgrep(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script fake")
+	}
+	bin := filepath.Join(t.TempDir(), "private-rg")
+	os.WriteFile(bin, []byte("#!/bin/sh\nprintf './a.tex:1:hit\\n'\n"), 0o755)
+	t.Setenv("REFRACT_RG_BIN", bin)
+	t.Setenv("PATH", t.TempDir()) // no rg, nothing else
+	out, _ := (&Tools{Dir: t.TempDir()}).Call(context.Background(), "search", `{"query":"hit","glob":null}`)
+	if out != "a.tex:1:hit" {
+		t.Fatalf("search = %q", out)
 	}
 }
