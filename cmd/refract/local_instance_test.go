@@ -18,6 +18,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ponytojas/Refract/internal/auth"
 )
 
 // localChild is a real `refract local` process: the test binary re-executed.
@@ -357,5 +359,317 @@ func TestLocalStatusLeavesAMissingFolderAlone(t *testing.T) {
 	}
 	if _, err := os.Stat(dir); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("status created the folder: %v", err)
+	}
+}
+
+const testEmbedToken = "dGVzdC10b2tlbi10ZXN0LXRva2VuLTEyMzQ1Ng"
+
+// embeddedChild is a real `refract local --embedded` process.
+type embeddedChild struct {
+	cmd    *exec.Cmd
+	stdin  io.WriteCloser
+	stdout *bytes.Buffer
+	stderr *bytes.Buffer
+	line   instanceStatus
+	done   chan struct{}
+}
+
+func startEmbedded(t *testing.T, dataDir string, wantState string, extraEnv ...string) *embeddedChild {
+	t.Helper()
+	exe, _ := os.Executable()
+	c := &embeddedChild{cmd: exec.Command(exe, "--embedded"), stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}, done: make(chan struct{})}
+	c.cmd.Env = append(localEnv(dataDir), append([]string{embedTokenEnv + "=" + testEmbedToken}, extraEnv...)...)
+	var err error
+	if c.stdin, err = c.cmd.StdinPipe(); err != nil {
+		t.Fatal(err)
+	}
+	pr, pw := io.Pipe()
+	c.cmd.Stdout = io.MultiWriter(c.stdout, pw)
+	c.cmd.Stderr = c.stderr
+	if err := c.cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	go func() { c.cmd.Wait(); pw.Close(); close(c.done) }()
+	t.Cleanup(func() { c.cmd.Process.Kill(); <-c.done })
+	sc := bufio.NewScanner(pr)
+	if !sc.Scan() {
+		t.Fatalf("no JSON line; stderr %q", c.stderr.String())
+	}
+	if err := json.Unmarshal(sc.Bytes(), &c.line); err != nil || c.line.State != wantState {
+		t.Fatalf("line %q (err %v), want state %s; stderr %q", sc.Text(), err, wantState, c.stderr.String())
+	}
+	go io.Copy(io.Discard, pr)
+	return c
+}
+
+func get(t *testing.T, url string, cookie bool) *http.Response {
+	t.Helper()
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set(auth.CSRFHeader, "1")
+	if cookie {
+		req.AddCookie(&http.Cookie{Name: embedCookie, Value: testEmbedToken})
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	return resp
+}
+
+func TestEmbeddedRequiresTheCookieAndStopsWithStdin(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "Refract")
+	c := startEmbedded(t, dir, stateReady)
+	if !loopbackURL(c.line.URL) || c.line.Version != version || c.line.PID != c.cmd.Process.Pid {
+		t.Fatalf("line = %+v", c.line)
+	}
+	if n := strings.Count(strings.TrimSpace(c.stdout.String()), "\n"); n != 0 {
+		t.Errorf("stdout has more than one line: %q", c.stdout.String())
+	}
+	for _, p := range []string{"/", "/api/projects", "/assets/x.js"} {
+		if r := get(t, c.line.URL+p, false); r.StatusCode != 401 {
+			t.Errorf("%s without cookie: %d", p, r.StatusCode)
+		}
+	}
+	if r := get(t, c.line.URL+"/healthz", false); r.StatusCode != 200 {
+		t.Errorf("/healthz: %d", r.StatusCode)
+	}
+	if r := get(t, c.line.URL+"/api/projects", true); r.StatusCode != 200 {
+		t.Errorf("/api/projects with cookie: %d", r.StatusCode)
+	}
+	req, _ := http.NewRequest("GET", c.line.URL+"/", nil)
+	req.AddCookie(&http.Cookie{Name: embedCookie, Value: testEmbedToken + "x"})
+	if resp, err := http.DefaultClient.Do(req); err != nil || resp.StatusCode != 401 {
+		t.Errorf("wrong token: %v %v", resp, err)
+	}
+	// The wrong Host is still refused by the host check.
+	req, _ = http.NewRequest("GET", c.line.URL+"/", nil)
+	req.Host = "evil.example"
+	req.AddCookie(&http.Cookie{Name: embedCookie, Value: testEmbedToken})
+	if resp, err := http.DefaultClient.Do(req); err != nil || resp.StatusCode == 200 {
+		t.Errorf("foreign host: %v %v", resp, err)
+	}
+
+	c.stdin.Close() // the parent is gone
+	select {
+	case <-c.done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("still running 30s after stdin closed")
+	}
+	if c.cmd.ProcessState.ExitCode() != 0 {
+		t.Errorf("exit %d; stderr %q", c.cmd.ProcessState.ExitCode(), c.stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(dir, localLockFile)); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, localLockFile)); len(b) != 0 {
+		t.Errorf("lock file not cleared: %q", b)
+	}
+	for name, s := range map[string]string{"stdout": c.stdout.String(), "stderr": c.stderr.String()} {
+		if strings.Contains(s, testEmbedToken) {
+			t.Errorf("the token is in %s", name)
+		}
+	}
+}
+
+func TestEmbeddedSecondStartReportsTheRunningInstance(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "Refract")
+	first := startEmbedded(t, dir, stateReady)
+	exe, _ := os.Executable()
+	cmd := exec.Command(exe, "--embedded")
+	cmd.Env = append(localEnv(dir), embedTokenEnv+"="+testEmbedToken)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	stdin, _ := cmd.StdinPipe() // open, as the app keeps it
+	defer stdin.Close()
+	_ = cmd.Run()
+	var st instanceStatus
+	if err := json.Unmarshal(out.Bytes(), &st); err != nil || st.State != stateRunning || st.URL != first.line.URL || st.PID != first.cmd.Process.Pid || !st.Embedded {
+		t.Fatalf("second: %q (%v)", out.String(), err)
+	}
+	if cmd.ProcessState.ExitCode() != 0 {
+		t.Errorf("exit %d", cmd.ProcessState.ExitCode())
+	}
+	// A terminal refract local doesn't send the browser to a page that needs the app's token.
+	if out, code := runChild(t, dir, "--no-browser"); code != 0 || !strings.Contains(out, "desktop app") || strings.Contains(out, first.line.URL) {
+		t.Errorf("CLI start: exit %d, %q", code, out)
+	}
+}
+
+func TestEmbeddedFailuresPrintOneJSONLine(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "Refract")
+	for name, tc := range map[string]struct {
+		args []string
+		env  []string
+		want string
+	}{
+		"no token":    {args: []string{"--embedded"}, want: "token"},
+		"short token": {args: []string{"--embedded"}, env: []string{embedTokenEnv + "=abc"}, want: "too short"},
+		"bad flag":    {args: []string{"--embedded", "--nope"}, env: []string{embedTokenEnv + "=" + testEmbedToken}, want: "nope"},
+		"saas":        {args: []string{"--embedded"}, env: []string{embedTokenEnv + "=" + testEmbedToken, "REFRACT_MODE=saas"}, want: "hosted service"},
+		"status":      {args: []string{"--status"}, env: []string{"REFRACT_MODE=bogus"}, want: "bogus"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			exe, _ := os.Executable()
+			cmd := exec.Command(exe, tc.args...)
+			cmd.Env = append(localEnv(dir), tc.env...)
+			var out, errOut bytes.Buffer
+			cmd.Stdout, cmd.Stderr = &out, &errOut
+			cmd.Stdin = strings.NewReader("")
+			err := cmd.Run()
+			if err == nil {
+				t.Fatal("expected a failure")
+			}
+			var j errorStatus
+			if e := json.Unmarshal(out.Bytes(), &j); e != nil || j.State != stateError || !strings.Contains(j.Error, tc.want) || strings.Count(out.String(), "\n") != 1 {
+				t.Fatalf("stdout %q (%v), want error containing %q", out.String(), e, tc.want)
+			}
+			if strings.Contains(out.String()+errOut.String(), testEmbedToken) {
+				t.Error("the token is in the output")
+			}
+		})
+	}
+}
+
+// A server that never answers /healthz stops on its own and leaves the error
+// line, even though the parent keeps standard input open and waits.
+func TestEmbeddedFailedReadinessStopsTheServer(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "Refract")
+	exe, _ := os.Executable()
+	cmd := exec.Command(exe, "--embedded")
+	cmd.Env = append(localEnv(dir), embedTokenEnv+"="+testEmbedToken, "REFRACT_TEST_NEVER_HEALTHY=300ms")
+	var out, errOut bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errOut
+	stdin, err := cmd.StdinPipe() // open, as the app keeps it
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stdin.Close()
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() { cmd.Wait(); close(done) }()
+	defer func() { cmd.Process.Kill(); <-done }()
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		t.Fatalf("still running after the readiness failure; stdout %q", out.String())
+	}
+	if code := cmd.ProcessState.ExitCode(); code != 1 {
+		t.Errorf("exit %d; stderr %q", code, errOut.String())
+	}
+	var j errorStatus
+	if err := json.Unmarshal(out.Bytes(), &j); err != nil || j.State != stateError || !strings.Contains(j.Error, "doesn't answer") || strings.Count(out.String(), "\n") != 1 {
+		t.Errorf("stdout %q (%v)", out.String(), err)
+	}
+	if held, err := lockHeld(dir); err != nil || held {
+		t.Errorf("lock still held: %v %v", held, err)
+	}
+}
+
+// Closing standard input before the server is ready still leaves one line.
+func TestEmbeddedStoppedBeforeReadyPrintsTheErrorLine(t *testing.T) {
+	exe, _ := os.Executable()
+	cmd := exec.Command(exe, "--embedded")
+	cmd.Env = append(localEnv(filepath.Join(t.TempDir(), "Refract")), embedTokenEnv+"="+testEmbedToken, "REFRACT_TEST_NEVER_HEALTHY=1m")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	listening := make(chan struct{})
+	go func() {
+		sc := bufio.NewScanner(stderr)
+		for sc.Scan() {
+			if strings.Contains(sc.Text(), "listening") {
+				close(listening)
+				break
+			}
+		}
+		io.Copy(io.Discard, stderr)
+	}()
+	done := make(chan struct{})
+	go func() { cmd.Wait(); close(done) }()
+	defer func() { cmd.Process.Kill(); <-done }()
+	select {
+	case <-listening:
+	case <-time.After(10 * time.Second):
+		t.Fatal("never listened")
+	}
+	stdin.Close()
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("still running after stdin closed")
+	}
+	var j errorStatus
+	if err := json.Unmarshal(out.Bytes(), &j); err != nil || j.State != stateError || !strings.Contains(j.Error, "before Refract was ready") {
+		t.Errorf("stdout %q (%v)", out.String(), err)
+	}
+}
+
+func TestReadEmbedTokenUnsetsTheEnvironment(t *testing.T) {
+	t.Setenv(embedTokenEnv, testEmbedToken)
+	tok, err := readEmbedToken(context.Background(), -1, os.Getenv, os.Unsetenv)
+	if err != nil || tok != testEmbedToken {
+		t.Fatal(tok, err)
+	}
+	if _, ok := os.LookupEnv(embedTokenEnv); ok {
+		t.Fatal("variable still set")
+	}
+	// A child started now (tectonic, git) doesn't see it.
+	out, _ := exec.Command("env").Output()
+	if strings.Contains(string(out), testEmbedToken) {
+		t.Fatal("child inherited the token")
+	}
+	if _, err := readEmbedToken(context.Background(), -1, os.Getenv, os.Unsetenv); err == nil {
+		t.Fatal("no token should fail")
+	}
+	for _, bad := range []string{"short", strings.Repeat("a;", 10), strings.Repeat("a b", 10)} {
+		t.Setenv(embedTokenEnv, bad)
+		if _, err := readEmbedToken(context.Background(), -1, os.Getenv, os.Unsetenv); err == nil {
+			t.Errorf("%q accepted", bad)
+		}
+	}
+}
+
+func TestWatchStdinCancelsOnEOF(t *testing.T) {
+	r, w := io.Pipe()
+	ctx, cancel := watchStdin(context.Background(), r)
+	defer cancel()
+	select {
+	case <-ctx.Done():
+		t.Fatal("cancelled early")
+	case <-time.After(50 * time.Millisecond):
+	}
+	w.Close()
+	select {
+	case <-ctx.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("not cancelled")
+	}
+}
+
+func TestEmbeddedStartReportsATerminalInstanceAsOpen(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "Refract")
+	first := startChild(t, dir)
+	exe, _ := os.Executable()
+	cmd := exec.Command(exe, "--embedded")
+	cmd.Env = append(localEnv(dir), embedTokenEnv+"="+testEmbedToken)
+	stdin, _ := cmd.StdinPipe()
+	defer stdin.Close()
+	out, _ := cmd.Output()
+	var st instanceStatus
+	if err := json.Unmarshal(out, &st); err != nil || st.State != stateRunning || st.URL != first.url || st.Embedded {
+		t.Fatalf("embedded start: %q (%v)", out, err)
 	}
 }

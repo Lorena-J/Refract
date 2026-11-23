@@ -49,6 +49,9 @@ type instanceInfo struct {
 	URL     string `json:"url,omitempty"`
 	PID     int    `json:"pid"`
 	Version string `json:"version"`
+	// Embedded: started with --embedded, so every request needs that
+	// launch's token and the address can't simply be opened.
+	Embedded bool `json:"embedded,omitempty"`
 }
 
 // instanceStatus is the machine-readable answer of `refract local --status`,
@@ -58,12 +61,17 @@ type instanceStatus struct {
 	URL     string `json:"url,omitempty"`
 	PID     int    `json:"pid,omitempty"`
 	Version string `json:"version,omitempty"`
-	DataDir string `json:"dataDir"`
-	Lock    string `json:"lockFile"`
+	// Embedded: the instance needs its own launch's token (see instanceInfo).
+	Embedded bool   `json:"embedded,omitempty"`
+	DataDir  string `json:"dataDir"`
+	Lock     string `json:"lockFile"`
 }
 
 // instanceLock is the exclusive lock on a data folder's lock file.
-type instanceLock struct{ f *os.File }
+type instanceLock struct {
+	f        *os.File
+	embedded bool // recorded with the address
+}
 
 // openLockFile opens dataDir's lock file, creating it when create is set. It
 // never follows a symbolic link and accepts only a regular file, so nothing
@@ -112,7 +120,7 @@ func lockInstance(dataDir string) (l *instanceLock, held bool, err error) {
 		}
 		return nil, held, err
 	}
-	l = &instanceLock{f}
+	l = &instanceLock{f: f}
 	if err := l.write(instanceInfo{PID: os.Getpid(), Version: version}); err != nil {
 		f.Close()
 		return nil, false, fmt.Errorf("writing %s: %w", f.Name(), err)
@@ -140,7 +148,7 @@ func lockHeld(dataDir string) (bool, error) {
 
 // Record adds the address being served to what the lock file says.
 func (l *instanceLock) Record(u string) error {
-	return l.write(instanceInfo{URL: u, PID: os.Getpid(), Version: version})
+	return l.write(instanceInfo{URL: u, PID: os.Getpid(), Version: version, Embedded: l.embedded})
 }
 
 func (l *instanceLock) write(info instanceInfo) error {
@@ -203,7 +211,7 @@ func checkInstance(ctx context.Context, dataDir string, startingWait time.Durati
 		st.State, st.URL = stateUnresponsive, ""
 		// An empty or half-written file while the holder starts: retry.
 		if info, err := readInstanceInfo(dataDir); err == nil {
-			st.PID, st.Version = info.PID, info.Version
+			st.PID, st.Version, st.Embedded = info.PID, info.Version, info.Embedded
 			switch {
 			case info.URL == "" && info.PID > 0:
 				st.State = stateStarting

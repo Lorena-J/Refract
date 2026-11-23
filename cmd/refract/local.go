@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -36,18 +37,46 @@ const localKeyFile = "secret.key"
 
 // localStartTimeout bounds the wait for the server to answer before the
 // address is printed and the browser opened.
-const localStartTimeout = 30 * time.Second
+var localStartTimeout = 30 * time.Second
+
+// localHealthy waits for the server to answer; tests replace it.
+var localHealthy = waitHealthy
 
 // runLocal is `refract local`: Refract on this computer with nothing to
 // configure. Data lives in the per-user data folder, the secret key is made
 // on first run, there is no sign-in and the server listens on loopback only.
 func runLocal(args []string) error {
+	out := &jsonOut{w: os.Stdout}
+	if wantsJSON(args) {
+		defer func() {
+			// A crash while starting still leaves the line, then crashes as before.
+			if p := recover(); p != nil {
+				if !out.wrote.Load() {
+					printJSON(os.Stdout, errorStatus{State: stateError, Error: fmt.Sprint("refract crashed: ", p)})
+				}
+				panic(p)
+			}
+		}()
+	}
+	err := runLocalTo(args, out)
+	var e errExit
+	if err != nil && wantsJSON(args) && !out.wrote.Load() && !errors.As(err, &e) {
+		// A program reading standard output always gets one line, even when
+		// starting fails.
+		printJSON(os.Stdout, errorStatus{State: stateError, Error: err.Error()})
+	}
+	return err
+}
+
+func runLocalTo(args []string, stdout io.Writer) error {
 	fl := flag.NewFlagSet("refract local", flag.ContinueOnError)
 	port := fl.Int("port", 0, "port to listen on, on 127.0.0.1 (default 8080, or a free port when 8080 is taken)")
 	noBrowser := fl.Bool("no-browser", false, "don't open the browser")
+	embedded := fl.Bool("embedded", false, "for a program that embeds Refract: no browser, a free port, one JSON line on standard output when ready, stops when standard input closes; needs --token-fd or REFRACT_EMBED_TOKEN")
+	tokenFD := fl.Int("token-fd", -1, "with --embedded: the inherited file descriptor to read the per-launch token from (default: REFRACT_EMBED_TOKEN)")
 	status := fl.Bool("status", false, "print one JSON line telling whether a refract local is running on the data folder, and exit (0 when it is, 2 while it starts, 1 otherwise)")
 	fl.Usage = func() {
-		fmt.Fprint(fl.Output(), "Usage: refract local [--port N] [--no-browser] [--status]\n\n"+
+		fmt.Fprint(fl.Output(), "Usage: refract local [--port N] [--no-browser] [--status] [--embedded [--token-fd N]]\n\n"+
 			"Runs Refract on this computer with no configuration: data in your user\n"+
 			"folder (REFRACT_DATA_DIR overrides it), no sign-in, 127.0.0.1 only.\n"+
 			"REFRACT_ADDR may choose another address on 127.0.0.1 or ::1 instead of --port.\n"+
@@ -69,16 +98,36 @@ func runLocal(args []string) error {
 		return fmt.Errorf("--port %d: want a port from 1 to 65535", *port)
 	}
 
+	if *embedded && *status {
+		return errors.New("--embedded and --status can't be combined")
+	}
+	if !*embedded && *tokenFD >= 0 {
+		return errors.New("--token-fd is only for --embedded")
+	}
 	slog.SetDefault(slog.New(localLogHandler(os.Stderr)))
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	var token string
+	if *embedded {
+		// The parent going away (standard input closing) stops the server like
+		// SIGTERM, also while the token is still awaited.
+		var cancel context.CancelFunc
+		ctx, cancel = watchStdin(ctx, os.Stdin)
+		defer cancel()
+		var err error
+		if token, err = readEmbedToken(ctx, *tokenFD, os.Getenv, os.Unsetenv); err != nil {
+			return err
+		}
+	}
 	return startLocal(ctx, localOptions{
-		getenv:  os.Getenv,
-		keys:    localkey.System(),
-		port:    *port,
-		portSet: portSet,
-		status:  *status,
-		out:     os.Stdout,
+		embedded: *embedded,
+		token:    token,
+		getenv:   os.Getenv,
+		keys:     localkey.System(),
+		port:     *port,
+		portSet:  portSet,
+		status:   *status,
+		out:      stdout,
 		open: func(u string) {
 			if !*noBrowser {
 				openBrowser(u)
@@ -93,7 +142,10 @@ type localOptions struct {
 	portSet bool // false: localPort, or a free one when it is taken
 	status  bool // report the instance on the data folder and return
 	out     io.Writer
-	open    func(url string) // opens the browser
+	// embedded: see runLocal. token is the per-launch token it requires.
+	embedded bool
+	token    string
+	open     func(url string) // opens the browser
 	// keys is the system credential store; nil means the key file only.
 	keys localkey.Store
 	// defaultDir replaces localDataDir's result, for tests.
@@ -156,6 +208,15 @@ func startLocal(ctx context.Context, o localOptions) error {
 		}
 		switch st.State {
 		case stateRunning:
+			if o.embedded {
+				printJSON(o.out, st)
+				return nil
+			}
+			if st.Embedded {
+				// Its pages need the app's token: a browser would only get 401.
+				fmt.Fprintf(o.out, "Refract is already running in the desktop app (pid %d) on this data folder\nData folder: %s\nUse the app, or quit it and start refract local again.\n", st.PID, dataDir)
+				return nil
+			}
 			fmt.Fprintf(o.out, "Refract is already running at %s\nData folder: %s\n", st.URL, dataDir)
 			o.open(st.URL)
 			return nil
@@ -163,22 +224,39 @@ func startLocal(ctx context.Context, o localOptions) error {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
+			if o.embedded {
+				printJSON(o.out, st)
+				return errExit{code: 1, msg: recoveryHelp(st)}
+			}
 			return errors.New(recoveryHelp(st))
 		}
 		// The other one stopped meanwhile: take the lock again.
 	}
 	defer lock.Release()
+	lock.embedded = o.embedded
 	var key []byte // nil: run reads REFRACT_SECRET_KEY, which wins when set
 	if o.getenv("REFRACT_SECRET_KEY") == "" {
 		if key, err = resolveLocalKey(o.keys, dataDir); err != nil {
 			return err
 		}
 	}
-	return run(ctx, runOptions{
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var readyErr error // set before cancel, read after run returns
+	var readyPrinted atomic.Bool
+	var wrap func(http.Handler) http.Handler
+	if o.embedded {
+		wrap = requireEmbedToken(o.token)
+	}
+	err = run(ctx, runOptions{
+		wrap:     wrap,
 		dataDir:  dataDir,
 		key:      key,
 		authKind: "none",
 		listen: func() (net.Listener, error) {
+			if o.embedded && !o.portSet && o.getenv("REFRACT_ADDR") == "" {
+				return listenTCP(&net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)}) // a free port
+			}
 			return listenLocal(o.getenv("REFRACT_ADDR"), o.port, o.portSet, listenTCP)
 		},
 		ready: func(ctx context.Context, addr net.Addr) {
@@ -186,18 +264,36 @@ func startLocal(ctx context.Context, o localOptions) error {
 			if err := lock.Record(u); err != nil {
 				slog.Warn("can't record the address in the lock file; a second refract local won't find this one", "err", err)
 			}
-			waitCtx, cancel := context.WithTimeout(ctx, localStartTimeout)
-			defer cancel()
-			if !waitHealthy(waitCtx, u+"/healthz") {
+			waitCtx, stopWait := context.WithTimeout(ctx, localStartTimeout)
+			defer stopWait()
+			if !localHealthy(waitCtx, u+"/healthz") {
 				if ctx.Err() == nil {
 					slog.Error("Refract is listening but doesn't answer; the browser was not opened", "url", u, "waited", localStartTimeout.String())
+					if o.embedded {
+						readyErr = fmt.Errorf("Refract is listening on %s but doesn't answer after %s", u, localStartTimeout)
+						cancel() // stop the server: the parent waits for this error line
+					}
 				}
+				return
+			}
+			if o.embedded {
+				printJSON(o.out, instanceStatus{State: stateReady, URL: u, PID: os.Getpid(), Version: version, DataDir: dataDir, Lock: lock.f.Name()})
+				readyPrinted.Store(true)
 				return
 			}
 			fmt.Fprintf(o.out, "\nRefract is running at %s\nData folder: %s\nThere is no sign-in: only this computer can open it. Press Ctrl+C to stop.\n\n", u, dataDir)
 			o.open(u)
 		},
 	})
+	if err == nil && readyErr != nil {
+		return readyErr
+	}
+	if err == nil && o.embedded && !readyPrinted.Load() {
+		// Stopped (standard input closed, SIGTERM) before it answered: the
+		// parent still gets its one line.
+		return errors.New("stopped before Refract was ready")
+	}
+	return err
 }
 
 // localDataDir is the per-user folder where refract local keeps its data:
