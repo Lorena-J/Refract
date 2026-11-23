@@ -241,7 +241,7 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 
 // downloadMessage explains a stop caused by the package server being out of reach.
 func downloadMessage(missing []string) string {
-	msg := "This document needs LaTeX files that aren't on this computer yet, and the package server can't be reached. This is a network problem, not an error in your document."
+	msg := "This document needs LaTeX files that Refract doesn't have yet, and the package server can't be reached. This is a network problem, not an error in your document."
 	if len(missing) > 0 {
 		msg += " Missing: " + strings.Join(missing, ", ") + "."
 	}
