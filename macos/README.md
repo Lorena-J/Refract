@@ -93,11 +93,11 @@ the server, then the app's executable) with `--options runtime`, a stable identi
 (`<bundle id>.<file name>`; the linker's carries a hash that changes every build) and, for a real
 identity, a secure timestamp, then the app that seals them. Symlinks (Git's `git-*` links) carry no signature and are
 not signed. `verify-app.sh` runs `codesign --verify --deep --strict`, then checks every Mach-O:
-valid signature, hardened runtime, no entitlements, no symlink leaving the bundle, and with
+valid signature, hardened runtime and no entitlements in every architecture slice, no symlink leaving the bundle, and with
 `--release` also: not ad hoc, a Developer ID Application authority, a secure timestamp and the same
 TeamIdentifier as the app. `build-app.sh` runs both (`--release` is left to `notarize.sh`, so `make mac` also works with an Apple Development or self-signed identity; only a
 `Developer ID Application:` identity gets the secure timestamp), so a build with an unsigned binary fails. `notarize.sh` zips with
-`ditto`, submits with `notarytool --wait`, prints `notarytool log` when Apple rejects it, staples,
+`ditto`, submits with `notarytool submit` (printing the submission id at once), waits with `notarytool wait`, prints `notarytool log` when Apple rejects it, staples,
 runs `stapler validate` and `spctl --assess --type execute -vv`, and verifies again.
 
 **No entitlements, no sandbox.** The hardened runtime only needs an entitlement for what it

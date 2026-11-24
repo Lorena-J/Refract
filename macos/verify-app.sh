@@ -60,26 +60,31 @@ while IFS= read -r f; do
   case "$(file -b "$f")" in *Mach-O*) ;; *) continue ;; esac
   COUNT=$((COUNT + 1))
   codesign --verify --strict "$f" || fail "$f is not validly signed"
-  info=$(codesign -dvv "$f" 2>&1) || fail "cannot read the signature of $f"
-  printf '%s\n' "$info" | grep -q 'flags=.*runtime' || fail "$f lacks the hardened runtime"
-  ent=$(codesign -d --entitlements - --xml "$f" 2>/dev/null | tr -d '[:space:]')
-  if [ -n "$ent" ]; then
-    # The one exception: an ad hoc development build, whose app executable switches library validation
-    # off so that it can load the embedded Sparkle.framework (see sign-app.sh). Never in a release.
-    if [ "$RELEASE" = 0 ] && [ "$f" = "$APP/Contents/MacOS/Refract" ] && \
-       [ "$(printf '%s' "$ent" | grep -o '<key>[^<]*</key>' | tr -d '\n')" = "<key>com.apple.security.cs.disable-library-validation</key>" ] && \
-       printf '%s\n' "$info" | grep -q '^Signature=adhoc'; then :
-    else
-      fail "$f has entitlements (none are expected)"
+  # A universal binary has one signature per slice: the policy holds for each of them.
+  archs=$(lipo -archs "$f" 2>/dev/null) || fail "cannot read the architectures of $f"
+  [ -n "$archs" ] || fail "no architecture found in $f"
+  for arch in $archs; do
+    info=$(codesign -dvv --arch "$arch" "$f" 2>&1) || fail "cannot read the $arch signature of $f"
+    printf '%s\n' "$info" | grep -q 'flags=.*runtime' || fail "$f ($arch) lacks the hardened runtime"
+    ent=$(codesign -d --entitlements - --xml --arch "$arch" "$f" 2>/dev/null | tr -d '[:space:]')
+    if [ -n "$ent" ]; then
+      # The one exception: an ad hoc development build, whose app executable switches library validation
+      # off so that it can load the embedded Sparkle.framework (see sign-app.sh). Never in a release.
+      if [ "$RELEASE" = 0 ] && [ "$f" = "$APP/Contents/MacOS/Refract" ] && \
+         [ "$(printf '%s' "$ent" | grep -o '<key>[^<]*</key>' | tr -d '\n')" = "<key>com.apple.security.cs.disable-library-validation</key>" ] && \
+         printf '%s\n' "$info" | grep -q '^Signature=adhoc'; then :
+      else
+        fail "$f ($arch) has entitlements (none are expected)"
+      fi
     fi
-  fi
-  if [ "$RELEASE" = 1 ]; then
-    printf '%s\n' "$info" | grep -q '^Signature=adhoc' && fail "$f is signed ad hoc"
-    printf '%s\n' "$info" | grep -q '^Authority=Developer ID Application:' || fail "$f is not signed with a Developer ID Application certificate"
-    printf '%s\n' "$info" | grep -q '^Timestamp=' || fail "$f has no secure timestamp"
-    [ -n "$TEAM" ] && [ "$TEAM" != "not set" ] || fail "the app has no team identifier"
-    [ "$(printf '%s\n' "$info" | sed -n 's/^TeamIdentifier=//p')" = "$TEAM" ] || fail "$f is signed by another team than the app"
-  fi
+    if [ "$RELEASE" = 1 ]; then
+      printf '%s\n' "$info" | grep -q '^Signature=adhoc' && fail "$f ($arch) is signed ad hoc"
+      printf '%s\n' "$info" | grep -q '^Authority=Developer ID Application:' || fail "$f ($arch) is not signed with a Developer ID Application certificate"
+      printf '%s\n' "$info" | grep -q '^Timestamp=' || fail "$f ($arch) has no secure timestamp"
+      [ -n "$TEAM" ] && [ "$TEAM" != "not set" ] || fail "the app has no team identifier"
+      [ "$(printf '%s\n' "$info" | sed -n 's/^TeamIdentifier=//p')" = "$TEAM" ] || fail "$f ($arch) is signed by another team than the app"
+    fi
+  done
 done < "$LIST"
 [ "$COUNT" -gt 0 ] || fail "no Mach-O found in $APP"
 echo "ok: $COUNT Mach-O files, all validly signed with the hardened runtime$([ "$RELEASE" = 1 ] && echo " by team $TEAM")"

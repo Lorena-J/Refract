@@ -148,6 +148,7 @@ jobs:
           CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
         run: |
           set +x
+          umask 077
           KEYCHAIN="$RUNNER_TEMP/refract-signing.keychain-db"
           KEYCHAIN_PASSWORD=$(openssl rand -hex 24)
           echo "::add-mask::$KEYCHAIN_PASSWORD"
