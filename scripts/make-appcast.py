@@ -160,7 +160,12 @@ def _inline(text):
     text = html.escape(text, quote=False)
     text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
     text = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", text)
-    return re.sub(r"\[([^\]]+)\]\((https?://[^)\s\"]+)\)", lambda m: f'<a href="{m.group(2).replace('"', "&quot;").replace("'", "&#x27;")}">{m.group(1)}</a>', text)
+
+    def link(m):
+        url = m.group(2).replace('"', "&quot;").replace("'", "&#x27;")
+        return '<a href="%s">%s</a>' % (url, m.group(1))
+
+    return re.sub(r"\[([^\]]+)\]\((https?://[^)\s\"]+)\)", link, text)
 
 
 def markdown_to_html(md):

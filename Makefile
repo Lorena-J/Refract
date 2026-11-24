@@ -87,7 +87,7 @@ mac: web
 #   REFRACT_SIGN_IDENTITY="Developer ID Application: Name (TEAMID)" REFRACT_NOTARY_PROFILE=refract-notary \
 #   REFRACT_SPARKLE_PUBLIC_KEY=<public EdDSA key> make mac-release
 mac-release: mac-release-check web
-	macos/build-app.sh $(MAC_ARCH) $(MAC_VERSION) build/mac/$(MAC_ARCH)
+	REFRACT_RELEASE=1 macos/build-app.sh $(MAC_ARCH) $(MAC_VERSION) build/mac/$(MAC_ARCH)
 	macos/notarize.sh build/mac/$(MAC_ARCH)/Refract.app
 	ditto -c -k --norsrc --noextattr --noqtn --keepParent build/mac/$(MAC_ARCH)/Refract.app build/mac/$(MAC_ARCH)/Refract-$(MAC_ARCH).zip
 	@echo build/mac/$(MAC_ARCH)/Refract-$(MAC_ARCH).zip

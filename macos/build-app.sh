@@ -36,8 +36,11 @@ esac
 SPARKLE_KEY=${REFRACT_SPARKLE_PUBLIC_KEY:-}
 FEED_BASE=${REFRACT_UPDATE_FEED_BASE:-https://github.com/ponytojas/Refract/releases/latest/download}
 # A release without the key could never be updated (and an update could never be verified): refuse
-# before spending ten minutes on the build.
-if [ "${REFRACT_SIGN_IDENTITY:--}" != "-" ] && [ -z "$SPARKLE_KEY" ]; then
+# before spending ten minutes on the build. A release is `make mac-release` (REFRACT_RELEASE=1) or
+# any Developer ID build; other builds (ad hoc, Apple Development, self-signed) without the key run
+# with updates off.
+case "${REFRACT_SIGN_IDENTITY:--}" in "Developer ID"*) REFRACT_RELEASE=1 ;; esac
+if [ "${REFRACT_RELEASE:-}" = 1 ] && [ -z "$SPARKLE_KEY" ]; then
   echo "error: a release needs REFRACT_SPARKLE_PUBLIC_KEY, the public EdDSA key that verifies updates (macos/README.md, \"Updates\")" >&2
   exit 1
 fi

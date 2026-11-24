@@ -196,7 +196,11 @@ jobs:
           if [ -s "$notes_file" ]; then notes="--notes-file=$notes_file"; else notes="--generate-notes"; fi
           cd dist
           sha256sum * > SHA256SUMS
-          gh release create "$GITHUB_REF_NAME" * --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" "$notes"
+          # A prerelease (a '-' in the tag) may carry no appcasts: keep it out of releases/latest,
+          # where installed apps look for their feeds.
+          case "$GITHUB_REF_NAME" in *-*) pre="--prerelease" ;; *) pre="" ;; esac
+          # shellcheck disable=SC2086
+          gh release create "$GITHUB_REF_NAME" * --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" "$notes" $pre
 
   # The default token cannot write to a different repository. Opt in after
   # adding a fine-grained HOMEBREW_TAP_TOKEN for ponytojas/homebrew-tap.

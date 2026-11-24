@@ -241,8 +241,9 @@ for the same answer instead of asking twice.
   (`v0.3.0-rc.1`) gets no appcast, and a build's version number is `0.3.0`, so it could not be told from
   the final one by Sparkle anyway.
 - **Build variable.** `REFRACT_SPARKLE_PUBLIC_KEY` (the base64 public key) becomes `SUPublicEDKey`, with
-  `SUFeedURL` and `SUVerifyUpdateBeforeExtraction`. `build-app.sh` refuses to build with a real identity
-  (a release) when it is missing or not 32 bytes. An ad hoc build without it has updates **off**: no
+  `SUFeedURL` and `SUVerifyUpdateBeforeExtraction`. `build-app.sh` refuses to build a release (`make mac-release`,
+  which sets `REFRACT_RELEASE=1`, or any `Developer ID…` identity) when it is missing, and any build when it
+  is not 32 bytes. A local build without it (`make mac`: ad hoc, Apple Development or self-signed) has updates **off**: no
   Sparkle updater starts, and the menu item says so instead of failing at the first check
   (`UpdateSettings`, tested in `Tests/RefractCoreTests/UpdateSettingsTests.swift`).
   `REFRACT_UPDATE_FEED_BASE` changes the directory of the feed (tests).
