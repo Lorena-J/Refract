@@ -6,7 +6,7 @@ A Swift app that runs `refract local --embedded` (the contract is in the top-lev
 ```
 macos/
   Package.swift            SwiftPM package: RefractCore (library), Refract (app), tests
-  Sources/RefractCore/     the server's lifecycle, no UI: status line, supervisor, logs, bundle layout
+  Sources/RefractCore/     the server's lifecycle, no UI: status line, supervisor, logs, bundle layout, update settings
   Sources/Refract/         AppKit: window, loading/error views, WKWebView, quit sequence, minimal menu
   Resources/               Info.plist and the English/Spanish strings
   Tests/RefractCoreTests/  lifecycle tests against a fake server script
@@ -14,6 +14,7 @@ macos/
   sign-app.sh              signs every Mach-O inside out, then the app (REFRACT_SIGN_IDENTITY)
   verify-app.sh            the check that fails on any unsigned or ad hoc Mach-O (--release)
   notarize.sh              notarizes, staples and assesses a signed app (`make mac-release`)
+../scripts/make-appcast.py  the update feed of one architecture, signed (see "Updates")
 ```
 
 ## Decisions
@@ -177,6 +178,170 @@ owner-only permissions and removed at the end, and the temporary keychain is del
 password and the key and issuer ids are passed as arguments to `security` and `notarytool` on the
 runner, which is used by this job only and discarded.
 
+## Updates
+
+The app updates itself with [Sparkle](https://sparkle-project.org) 2. An update is the whole
+signed app (the Swift app, the server and the bundled Git, Tectonic, SyncTeX and ripgrep), replaced
+as one: never a piece of it. Projects, the database and the secret key live in
+`~/Library/Application Support/Refract`, outside the bundle, and an update doesn't touch that folder.
+
+**What the person sees.** `Refract → Check for Updates…`. Sparkle asks once, on the second launch,
+whether to check automatically (`SUEnableAutomaticChecks` is deliberately not set in Info.plist, so
+that the answer is the person's); the choice stays in its own dialog. A development build (no key,
+see below) opens an explanation instead.
+
+**What it does.** `Sources/Refract/Updater.swift`: `SPUStandardUpdaterController` with this class as
+`SPUUpdaterDelegate`. Sparkle checks the feed, downloads the archive, verifies its EdDSA signature
+against `SUPublicEDKey` **before extracting anything**, then replaces the app. Nothing is replaced if
+any step fails, and the running app stays usable; the next check retries (an interrupted download
+starts again, Sparkle keeps nothing half-installed). Before Sparkle relaunches the app,
+`updater(_:shouldPostponeRelaunchForUpdate:untilInvokingBlock:)` runs the quit sequence's server part,
+the same code as ⌘Q (`AppDelegate.stopServer`): `window.refractFlush()` (and the "couldn't save"
+question if it answers false), then standard input closes and the app waits for the server, which
+finishes its requests and closes the database. Only then is the installer released. "Install on
+quit" and ⌘Q during an update go through `applicationShouldTerminate`, the same path. If the person
+answers "Not Now" (the wording for an update; ⌘Q says "Don't Quit"), the update waits and the app goes
+on, and Sparkle's relaunch is kept: Check for Updates… asks again and finishes it. If the update fails
+after the server was stopped, the server is started again. A second ⌘Q while a quit is pending waits
+for the same answer instead of asking twice.
+
+**Decisions.**
+
+- **Sparkle 2.10.1, exact** (`macos/Package.swift`, `Package.resolved`): the latest stable release that
+  was more than two weeks old. SwiftPM compares the framework's zip with the checksum in Sparkle's own
+  `Package.swift` at that tag (`4c2e48a3…022a`, which also matches the digest GitHub shows for the
+  release asset), and `Package.resolved` pins the commit of the tag. Upgrading is a deliberate change of
+  the version in `Package.swift` and in `scripts/make-appcast.py` (which downloads `sign_update` from the
+  same release, checking its SHA-256).
+- **No XPC services.** Sparkle's `Downloader.xpc` and `Installer.xpc` exist for sandboxed apps (a sandbox
+  can't download or run the installer itself). Refract isn't sandboxed (see "No entitlements, no
+  sandbox"), Info.plist doesn't set `SUEnableDownloaderService` or `SUEnableInstallerLauncherService`, so
+  they would never run: `build-app.sh` removes them, which leaves less to sign and less to attack.
+  What stays is `Autoupdate` and `Updater.app`, the helpers that replace the app after it quits.
+- **Signing.** `sign-app.sh` follows Sparkle's instructions for a Developer ID: inside out and one by one,
+  never `--deep`: `Autoupdate`, `Updater.app`, then `Sparkle.framework`, then (with the rest) the app, all
+  with the same identity, the hardened runtime and a secure timestamp. `verify-app.sh` (and `--release`)
+  checks the framework like every other Mach-O and also that it is there whole, that the XPC services
+  are not, that `SUPublicEDKey` is a 32-byte key and `SUFeedURL` an https URL, and with `--release` that a
+  key is present at all and that the feed can't be overridden (see "Testing updates without the real key").
+- **Ad hoc builds get one entitlement.** The hardened runtime's library validation only loads libraries
+  from the same team, and an ad hoc app has none, so an embedded `Sparkle.framework` can't load (checked:
+  dyld says "different Team IDs"). `sign-app.sh` gives the app executable of an *ad hoc* build
+  `com.apple.security.cs.disable-library-validation`; a real identity gets none, and `verify-app.sh
+  --release` fails on any entitlement. A Developer ID build is checked by `--release` for the same team on
+  every Mach-O instead.
+- **One feed per architecture, on GitHub Releases.** Sparkle doesn't choose by architecture and the apps
+  are per architecture (see "One app per architecture"), so each build is baked with its own feed,
+  `https://github.com/ponytojas/Refract/releases/latest/download/appcast-<arch>.xml` with `<arch>` as
+  everywhere else in this repository (`arm64`, `amd64`). Releases rather than Pages: the feed is published
+  by the same job that publishes the archive it points to (nothing to keep in step, no second deployment
+  or token), `releases/latest/download/` is a stable URL, and the only cost is that a release flagged
+  *pre-release* is not "latest", so desktop releases are published as full releases. A feed holds only the
+  newest version, which is all a Sparkle client needs (it jumps straight to it). A prerelease tag
+  (`v0.3.0-rc.1`) gets no appcast, and a build's version number is `0.3.0`, so it could not be told from
+  the final one by Sparkle anyway.
+- **Build variable.** `REFRACT_SPARKLE_PUBLIC_KEY` (the base64 public key) becomes `SUPublicEDKey`, with
+  `SUFeedURL` and `SUVerifyUpdateBeforeExtraction`. `build-app.sh` refuses to build a release (`make mac-release`,
+  which sets `REFRACT_RELEASE=1`, or any `Developer ID…` identity) when it is missing, and any build when it
+  is not 32 bytes. A local build without it (`make mac`: ad hoc, Apple Development or self-signed) has updates **off**: no
+  Sparkle updater starts, and the menu item says so instead of failing at the first check
+  (`UpdateSettings`, tested in `Tests/RefractCoreTests/UpdateSettingsTests.swift`).
+  `REFRACT_UPDATE_FEED_BASE` changes the directory of the feed (tests).
+
+### Data safety on an update
+
+The server, not the app, protects the database. When a newer server finds an older database, it
+applies the migrations in one transaction and, before that, writes a consistent copy of the database
+(`VACUUM INTO`, taken while holding the write lock) next to it as `refract.db.pre-upgrade`, replacing
+the one from the previous upgrade; the copy is in the data folder, outside the app bundle, so the update
+doesn't replace it. If a migration fails, the transaction is rolled back (the database is exactly as it
+was) and the server refuses to start with a message that names the copy
+(`migration 14: …. Your data was not changed: the database is still at schema version 13. A copy from
+before the upgrade is at …/refract.db.pre-upgrade …`); the app shows that message in its error view with
+the log, and nothing is deleted. A server that finds a database *newer* than it knows (the app was
+downgraded) refuses to open it: "a newer Refract wrote it. Run that version or a later one, or restore a
+backup from before the upgrade".
+
+**Rollback.** Going back to an older app is unsupported, and Sparkle never does it. If the database
+schema didn't change between the two versions, the older app opens the data as it is. If it did, the
+older server refuses (above), and the supported way back is to restore the copy: quit the app, move
+`refract.db`, `refract.db-wal` and `refract.db-shm` away, copy `refract.db.pre-upgrade` to `refract.db`,
+install the older version. That loses what was done since the upgrade, so it is a manual step that says
+so (README, "Data, backups and upgrades"), never automatic.
+
+### Maintainer: create the update key
+
+Done once, before the first release that can be updated. The key pair is Ed25519, made with Sparkle's
+own tool; whoever holds the private half can publish updates every installed app trusts, and if it is
+lost no installed app can be updated any more (Sparkle can't rotate it without the old one), so keep a
+copy in a password manager.
+
+1. Download Sparkle's tools: `Sparkle-2.10.1.tar.xz` from
+   <https://github.com/sparkle-project/Sparkle/releases/tag/2.10.1> (SHA-256
+   `1a856d2a9edb8e628de88121d7be04cf0e2167f8641650b78fca00b14244cf27`), and unpack it.
+2. `./bin/generate_keys` creates the key in your login keychain (it asks for permission) and prints
+   the **public** key: a 44-character base64 string. `./bin/generate_keys -p` prints it again.
+3. Export the private key to a file only you can read, give it to CI, and delete the file:
+
+   ```sh
+   ./bin/generate_keys -x sparkle_private_key
+   gh secret set SPARKLE_ED_PRIVATE_KEY < sparkle_private_key
+   gh variable set REFRACT_SPARKLE_PUBLIC_KEY --body 'THE-PUBLIC-KEY-FROM-STEP-2'
+   rm sparkle_private_key
+   ```
+
+   The secret is read only by the "Appcast" step of `macos-app.yml`, which hands it to `sign_update` on
+   its standard input (`scripts/make-appcast.py`); it is never in an argument, a file or a log. The
+   public key is not secret (it ships in every app), so it is a repository variable.
+4. A local release needs the public key too:
+   `REFRACT_SPARKLE_PUBLIC_KEY=... REFRACT_SIGN_IDENTITY=... REFRACT_NOTARY_PROFILE=... make mac-release`.
+
+The release workflow calls `macos-app.yml` (#71), which for each architecture builds, signs, notarizes,
+staples and zips the app, then runs `scripts/make-appcast.py` on that zip and uploads
+`appcast-<arch>` next to the zip. `make-appcast.py` checks, before writing anything, that the app in
+the zip has the tag's version, a valid `SUPublicEDKey` and the feed URL of that architecture, and that
+the signature it just made verifies against the app's public key (a secret that isn't the private half
+of the variable fails the release instead of every installed app); the notes are the version's
+`CHANGELOG.md` section, which must exist. `release.yml` stops a release whose appcasts point anywhere
+other than at the archives it attaches. Attach `appcast-arm64.xml`, `appcast-amd64.xml` and the zips
+to the **same** full release.
+
+### Testing updates without the real key
+
+Make a throwaway key (never in a keychain or the repository), build two versions with its public key
+and an ad hoc signature, give the old one its own bundle id, serve an appcast from loopback and point the
+app at it:
+
+```sh
+openssl genpkey -algorithm ed25519 -outform DER -out k.der
+tail -c 32 k.der | base64 | tr -d '\n' > seed.txt                                    # the private key file
+openssl pkey -inform DER -in k.der -pubout -outform DER | tail -c 32 | base64 > pub.txt   # SUPublicEDKey
+REFRACT_SPARKLE_PUBLIC_KEY=$(cat pub.txt) macos/build-app.sh arm64 v0.0.1 out1   # and v0.0.2 into out2
+ditto -c -k --norsrc --noextattr --noqtn --keepParent out2/Refract.app Refract-arm64.zip
+SPARKLE_ED_PRIVATE_KEY=$(cat seed.txt) scripts/make-appcast.py --version v0.0.2 --arch arm64 \
+  --archive Refract-arm64.zip --output appcast-arm64.xml --notes-file notes.md \
+  --download-prefix http://127.0.0.1:8099 --sign-update /path/to/Sparkle/bin/sign_update
+python3 -m http.server 8099 --bind 127.0.0.1 &
+REFRACT_APP_UPDATE_FEED=http://127.0.0.1:8099/appcast-arm64.xml REFRACT_APP_LOG_DIR=... out1/Refract.app/Contents/MacOS/Refract
+```
+
+`REFRACT_APP_UPDATE_FEED` (not passed to the server) replaces the feed for the run; only https and
+loopback http are accepted, and it can't weaken the check, since the archive still has to be signed by
+the key baked into the app. Only ad hoc builds honour it: `build-app.sh` adds
+`RefractAllowsUpdateFeedOverride` to their Info.plist, a release never has it (`verify-app.sh --release`
+fails on it), so a release always reads its own https feed. Run the app with a scratch `HOME` (the data folder is under it), a
+`secret.key` made beforehand in `$HOME/Library/Application Support/Refract` (otherwise the key goes into
+the real login keychain), a bundle id of its own (`PlistBuddy` the copy, then `sign-app.sh`) so its
+preferences and caches are separate, `REFRACT_APP_LOG_DIR` and `REFRACT_APP_DEFAULTS_SUITE`. Setting
+`SUEnableAutomaticChecks` and `SUAutomaticallyUpdate` in that bundle id's defaults makes Sparkle check
+and install on quit with no window to click, so the run can be scripted with `osascript -e 'tell
+application id "..." to quit'`.
+
+**Install and Relaunch loses that isolation.** Sparkle relaunches the new version through Launch
+Services, which starts it without the test environment: the relaunched app has the real `HOME`, so
+its server opens the real data folder and it logs to the real log folder. Install on quit doesn't
+relaunch, so it is safe to script; test the relaunch path in a separate macOS user account.
+
 ## Testing without touching real state
 
 Environment variables of the app (not passed to the server) redirect what it writes outside the
@@ -217,4 +382,5 @@ needs the server side of #61; its sign-in page then opens in the browser by the 
 
 ## Left for later
 
-The real menu (#68, the current one is the minimum for Quit, Close and editing), updates (#70), the icon.
+The real menu (#68, the current one is the minimum for Quit, Close and editing; it has Check for Updates…),
+the icon, the DMG and the release job (#71).
