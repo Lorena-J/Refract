@@ -225,26 +225,26 @@ function ProjectList({ status }: { status: ChatGPTStatus | null }) {
   async function importFolder(files: File[]) {
     if (files.length === 0) return
     const folder = files[0].webkitRelativePath.split('/')[0]
-    await uploadFolder(
+    setBusy(true)
+    const result = await uploadFolder(
       folder,
       files.map((file) => ({ file, path: file.webkitRelativePath })),
     )
+    finishImport(result ? [result] : [])
   }
 
-  async function uploadFolder(folder: string, files: DroppedFile[]) {
+  // Uploads one folder; the caller reports the results of the whole batch with finishImport.
+  async function uploadFolder(folder: string, files: DroppedFile[]): Promise<ImportResult | null> {
     const form = new FormData()
     for (const f of files) form.append('file', f.file, f.path)
-    setBusy(true)
     try {
-      finishImport([
-        await api<ImportResult>(`/api/projects/import-folder?name=${encodeURIComponent(folder)}`, {
-          method: 'POST',
-          body: form,
-        }),
-      ])
+      return await api<ImportResult>(`/api/projects/import-folder?name=${encodeURIComponent(folder)}`, {
+        method: 'POST',
+        body: form,
+      })
     } catch (e) {
       toast.error(`${folder}: ${errorText(e)}`)
-      setBusy(false)
+      return null
     }
   }
 
@@ -332,13 +332,18 @@ function ProjectList({ status }: { status: ChatGPTStatus | null }) {
       setBusy(false)
     }
     if (dropped.folders.length === 0) return importZips(dropped.files)
+    const done: ImportResult[] = []
+    setBusy(true)
     for (const f of dropped.folders) {
       if (f.tooBig) toast.error(t('The folder {name} has too many files to import.', { name: f.name }))
       else if (f.tooDeep) toast.error(t('The folder {name} is nested too deeply to import.', { name: f.name }))
       else if (f.error) toast.error(t('Could not read the folder {name}: {error}', { name: f.name, error: f.error }))
-      else if (f.files.length) await uploadFolder(f.name, f.files)
-      else toast.error(t('The folder {name} is empty.', { name: f.name }))
+      else if (f.files.length) {
+        const r = await uploadFolder(f.name, f.files)
+        if (r) done.push(r)
+      } else toast.error(t('The folder {name} is empty.', { name: f.name }))
     }
+    finishImport(done)
     const zips = dropped.files.filter((f) => f.name.toLowerCase().endsWith('.zip'))
     if (zips.length) importZips(dropped.files)
     else if (dropped.files.length) {

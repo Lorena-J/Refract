@@ -8,7 +8,7 @@ final class WebViewController: NSViewController, WKNavigationDelegate, WKUIDeleg
     private let webView: WKWebView
     private var loaded = false
     /// Where each running download is written (a temporary name) and where it ends up.
-    private var downloadTargets: [ObjectIdentifier: (temp: URL, final: URL)] = [:]
+    private var downloadTargets: [ObjectIdentifier: (temp: URL, final: URL, replaces: Bool)] = [:]
     /// When the page process last ended: reloading stops after 3 in a minute.
     private var reloads: [Date] = []
     /// Called when the page can't be shown safely (the origin rules didn't compile).
@@ -188,7 +188,9 @@ final class WebViewController: NSViewController, WKNavigationDelegate, WKUIDeleg
                 // is complete: download beside it under a temporary name, then move over it.
                 let temp = url.deletingLastPathComponent()
                     .appendingPathComponent(".refract-download-\(UUID().uuidString)")
-                self.downloadTargets[ObjectIdentifier(download)] = (temp, url)
+                // Only a file the user saw (and approved replacing) in the panel may be replaced later.
+                let replaces = FileManager.default.fileExists(atPath: url.path)
+                self.downloadTargets[ObjectIdentifier(download)] = (temp, url, replaces)
                 completionHandler(temp)
             } else {
                 completionHandler(nil)
@@ -203,15 +205,47 @@ final class WebViewController: NSViewController, WKNavigationDelegate, WKUIDeleg
 
     func downloadDidFinish(_ download: WKDownload) {
         guard let target = downloadTargets.removeValue(forKey: ObjectIdentifier(download)) else { return }
+        settle(temp: target.temp, final: target.final, replaces: target.replaces)
+    }
+
+    /// Puts the finished download in place. Without the user's approval to replace, nothing is
+    /// overwritten: if the name was taken meanwhile, the user chooses again (or cancels).
+    private func settle(temp: URL, final: URL, replaces: Bool) {
+        let fm = FileManager.default
         do {
-            if FileManager.default.fileExists(atPath: target.final.path) {
-                _ = try FileManager.default.replaceItemAt(target.final, withItemAt: target.temp)
+            if replaces && fm.fileExists(atPath: final.path) {
+                _ = try fm.replaceItemAt(final, withItemAt: temp)
             } else {
-                try FileManager.default.moveItem(at: target.temp, to: target.final)
+                try fm.moveItem(at: temp, to: final)
             }
         } catch {
-            try? FileManager.default.removeItem(at: target.temp)
+            if !replaces && fm.fileExists(atPath: final.path) {
+                askAgain(temp: temp, taken: final)
+                return
+            }
+            try? fm.removeItem(at: temp)
             reportDownloadFailure(error)
+        }
+    }
+
+    private func askAgain(temp: URL, taken: URL) {
+        let panel = NSSavePanel()
+        panel.message = L("download.exists.message", "A file with that name appeared while downloading. Choose where to save it.")
+        panel.nameFieldStringValue = taken.lastPathComponent
+        panel.directoryURL = taken.deletingLastPathComponent()
+        panel.canCreateDirectories = true
+        let finish: (NSApplication.ModalResponse) -> Void = { result in
+            if result == .OK, let url = panel.url {
+                // The panel asked about replacing an existing file, so that choice is approved.
+                self.settle(temp: temp, final: url, replaces: FileManager.default.fileExists(atPath: url.path))
+            } else {
+                try? FileManager.default.removeItem(at: temp)
+            }
+        }
+        if let window = view.window {
+            panel.beginSheetModal(for: window, completionHandler: finish)
+        } else {
+            finish(panel.runModal())
         }
     }
 

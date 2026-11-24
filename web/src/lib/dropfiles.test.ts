@@ -109,3 +109,21 @@ test('a folder with more entries than the limit is reported as too big', async (
   ])
   assert.deepEqual(got.folders, [{ name: 'wide', files: [], tooBig: true }])
 })
+
+test('reading a folder stops once the entry limit is passed', async () => {
+  let calls = 0
+  const wide = {
+    isFile: false,
+    isDirectory: true,
+    name: 'wide',
+    createReader: () => ({
+      readEntries: (ok: (e: unknown[]) => void) => {
+        calls++
+        ok(Array.from({ length: 1000 }, (_, i) => file(`f${calls}-${i}`)))
+      },
+    }),
+  }
+  const got = await readDropped([{ kind: 'file', getAsFile: () => null, webkitGetAsEntry: () => wide as never }])
+  assert.equal(got.folders[0].tooBig, true)
+  assert.equal(calls, maxEntries / 1000)
+})

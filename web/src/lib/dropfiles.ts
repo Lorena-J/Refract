@@ -18,17 +18,6 @@ type Entry = {
 
 type Item = { kind: string; getAsFile(): File | null; webkitGetAsEntry?: () => Entry | null }
 
-async function readAll(dir: Entry): Promise<Entry[]> {
-  const reader = dir.createReader!()
-  const all: Entry[] = []
-  // readEntries returns batches: keep asking until it answers an empty one.
-  for (;;) {
-    const batch = await new Promise<Entry[]>((ok, fail) => reader.readEntries(ok, fail))
-    if (batch.length === 0) return all
-    all.push(...batch)
-  }
-}
-
 // Far above what an import takes (the server counts files after skipping .git, so the
 // real limit stays there), low enough that a loop or a dropped home folder ends.
 export const maxEntries = 50_000
@@ -36,6 +25,19 @@ const maxDepth = 64
 
 class TooBig extends Error {}
 class TooDeep extends Error {}
+
+// Children of a directory. readEntries returns batches: keep asking until it answers an empty
+// one, but stop as soon as the entries seen so far pass the limit, before buffering the rest.
+async function readAll(dir: Entry, seen: { n: number }): Promise<Entry[]> {
+  const reader = dir.createReader!()
+  const all: Entry[] = []
+  for (;;) {
+    const batch = await new Promise<Entry[]>((ok, fail) => reader.readEntries(ok, fail))
+    if (batch.length === 0) return all
+    all.push(...batch)
+    if (seen.n + all.length > maxEntries) throw new TooBig()
+  }
+}
 
 async function walk(entry: Entry, prefix: string, out: DroppedFile[], seen: { n: number }, depth: number) {
   if (depth > maxDepth) throw new TooDeep()
@@ -45,7 +47,7 @@ async function walk(entry: Entry, prefix: string, out: DroppedFile[], seen: { n:
     const file = await new Promise<File>((ok, fail) => entry.file!(ok, fail))
     out.push({ file, path })
   } else if (entry.isDirectory) {
-    for (const child of await readAll(entry)) await walk(child, path + '/', out, seen, depth + 1)
+    for (const child of await readAll(entry, seen)) await walk(child, path + '/', out, seen, depth + 1)
   }
 }
 

@@ -1,5 +1,6 @@
 "dialog.cancel" = "Cancel";
 "dialog.ok" = "OK";
+"download.exists.message" = "A file with that name appeared while downloading. Choose where to save it.";
 "download.failed.message" = "Refract couldn't save the file: %@";
 "download.failed.ok" = "OK";
 "download.failed.title" = "The download failed";
