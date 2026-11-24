@@ -176,7 +176,7 @@ jobs:
         if: steps.secrets.outputs.sign != 'true'
         run: |
           make mac MAC_ARCH="$ARCH" MAC_VERSION="$VERSION"
-          ditto -c -k --keepParent "build/mac/$ARCH/Refract.app" "build/mac/$ARCH/Refract-$ARCH.zip"
+          ditto -c -k --norsrc --noextattr --noqtn --keepParent "build/mac/$ARCH/Refract.app" "build/mac/$ARCH/Refract-$ARCH.zip"
 
       # What people would download: the zip, unpacked in a fresh folder, must still verify
       # (a zip that drops a symlink or a ticket would show here), and run its tools.
@@ -186,7 +186,12 @@ jobs:
           SIGNED: ${{ steps.secrets.outputs.sign }}
         run: |
           rm -rf check && mkdir check
-          ditto -x -k "build/mac/$ARCH/Refract-$ARCH.zip" check
+          # No ._ entries: Finder would unpack those on symbolic links as files and break the seal.
+          if zipinfo -1 "build/mac/$ARCH/Refract-$ARCH.zip" | grep -E '(^|/)\._'; then
+            echo "::error::the zip carries ._ metadata entries"; exit 1
+          fi
+          # unzip, not ditto: it unpacks like a plain extractor, without merging metadata back.
+          unzip -q "build/mac/$ARCH/Refract-$ARCH.zip" -d check
           if [ "$SIGNED" = true ]; then
             macos/verify-app.sh --release check/Refract.app
             xcrun stapler validate check/Refract.app

@@ -33,7 +33,10 @@ WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 ZIP="$WORK/Refract.zip"
 echo "==> zipping"
-ditto -c -k --keepParent "$APP" "$ZIP"
+# Only the files: a zip that carries extended attributes (com.apple.provenance is on everything
+# a build makes) stores them as ._ entries, and Finder on another Mac unpacks the ones on
+# symbolic links as real files inside the bundle, which breaks its seal ("can't be opened").
+ditto -c -k --norsrc --noextattr --noqtn --keepParent "$APP" "$ZIP"
 
 echo "==> submitting to Apple (waits for the result, usually a few minutes)"
 # The exit status doesn't say whether Apple accepted it (an Invalid result can exit 0): the
