@@ -38,14 +38,23 @@ echo "==> zipping"
 # symbolic links as real files inside the bundle, which breaks its seal ("can't be opened").
 ditto -c -k --norsrc --noextattr --noqtn --keepParent "$APP" "$ZIP"
 
-echo "==> submitting to Apple (waits for the result, usually a few minutes)"
+echo "==> submitting to Apple"
+# Submit without waiting, so the id is in the log at once even if this run is interrupted.
+xcrun notarytool submit "$ZIP" "$@" --output-format json > "$WORK/submit.json" || true
+ID=$(plutil -extract id raw -o - "$WORK/submit.json" 2>/dev/null || echo "")
+if [ -z "$ID" ]; then
+  cat "$WORK/submit.json"
+  echo "error: Apple did not accept the upload" >&2
+  exit 1
+fi
+echo "==> submitted: $ID"
+echo "==> waiting for the result (usually a few minutes)"
 # The exit status doesn't say whether Apple accepted it (an Invalid result can exit 0): the
-# status in the JSON does. A stuck submission gives up after the timeout, its id printed.
-xcrun notarytool submit "$ZIP" "$@" --wait --timeout "${REFRACT_NOTARY_TIMEOUT:-2h}" --output-format json > "$WORK/result.json" || true
+# status in the JSON does. A stuck submission gives up after the timeout, its id already printed.
+xcrun notarytool wait "$ID" "$@" --timeout "${REFRACT_NOTARY_TIMEOUT:-2h}" --output-format json > "$WORK/result.json" || true
 cat "$WORK/result.json"
 # JSON without jq: plutil reads it.
 STATUS=$(plutil -extract status raw -o - "$WORK/result.json" 2>/dev/null || echo unknown)
-ID=$(plutil -extract id raw -o - "$WORK/result.json" 2>/dev/null || echo "")
 if [ "$STATUS" != "Accepted" ]; then
   echo "error: notarization status: $STATUS" >&2
   [ -z "$ID" ] || xcrun notarytool log "$ID" "$@" || true
