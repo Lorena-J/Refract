@@ -48,5 +48,4 @@
 "update.unsaved.cancel" = "Ahora no";
 "update.unsaved.install" = "Instalar de todos modos";
 "update.unsaved.message" = "Refract no pudo guardar todo lo que escribiste (puede que el proyecto esté bloqueado o ya no exista). ¿Instalar la actualización de todos modos y perderlo?";
-||||||| 413577a
 "error.pageLoad" = "La página no se cargó: %@";
