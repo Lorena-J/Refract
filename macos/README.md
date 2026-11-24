@@ -316,7 +316,7 @@ openssl genpkey -algorithm ed25519 -outform DER -out k.der
 tail -c 32 k.der | base64 | tr -d '\n' > seed.txt                                    # the private key file
 openssl pkey -inform DER -in k.der -pubout -outform DER | tail -c 32 | base64 > pub.txt   # SUPublicEDKey
 REFRACT_SPARKLE_PUBLIC_KEY=$(cat pub.txt) macos/build-app.sh arm64 v0.0.1 out1   # and v0.0.2 into out2
-ditto -c -k --keepParent out2/Refract.app Refract-arm64.zip
+ditto -c -k --norsrc --noextattr --noqtn --keepParent out2/Refract.app Refract-arm64.zip
 SPARKLE_ED_PRIVATE_KEY=$(cat seed.txt) scripts/make-appcast.py --version v0.0.2 --arch arm64 \
   --archive Refract-arm64.zip --output appcast-arm64.xml --notes-file notes.md \
   --download-prefix http://127.0.0.1:8099 --sign-update /path/to/Sparkle/bin/sign_update
