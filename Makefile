@@ -89,7 +89,7 @@ mac: web
 mac-release: mac-release-check web
 	macos/build-app.sh $(MAC_ARCH) $(MAC_VERSION) build/mac/$(MAC_ARCH)
 	macos/notarize.sh build/mac/$(MAC_ARCH)/Refract.app
-	ditto -c -k --keepParent build/mac/$(MAC_ARCH)/Refract.app build/mac/$(MAC_ARCH)/Refract-$(MAC_ARCH).zip
+	ditto -c -k --norsrc --noextattr --noqtn --keepParent build/mac/$(MAC_ARCH)/Refract.app build/mac/$(MAC_ARCH)/Refract-$(MAC_ARCH).zip
 	@echo build/mac/$(MAC_ARCH)/Refract-$(MAC_ARCH).zip
 
 mac-release-check:
