@@ -1,5 +1,5 @@
-# Builds the pinned tool archives (Tectonic, SyncTeX, ripgrep and, for macOS and
-# Windows, a private Git runtime) for every target and smoke-tests each one.
+# Builds the pinned tool archives (Tectonic, SyncTeX, ripgrep, the TeX seed and, for
+# macOS and Windows, a private Git runtime) for every target and smoke-tests each one.
 # Pins and checksums: packaging/tools.lock. Called by release.yml for every tag;
 # also runs when the pins or the build scripts change, and on demand.
 name: tools
@@ -19,6 +19,14 @@ on:
       - scripts/tools-archive.py
       - scripts/build-*.sh
       - scripts/smoke-tools.sh
+      - scripts/smoke-tex-seed.sh
+      - scripts/smoke-offline.*
+      - internal/compile/seed*.go
+      - internal/tools/**
+      - cmd/refract/texseed.go
+      - scripts/*tex-seed*
+      - internal/projects/templates/**
+      - packaging/tex-seed/**
       - .github/workflows/tools.yml
 
 permissions:
@@ -28,7 +36,28 @@ env:
   TAG: ${{ inputs.tag || format('v0.0.0-{0}', github.run_id) }}
 
 jobs:
+  # The TeX seed (the bundle files the built-in templates need, plus licences) is the
+  # same for every target: built once, with the pinned Linux Tectonic, and checked
+  # against the committed packaging/tex-seed/files.txt.
+  seed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build the TeX seed
+        run: |
+          TOOLS_ROOT=$PWD . scripts/tools-common.sh
+          fetch "https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic%40${TECTONIC_VERSION}/tectonic-${TECTONIC_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
+            "$TECTONIC_SHA256_linux_amd64" "$RUNNER_TEMP/tectonic.tar.gz"
+          mkdir "$RUNNER_TEMP/tectonic"
+          tar -xzf "$RUNNER_TEMP/tectonic.tar.gz" -C "$RUNNER_TEMP/tectonic"
+          scripts/build-tex-seed.sh "$RUNNER_TEMP/tectonic/tectonic" "$RUNNER_TEMP/seed"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: tex-seed
+          path: ${{ runner.temp }}/seed
+
   build:
+    needs: seed
     strategy:
       fail-fast: false
       matrix:
@@ -42,7 +71,13 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: tex-seed
+          path: tex-seed-build
       - name: Build tools archive
+        env:
+          TEX_SEED_DIR: ${{ github.workspace }}/tex-seed-build
         run: scripts/build-tools.sh '${{ matrix.os }}' '${{ matrix.arch }}' "$TAG" dist
       - uses: actions/upload-artifact@v7
         with:
@@ -84,3 +119,21 @@ jobs:
         run: python3 -I scripts/tools-archive.py check dist/refract-tools-* '${{ matrix.os }}' '${{ matrix.arch }}'
       - name: Run every tool
         run: scripts/smoke-tools.sh "$PWD/runtime" '${{ matrix.os }}'
+      - name: Compile offline from the TeX seed
+        run: scripts/smoke-tex-seed.sh "$PWD/runtime" '${{ matrix.os }}'
+      # The first PDF of `refract local` on an empty profile with the network blocked, from a
+      # read-only install: every template, a missing package, and an update that keeps the data.
+      # Windows is not covered: blocking its network needs an administrator.
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      # Linux amd64 hosted runners hang in this step (the job never ends and can't be cancelled);
+      # the same script passes on Linux arm64 and in an amd64 container, so it is not run there yet.
+      - name: Build refract for the offline test
+        if: matrix.os != 'windows' && !(matrix.os == 'linux' && matrix.arch == 'amd64')
+        timeout-minutes: 10
+        run: CGO_ENABLED=0 go build -o "$RUNNER_TEMP/refract" ./cmd/refract
+      - name: Offline first PDF with refract local
+        if: matrix.os != 'windows' && !(matrix.os == 'linux' && matrix.arch == 'amd64')
+        timeout-minutes: 15
+        run: scripts/smoke-offline.sh "$RUNNER_TEMP/refract" "$PWD/runtime" '${{ matrix.os }}'
