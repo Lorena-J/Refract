@@ -169,7 +169,7 @@ docker run -d --name refract --restart unless-stopped --stop-timeout 30 \
 
 Each release publishes the image for amd64 and arm64 as `latest`, as `0.1` (the newest 0.1.x, which only gets fixes) and as the exact version, such as `0.1.0`. To build it yourself instead, run `docker build -t refract .` in this repository, or `make docker`, which also tests it for both architectures.
 
-**Keep `REFRACT_SECRET_KEY` safe and stable.** It encrypts the stored ChatGPT credentials, API keys and git tokens. With a different key, those can't be read back and users have to connect again.
+**Keep the encryption key safe and stable.** It encrypts the stored ChatGPT credentials, API keys and git tokens. With a different key, those can't be read back and users have to connect again. For Docker secrets or systemd credentials, set `REFRACT_SECRET_KEY_FILE` to the key file path inside the service. See [Read secrets from files](#read-secrets-from-files).
 
 ### Choose how people sign in
 
@@ -391,7 +391,7 @@ All settings are environment variables.
 
 | Variable | Purpose |
 |---|---|
-| `REFRACT_SECRET_KEY` | **Required.** 32 bytes, base64 (`openssl rand -base64 32`). Encrypts stored credentials and keys. |
+| `REFRACT_SECRET_KEY` | **Required**, via this variable or `REFRACT_SECRET_KEY_FILE`. 32 bytes, base64 (`openssl rand -base64 32`). Encrypts stored credentials and keys. |
 | `REFRACT_AUTH` | `cloudflare` (default), `builtin` (Refract's own sign-in; `password` still works) or `none`. See [Choose how people sign in](#choose-how-people-sign-in). |
 | `REFRACT_DATA_DIR` | Where projects, the database and caches live. Default `/data`. |
 | `REFRACT_ADDR` | Listen address. Default `:8080`. |
@@ -424,6 +424,19 @@ Without this, any project can still push to and pull from an https git remote wi
 2. Set `REFRACT_GITHUB_CLIENT_ID` to its client ID.
 3. Each user connects their account in **Settings → Integrations**.
 
+### Read secrets from files
+
+Set the usual variable to the secret value, or use its `_FILE` counterpart to give Refract a file path. Refract trims whitespace around the file contents, including the trailing newline. Setting both variables to non-empty values or pointing to an unreadable file causes a startup error.
+
+| Secret value | File path |
+|---|---|
+| `REFRACT_SECRET_KEY` | `REFRACT_SECRET_KEY_FILE` |
+| `REFRACT_OIDC_CLIENT_SECRET` | `REFRACT_OIDC_CLIENT_SECRET_FILE` |
+| `REFRACT_SMTP_URL` | `REFRACT_SMTP_URL_FILE` |
+| `REFRACT_OPENALEX_API_KEY` | `REFRACT_OPENALEX_API_KEY_FILE` |
+
+For example, if Docker Compose mounts a secret named `refract_key` for the Refract service, set `REFRACT_SECRET_KEY_FILE=/run/secrets/refract_key` in that service's environment. The included systemd unit uses `LoadCredential=` and points `REFRACT_SECRET_KEY_FILE` to systemd's private copy.
+
 ## Command line
 
 ```text
@@ -440,7 +453,7 @@ refract users list              list accounts
 refract version                 print the version
 ```
 
-`refract users` works on the server's database: run it with the same `REFRACT_DATA_DIR` and `REFRACT_SECRET_KEY` as the server. Inside the container, `docker exec refract refract users …` already has them.
+`refract users` works on the server's database. Run it with the same `REFRACT_DATA_DIR` and encryption key as the server, using `REFRACT_SECRET_KEY` or `REFRACT_SECRET_KEY_FILE`. Inside the container, `docker exec refract refract users …` already has the container's environment and mounted files.
 
 ## Keyboard shortcuts
 

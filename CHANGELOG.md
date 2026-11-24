@@ -6,6 +6,7 @@ Notable changes to Refract. The format follows [Keep a Changelog](https://keepac
 
 ### Added
 
+- Refract can read its encryption key, OpenID Connect client secret, SMTP URL and OpenAlex API key from files using the corresponding `REFRACT_*_FILE` variables. `refract users` also reads the encryption key from a file, and the systemd unit starts Refract directly with a systemd credential.
 - Citation checks scoped to the selected main document, its included sources and loaded bibliographies, for missing keys, duplicate or incomplete bibliography entries, unused entries and optional online DOI verification; source metadata corrections from doi.org/arXiv are shown as editor proposals, with Spanish translations.
 - Document and hierarchical section word counts in the outline, following included files and the existing counter/title preferences.
 - PDF search with highlighted matches, previous/next navigation, keyboard controls and parallel page indexing. Reading and zooming preserve your position, recompiling keeps the selected match number, and search buttons work with the keyboard.
