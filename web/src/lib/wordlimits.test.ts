@@ -122,14 +122,15 @@ test('file and folder renames persist limits for closed files and preserve unrel
   assert.deepEqual(loadLimits('other', 'chapters/a.tex', 'one'), saved)
 })
 
-test('actual editor undo and redo restore the budget of a deleted heading', () => {
-  const source = String.raw`\section{Intro}one two\section{Next}three four`
+test('undo and redo restore and remove the budget on the original heading when titles repeat', () => {
+  const source = String.raw`\section{Same}one two\section{Same}three four`
   let state = EditorState.create({ doc: source, extensions: [history(), wordLimits, excessWords] })
-  const section = findSections(source)[0]
-  const saved = { ...section, section: section.id, max: 1 }
+  const [first, second] = findSections(source)
+  const saved = { id: 'first', name: first.name, from: first.from, to: first.to, section: first.id, max: 1 }
   state = state.update({ effects: setLimits.of({ rules: defaultRules, ranges: [saved] }) }).state
-  state = state.update({ changes: { from: 0, to: section.from } }).state
+  state = state.update({ changes: { from: first.headingFrom, to: first.from } }).state
   assert.equal(limits(state).ranges.length, 0)
+  assert.equal(state.field(excessWords).size, 0)
   const editor = {
     get state() {
       return state
@@ -142,11 +143,22 @@ test('actual editor undo and redo restore the budget of a deleted heading', () =
     assert.equal(undo(editor), true)
     assert.equal(state.doc.toString(), source)
     assert.deepEqual(limits(state).ranges, [saved])
+    assert.equal(limitAt(source, limits(state).ranges, second.headingFrom), undefined)
     assert.equal(state.field(excessWords).size, 1)
     assert.equal(redo(editor), true)
     assert.equal(limits(state).ranges.length, 0)
     assert.equal(state.field(excessWords).size, 0)
   }
+})
+
+test('deleting an adjacent heading leaves the preceding section without that budget', () => {
+  const source = String.raw`\section{Same}\section{Same}three four`
+  let state = create(source)
+  const [, second] = findSections(source)
+  const saved = { id: 'second', name: second.name, from: second.from, to: second.to, section: second.id, max: 1 }
+  state = state.update({ effects: setLimits.of({ rules: defaultRules, ranges: [saved] }) }).state
+  state = state.update({ changes: { from: second.headingFrom, to: second.from } }).state
+  assert.deepEqual(limits(state).ranges, [])
 })
 
 test('grouped title edits and heading deletion restore the original budget on undo', () => {

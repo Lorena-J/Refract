@@ -6,13 +6,18 @@ import { defaultRules, findSections, latexWords, selectedWords, type CountRules 
 export type WordLimit = { id: string; name: string; max: number; from: number; to: number; section?: string }
 export type Limits = { rules: CountRules; ranges: WordLimit[] }
 export const setLimits = StateEffect.define<Limits>()
+type SavedLimit = { range: WordLimit; headingFrom?: number }
+
 // History maps these positions when several edits are grouped into one undo.
-const restoreLimits = StateEffect.define<WordLimit[]>({
-  map: (ranges, changes) =>
-    ranges.map((r) => ({
-      ...r,
-      from: changes.mapPos(r.from, -1),
-      to: changes.mapPos(r.to, 1),
+const restoreLimits = StateEffect.define<SavedLimit[]>({
+  map: (saved, changes) =>
+    saved.map(({ range, headingFrom }) => ({
+      range: {
+        ...range,
+        from: changes.mapPos(range.from, -1),
+        to: changes.mapPos(range.to, 1),
+      },
+      headingFrom: headingFrom === undefined ? undefined : changes.mapPos(headingFrom, 1),
     })),
 })
 export const wordLimits = StateField.define<Limits>({
@@ -20,32 +25,42 @@ export const wordLimits = StateField.define<Limits>({
   update(value, tr) {
     for (const effect of tr.effects) if (effect.is(setLimits)) return effect.value
     const restored = tr.effects.flatMap((effect) => (effect.is(restoreLimits) ? effect.value : []))
-    if (!tr.docChanged && !restored.length) return value
-    const sections = findSections(tr.newDoc.toString())
-    return {
-      ...value,
-      ranges: [...value.ranges, ...restored.filter((r) => !value.ranges.some((v) => v.id === r.id))].flatMap(
-        (range) => {
-          if (range.section) {
-            const mapped = restored.includes(range) ? range.from : tr.changes.mapPos(range.from, -1)
-            const section = sections.find((s) => s.from === mapped) ?? sections.find((s) => s.id === range.section)
-            return section
-              ? [{ ...range, name: section.name, section: section.id, from: section.from, to: section.to }]
-              : []
-          }
-          const from = tr.changes.mapPos(range.from, -1)
-          const to = tr.changes.mapPos(range.to, 1)
-          return [{ ...range, from, to }]
-        },
-      ),
+    if (!restored.length && (!tr.docChanged || !value.ranges.length)) return value
+    const oldSections = value.ranges.some((r) => r.section) ? findSections(tr.startState.doc.toString()) : []
+    const sections =
+      oldSections.length || restored.some(({ range }) => range.section) ? findSections(tr.newDoc.toString()) : []
+    function attach(range: WordLimit, headingFrom: number | undefined): WordLimit[] {
+      if (!range.section) return [range]
+      // Occurrence IDs change when a same-title heading is inserted or removed.
+      const section = sections.find((s) => s.headingFrom === headingFrom && s.from === range.from)
+      return section ? [{ ...range, name: section.name, section: section.id, from: section.from, to: section.to }] : []
     }
+    const ranges = value.ranges.flatMap((range) => {
+      const heading = oldSections.find((s) => s.id === range.section)
+      return attach(
+        { ...range, from: tr.changes.mapPos(range.from, -1), to: tr.changes.mapPos(range.to, 1) },
+        heading && tr.changes.mapPos(heading.headingFrom, 1),
+      )
+    })
+    for (const { range, headingFrom } of restored)
+      if (!ranges.some((r) => r.id === range.id)) ranges.push(...attach(range, headingFrom))
+    return { ...value, ranges }
   },
   provide: (field) =>
     invertedEffects.of((tr) => {
       if (!tr.docChanged) return []
       const remaining = new Set(tr.state.field(field).ranges.map((r) => r.id))
       const removed = tr.startState.field(field).ranges.filter((r) => !remaining.has(r.id))
-      return removed.length ? [restoreLimits.of(removed)] : []
+      if (!removed.length) return []
+      const sections = findSections(tr.startState.doc.toString())
+      return [
+        restoreLimits.of(
+          removed.map((range) => ({
+            range,
+            headingFrom: sections.find((s) => s.id === range.section)?.headingFrom,
+          })),
+        ),
+      ]
     }),
 })
 
