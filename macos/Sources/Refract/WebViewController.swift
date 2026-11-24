@@ -134,10 +134,27 @@ final class WebViewController: NSViewController, WKNavigationDelegate, WKUIDeleg
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         AppLog.note("page failed: \(error.localizedDescription)")
+        failedBeforeLoad(error)
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         AppLog.note("page failed to load: \(error.localizedDescription)")
+        failedBeforeLoad(error)
+    }
+
+    /// The first load failing leaves an empty window (the server stopped between its
+    /// readiness check and the page, say): show the error view, with Restart and the logs.
+    /// Later failures leave the loaded page in place, and cancellations aren't failures.
+    private func failedBeforeLoad(_ error: Error) {
+        guard !loaded, !isCancellation(error) else { return }
+        failed(String(format: L("error.pageLoad", "The page didn't load: %@"), error.localizedDescription))
+    }
+
+    private func isCancellation(_ error: Error) -> Bool {
+        let e = error as NSError
+        // -999: a newer load replaced it; 102: a navigation policy (ours) stopped it.
+        return (e.domain == NSURLErrorDomain && e.code == NSURLErrorCancelled)
+            || (e.domain == "WebKitErrorDomain" && e.code == 102)
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
