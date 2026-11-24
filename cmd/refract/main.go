@@ -116,6 +116,9 @@ type runOptions struct {
 	// ready runs in its own goroutine once the server is about to accept
 	// connections on addr; ctx ends when the server stops.
 	ready func(ctx context.Context, addr net.Addr)
+	// texSeed (refract local) fills a per-user Tectonic cache from the TeX
+	// seed of the installation, so the first compile works offline.
+	texSeed bool
 	// wrap, when set, goes around every route, inside the host check.
 	wrap func(http.Handler) http.Handler
 }
@@ -135,6 +138,16 @@ func run(ctx context.Context, opts runOptions) error {
 	deployment, err := mode.Parse(os.Getenv("REFRACT_MODE"))
 	if err != nil {
 		return err
+	}
+	publicOnly, err := parseOutbound(os.Getenv("REFRACT_OUTBOUND"))
+	if err != nil {
+		return err
+	}
+	if publicOnly {
+		// Before anything is created in the data folder.
+		if err := checkGitForPinning(); err != nil {
+			return err
+		}
 	}
 	cfg, err := parseCompileConfig(os.Getenv)
 	if err != nil {
@@ -226,26 +239,32 @@ func run(ctx context.Context, opts runOptions) error {
 		missingTools: missing,
 		base:         session,
 		mode:         deployment,
+		publicOnly:   publicOnly,
 		model:        os.Getenv("REFRACT_MODEL_AGENT"),
 		quick:        os.Getenv("REFRACT_MODEL_QUICK"),
 
 		canSignOut: login != nil,
 
 		providers: &providers.Store{DB: db, Key: key},
-		outbound:  providers.HTTPClient(deployment.PrivateNetwork()),
+		outbound:  providers.HTTPClient(!publicOnly),
 		usage:     &usage.Recorder{DB: db},
 	}
 
 	pa := &projectsAPI{
-		svc: &projects.Service{DB: db, Dir: filepath.Join(dataDir, "projects"), Limits: projects.DefaultLimits, Key: key, PublicRemotes: !deployment.PrivateNetwork()},
+		svc: &projects.Service{DB: db, Dir: filepath.Join(dataDir, "projects"), Limits: projects.DefaultLimits, Key: key, PublicRemotes: publicOnly},
 		tmp: filepath.Join(dataDir, "tmp"),
 	}
 
 	fontResolver := fonts.NewResolver(filepath.Join(dataDir, "font-cache"))
 	fontResolver.Offline = os.Getenv("REFRACT_FONT_DOWNLOADS") == "0"
+	tex := texSetup{bundle: os.Getenv("REFRACT_TECTONIC_BUNDLE"), cache: os.Getenv("TECTONIC_CACHE_DIR")}
+	if opts.texSeed {
+		tex = setupTeXSeed(os.Getenv, dataDir, cfg.sandbox)
+	}
 	tectonic := &compile.Tectonic{
-		Bundle:   os.Getenv("REFRACT_TECTONIC_BUNDLE"),
-		CacheDir: os.Getenv("TECTONIC_CACHE_DIR"),
+		Bundle:   tex.bundle,
+		CacheDir: tex.cache,
+		Seed:     tex.seed,
 		Timeout:  cfg.timeout,
 		Fonts:    fontResolver,
 	}

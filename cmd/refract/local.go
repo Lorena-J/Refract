@@ -80,7 +80,9 @@ func runLocalTo(args []string, stdout io.Writer) error {
 			"Runs Refract on this computer with no configuration: data in your user\n"+
 			"folder (REFRACT_DATA_DIR overrides it), no sign-in, 127.0.0.1 only.\n"+
 			"REFRACT_ADDR may choose another address on 127.0.0.1 or ::1 instead of --port.\n"+
-			"Only one refract local runs per data folder: a second start opens the first.\n\n")
+			"Only one refract local runs per data folder: a second start opens the first.\n"+
+			"The TeX seed shipped with the tools is copied into the compile cache at startup\n"+
+			"(REFRACT_TEX_SEED=none turns it off), so the first compile works offline.\n\n")
 		fl.PrintDefaults()
 	}
 	if err := fl.Parse(args); err != nil {
@@ -203,7 +205,12 @@ func startLocal(ctx context.Context, o localOptions) error {
 		}
 		st := checkInstance(ctx, dataDir, 0)
 		if st.State == stateStarting {
-			fmt.Fprintf(o.out, "Another refract local (pid %d) is still starting on %s; waiting for it…\n", st.PID, dataDir)
+			if o.embedded {
+				// Standard output carries only the one JSON line the app reads.
+				slog.Info("another refract local is still starting on this data folder; waiting for it", "pid", st.PID, "dir", dataDir)
+			} else {
+				fmt.Fprintf(o.out, "Another refract local (pid %d) is still starting on %s; waiting for it…\n", st.PID, dataDir)
+			}
 			st = checkInstance(ctx, dataDir, instanceStartingWait)
 		}
 		switch st.State {
@@ -253,6 +260,7 @@ func startLocal(ctx context.Context, o localOptions) error {
 		dataDir:  dataDir,
 		key:      key,
 		authKind: "none",
+		texSeed:  true,
 		listen: func() (net.Listener, error) {
 			if o.embedded && !o.portSet && o.getenv("REFRACT_ADDR") == "" {
 				return listenTCP(&net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)}) // a free port

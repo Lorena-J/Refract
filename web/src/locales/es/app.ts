@@ -165,7 +165,13 @@ export default {
   'New blank project': 'Nuevo proyecto en blanco',
   'Import a Prism export (.zip)': 'Importar una exportación de Prism (.zip)',
   'Import a folder': 'Importar una carpeta',
-  'Drop .zip files to import them.': 'Suelta archivos .zip para importarlos.',
+  'Drop .zip files or folders to import them.': 'Suelta archivos .zip o carpetas para importarlos.',
+  'The folder {name} has too many files to import.': 'La carpeta {name} tiene demasiados archivos para importarla.',
+  'The folder {name} is nested too deeply to import.': 'La carpeta {name} tiene demasiados niveles para importarla.',
+  'Could not read the folder {name}: {error}': 'No se pudo leer la carpeta {name}: {error}',
+  'The folder {name} is empty.': 'La carpeta {name} está vacía.',
+  'Only folders and .zip files can be imported; the other dropped files were ignored.':
+    'Solo se pueden importar carpetas y archivos .zip; el resto de archivos soltados se ignoró.',
   'Imported {name}': 'Importado {name}',
   'Imported {n} projects': '{n} proyectos importados',
   Search: 'Buscar',
@@ -185,7 +191,7 @@ export default {
   'No projects yet': 'Aún no hay proyectos',
   'Create a blank project, or drop Prism .zip exports anywhere on this page.':
     'Crea un proyecto en blanco o suelta exportaciones .zip de Prism en cualquier parte de esta página.',
-  'Drop .zip files to import': 'Suelta archivos .zip para importarlos',
+  'Drop .zip files or folders to import': 'Suelta archivos .zip o carpetas para importarlos',
   'New project': 'Nuevo proyecto',
   'Rename project': 'Renombrar proyecto',
   'Project name': 'Nombre del proyecto',

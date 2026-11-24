@@ -405,7 +405,7 @@ func projectError(w http.ResponseWriter, err error) {
 		httpError(w, err, http.StatusConflict)
 	case remoteErrorKind(err) != "":
 		kindError(w, http.StatusBadRequest, remoteErrorKind(err), err)
-	case errors.Is(err, projects.ErrBadRemote), errors.Is(err, projects.ErrPrivateRemote), errors.Is(err, projects.ErrTemplateLanguage):
+	case errors.Is(err, projects.ErrBadRemote), errors.Is(err, projects.ErrPrivateRemote), errors.Is(err, projects.ErrLinkLocalRemote), errors.Is(err, projects.ErrTemplateLanguage):
 		httpError(w, err, http.StatusBadRequest)
 	case errors.Is(err, fs.ErrExist):
 		httpError(w, err, http.StatusConflict)

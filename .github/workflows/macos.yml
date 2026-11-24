@@ -1,0 +1,30 @@
+# The macOS app's tests (swift test: the server's lifecycle with a fake server,
+# the status line and the origin rules). Only when the app changes: macOS
+# runners are fewer and slower to start than Linux ones. The app's strings are
+# checked by the Python tests in ci.yml.
+name: macos
+
+on:
+  push:
+    branches: [main]
+    paths: [macos/**, Makefile, .github/workflows/macos.yml]
+  pull_request:
+    paths: [macos/**, Makefile, .github/workflows/macos.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  swift:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Swift version
+        run: swift --version
+      - name: Tests
+        run: make mac-test

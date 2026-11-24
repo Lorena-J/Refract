@@ -659,6 +659,43 @@ func TestWatchStdinCancelsOnEOF(t *testing.T) {
 	}
 }
 
+func TestEmbeddedWaitsForAnInstanceThatIsStartingOnStderr(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "Refract")
+	os.MkdirAll(dir, 0o700)
+	l, _, err := lockInstance(dir) // starting: holds the lock, no address yet
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Release()
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok")) })}
+	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	go srv.Serve(ln)
+	defer srv.Close()
+	u := "http://" + ln.Addr().String()
+	go func() { time.Sleep(1500 * time.Millisecond); l.Record(u) }() // after the child's plain wait
+
+	exe, _ := os.Executable()
+	cmd := exec.Command(exe, "--embedded")
+	cmd.Env = append(localEnv(dir), embedTokenEnv+"="+testEmbedToken, "REFRACT_TEST_INSTANCE_WAIT=500ms")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	stdin, _ := cmd.StdinPipe()
+	defer stdin.Close()
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("%v; stderr %q", err, stderr.String())
+	}
+	// The app reads the first line of standard output as the report.
+	first, _, _ := strings.Cut(string(out), "\n")
+	var st instanceStatus
+	if err := json.Unmarshal([]byte(first), &st); err != nil || st.State != stateRunning || st.URL != u {
+		t.Fatalf("stdout %q (%v)", out, err)
+	}
+	if !strings.Contains(stderr.String(), "still starting") {
+		t.Errorf("stderr %q", stderr.String())
+	}
+}
+
 func TestEmbeddedStartReportsATerminalInstanceAsOpen(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "Refract")
 	first := startChild(t, dir)
