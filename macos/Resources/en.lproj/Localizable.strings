@@ -48,3 +48,5 @@
 "update.unsaved.cancel" = "Not Now";
 "update.unsaved.install" = "Install Anyway";
 "update.unsaved.message" = "Refract couldn't save everything you typed (the project may be locked or gone). Install the update anyway and lose it?";
+||||||| 413577a
+"error.pageLoad" = "The page didn't load: %@";

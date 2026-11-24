@@ -51,6 +51,9 @@ func TestMain(m *testing.M) {
 			localStartTimeout = d
 			localHealthy = func(ctx context.Context, _ string) bool { <-ctx.Done(); return false }
 		}
+		if d, err := time.ParseDuration(os.Getenv("REFRACT_TEST_INSTANCE_WAIT")); err == nil {
+			instanceWait = d
+		}
 		os.Exit(localExitCode(runLocal(os.Args[1:])))
 	}
 	users.LowerHashCostForTests()
