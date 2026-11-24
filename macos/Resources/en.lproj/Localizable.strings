@@ -43,3 +43,4 @@
 "quit.unsaved.message" = "Refract couldn't save everything you typed (the project may be locked or gone). Quit anyway and lose it?";
 "quit.unsaved.quit" = "Quit Anyway";
 "quit.unsaved.title" = "Some changes couldn't be saved";
+"error.pageLoad" = "The page didn't load: %@";

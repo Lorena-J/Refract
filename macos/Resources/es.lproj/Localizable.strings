@@ -43,3 +43,4 @@
 "quit.unsaved.message" = "Refract no pudo guardar todo lo que escribiste (puede que el proyecto esté bloqueado o ya no exista). ¿Salir de todos modos y perderlo?";
 "quit.unsaved.quit" = "Salir de todos modos";
 "quit.unsaved.title" = "No se pudieron guardar algunos cambios";
+"error.pageLoad" = "La página no se cargó: %@";
