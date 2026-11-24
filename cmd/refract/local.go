@@ -205,7 +205,12 @@ func startLocal(ctx context.Context, o localOptions) error {
 		}
 		st := checkInstance(ctx, dataDir, 0)
 		if st.State == stateStarting {
-			fmt.Fprintf(o.out, "Another refract local (pid %d) is still starting on %s; waiting for it…\n", st.PID, dataDir)
+			if o.embedded {
+				// Standard output carries only the one JSON line the app reads.
+				slog.Info("another refract local is still starting on this data folder; waiting for it", "pid", st.PID, "dir", dataDir)
+			} else {
+				fmt.Fprintf(o.out, "Another refract local (pid %d) is still starting on %s; waiting for it…\n", st.PID, dataDir)
+			}
 			st = checkInstance(ctx, dataDir, instanceStartingWait)
 		}
 		switch st.State {

@@ -7,6 +7,8 @@ node_modules/
 web/dist/*
 !web/dist/.gitkeep
 /refract
+/build/
+.build/
 /refract.exe
 web/test-results/
 web/playwright-report/
