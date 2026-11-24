@@ -53,13 +53,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             showLogs: { NSWorkspace.shared.activateFileViewerSelecting([AppLog.store.file]) },
             reinstall: { NSWorkspace.shared.open(URL(string: "https://github.com/ponytojas/Refract/releases/latest")!) })
         window = NSWindow(contentViewController: root)
-        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        // No title bar of its own: the web app reaches the top edge, the traffic lights float
+        // over it. The title stays (Mission Control, the Window menu, VoiceOver) but isn't drawn.
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
         window.title = "Refract"
         window.minSize = NSSize(width: 640, height: 420)
         window.setContentSize(NSSize(width: 1280, height: 820))
         window.setFrameAutosaveName("RefractMainWindow")
         if !window.setFrameUsingName("RefractMainWindow") { window.center() }
         window.makeKeyAndOrderFront(nil)
+        root.updateInset(for: window)
+        for name in [NSWindow.didEnterFullScreenNotification, NSWindow.didExitFullScreenNotification,
+            NSWindow.didResizeNotification, NSWindow.didEndLiveResizeNotification,
+            NSWindow.didBecomeKeyNotification, NSWindow.didChangeScreenNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                guard let self else { return }
+                self.root.updateInset(for: self.window)
+            }
+        }
+        // AppKit lays the title bar out again for its own reasons (appearance, tabs, full screen):
+        // when its container changes, the lights go back where the bars expect them.
+        if let container = window.standardWindowButton(.closeButton)?.superview?.superview {
+            NotificationCenter.default.addObserver(
+                forName: NSView.frameDidChangeNotification, object: container, queue: .main
+            ) { [weak self] _ in
+                guard let self else { return }
+                self.root.updateInset(for: self.window)
+            }
+        }
         NSApp.activate(ignoringOtherApps: true)
 
         supervisor.onChange = { [weak self] in self?.apply($0) }

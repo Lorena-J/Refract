@@ -351,6 +351,37 @@ never sets `REFRACT_DATA_DIR`, so to test the server with scratch data run the b
 `REFRACT_DATA_DIR=<dir> Refract.app/Contents/Resources/Server/bin/refract local --no-browser`.
 Launch the app with them via `open --env` or `env ... Refract.app/Contents/MacOS/Refract`.
 
+## The integrated window (#127)
+
+The window has no title bar of its own (`.fullSizeContentView`, transparent title bar, hidden
+title; the title stays for Mission Control, the Window menu and VoiceOver): the web app reaches the
+top edge. **The app moves the traffic lights onto the bars' line, and the bars share one height.**
+Every bar is 44 px tall and starts 8 px below the top edge (the page's padding), so its content row
+is centred 30.5 pt down; `TrafficLights` (`RefractCore/WindowChrome.swift`) puts the buttons there,
+18 pt from the left, which is inside the card on the Projects page and in the sidebar's grey on the
+Workspace, so the lights never straddle an edge and header content and lights read as one row.
+The alternative (a grey strip above each card) would add a dead band of 30 px to every screen.
+
+- **Placing.** AppKit puts the buttons in a 28 pt title bar container; the app grows that container
+  to 61 pt and moves the three buttons (`RootViewController.placeTrafficLights`). AppKit resets
+  both on resize, full screen, appearance and screen changes, so the app places them again on those
+  notifications and when the container's frame changes (the frame is written only when it differs).
+- **Inset.** `WindowInset` measures where the zoom button ends. A `WKUserScript` at document start,
+  and `evaluateJavaScript` when the window enters or leaves full screen, set `html[data-desktop="mac"]`
+  and `--window-inset-left` / `--window-inset-top` (both 0 in full screen, where the buttons hide).
+  Nothing sets them in a browser, so `index.css` rules under `[data-desktop]` never apply there. The
+  first element of each `[data-window-bar]` clears the inset (buttons end + 12 pt). In the app the
+  Workspace sidebar starts at 296 px (not 248) so the project name still fits next to the lights.
+  The loading and error views sit in the safe area.
+- **Dragging.** WKWebView has no `-webkit-app-region`. `web/src/lib/windowDrag.ts` posts
+  `{type: "drag"}` to the `refractWindow` message handler on a mousedown on `[data-window-drag]`
+  (not on buttons, links, inputs, tabs, `[data-no-drag]`); the app calls `performDrag(with:)`, and a
+  double click follows `AppleActionOnDoubleClick`. Messages count only from the main frame of the
+  app's origin (`WindowMessage.parse`). The handler exists only in the app.
+- **Drag strip.** Screens without a top bar (the sign-in pages) and the overlay behind a dialog get
+  a `.window-strip` element at the top (shown by one rule in `index.css`; delete the rule to go
+  without it).
+
 ## Links, downloads, file pickers (#67)
 
 What the web view does with things the page asks for (`WebViewController`; the pure decisions are in
