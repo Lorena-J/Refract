@@ -9,6 +9,7 @@ web/dist/*
 /refract
 /build/
 .build/
+/refract.exe
 web/test-results/
 web/playwright-report/
 __pycache__/

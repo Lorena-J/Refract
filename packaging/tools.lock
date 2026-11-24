@@ -1,7 +1,7 @@
 # The one place that pins the bundled tools: versions, sources and SHA-256 of
 # everything downloaded. Plain KEY=VALUE lines (no quoting, no spaces), so it is
 # read by `. packaging/tools.lock` in shell and by scripts/test_packaging.py.
-# Read by: scripts/install-tex-tools.sh, scripts/build-tools.sh, scripts/build-synctex.sh,
+# Read by: scripts/install-tex-tools.sh, scripts/build-tex-seed.sh, scripts/build-tools.sh, scripts/build-synctex.sh,
 # scripts/build-git-macos.sh, the Dockerfile and the release workflow.
 # Every hash below comes from the upstream release page or file, not from a
 # local guess. To bump a tool: change its version and hashes here, nothing else.
@@ -49,3 +49,14 @@ MINGIT_SHA256_windows_arm64=96571e442e90523a90e5fd8661b4c4e43bc192910f3c6db93881
 # llvm-mingw (Linux x86_64 host): cross compiler for the Windows synctex only; not shipped.
 LLVM_MINGW_TAG=20261117
 LLVM_MINGW_SHA256_linux_amd64=e7a15a49a2ea95e9f3d8a9d0cfabe5052a4b10fb4777cc54de5a8c27b64bb701
+
+# TeX bundle: the pinned direct URL Tectonic compiles with, and the digest it must
+# report (the Dockerfile, ci.yml and packaging/server/prepare-bundle.sh repeat the
+# URL and the digest; scripts/test_packaging.py checks they equal these).
+TECTONIC_BUNDLE_URL=https://data1b.fullyjustified.net/tlextras-2022.0r0.tar
+TECTONIC_BUNDLE_DIGEST=6ffe055852f8faf66c0acbe1a7fb27f87b869a90bad1204f3bf4d9683f597c7c
+
+# TeX Live 2022 package database (final state of the frozen 2022 release): maps every
+# TeX seed file to its TeX Live package and licence (scripts/tex-seed.py).
+TEXLIVE_TLPDB_URL=https://ftp.math.utah.edu/pub/tex/historic/systems/texlive/2022/tlnet-final/tlpkg/texlive.tlpdb.xz
+TEXLIVE_TLPDB_SHA256=be6ec39a41ff875f37a4dfaab75a75c19ea9793d9370c93f69ed27097b02a0cc
