@@ -43,7 +43,9 @@ public final class ServerSupervisor {
         public var workingDirectory = NSHomeDirectory()
         /// Checked before every start; nil skips the check.
         public var layout: BundleLayout?
-        public var readyTimeout: TimeInterval = 60
+        /// Longer than the server's own wait for another refract local that is still
+        /// starting (8 + 60 seconds), so that its report, naming that process, comes first.
+        public var readyTimeout: TimeInterval = 75
         /// The server stops itself within about 25 seconds; this is when it is killed.
         public var stopTimeout: TimeInterval = 30
 
