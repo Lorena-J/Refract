@@ -1,10 +1,15 @@
 #!/bin/sh
 # Assembles Refract.app for one architecture: the Swift app, the refract server built
-# with the web app inside, and the bundled tools, signed ad hoc (or with
-# CODESIGN_IDENTITY). Run through `make mac`; needs Xcode (swift, codesign), Go, and
-# the web app built (`make web`).
+# with the web app inside, and the bundled tools, signed ad hoc, or with the identity in
+# REFRACT_SIGN_IDENTITY (macos/sign-app.sh, then macos/verify-app.sh). Run through `make mac`;
+# needs Xcode (swift, codesign), Go, and the web app built (`make web`).
 #
 # Usage: macos/build-app.sh <arm64|amd64> <version> <output-dir>
+#   REFRACT_SIGN_IDENTITY  "Developer ID Application: Name (TEAMID)"; default "-" (ad hoc)
+#   REFRACT_SPARKLE_PUBLIC_KEY  the public half of the EdDSA key that signs updates (base64, from Sparkle's
+#                       generate_keys). Required with a real identity (a release); without it the app is
+#                       built with updates turned off. REFRACT_UPDATE_FEED_BASE overrides where the
+#                       per-architecture appcast is looked up (default: the latest GitHub release).
 #   TOOLS_ARCHIVE=path  use this refract-tools-*-darwin-<arch>.tar.gz instead of building one
 #                       (the release workflow passes the archive it already built)
 #
@@ -15,9 +20,11 @@
 # Not Contents/Helpers: codesign treats every file under Helpers/ (and MacOS/, Frameworks/)
 # as nested code, and the tools' tree also holds Git's scripts, templates and licences.
 # See macos/README.md.
+#   Refract.app/Contents/Frameworks/Sparkle.framework   (Sparkle 2, no XPC services: the app isn't sandboxed)
 #   Refract.app/Contents/Resources/{en,es}.lproj/Localizable.strings
 #   Refract.app/Contents/Info.plist
 set -eu
+[ -z "${CODESIGN_IDENTITY:-}" ] || { echo "error: CODESIGN_IDENTITY is no longer used: set REFRACT_SIGN_IDENTITY instead" >&2; exit 2; }
 [ $# -eq 3 ] || { echo "usage: build-app.sh <arm64|amd64> <version> <output-dir>" >&2; exit 2; }
 ARCH=$1 VERSION=$2 OUT=$3
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -26,7 +33,21 @@ case "$ARCH" in
   amd64) SWIFT_ARCH=x86_64 ;;
   *) echo "error: arch must be arm64 or amd64" >&2; exit 2 ;;
 esac
-IDENTITY=${CODESIGN_IDENTITY:--}
+SPARKLE_KEY=${REFRACT_SPARKLE_PUBLIC_KEY:-}
+FEED_BASE=${REFRACT_UPDATE_FEED_BASE:-https://github.com/ponytojas/Refract/releases/latest/download}
+# A release without the key could never be updated (and an update could never be verified): refuse
+# before spending ten minutes on the build. A release is `make mac-release` (REFRACT_RELEASE=1) or
+# any Developer ID build; other builds (ad hoc, Apple Development, self-signed) without the key run
+# with updates off.
+case "${REFRACT_SIGN_IDENTITY:--}" in "Developer ID"*) REFRACT_RELEASE=1 ;; esac
+if [ "${REFRACT_RELEASE:-}" = 1 ] && [ -z "$SPARKLE_KEY" ]; then
+  echo "error: a release needs REFRACT_SPARKLE_PUBLIC_KEY, the public EdDSA key that verifies updates (macos/README.md, \"Updates\")" >&2
+  exit 1
+fi
+if [ -n "$SPARKLE_KEY" ] && [ "$(printf '%s' "$SPARKLE_KEY" | base64 -D 2>/dev/null | wc -c | tr -d ' ')" != 32 ]; then
+  echo "error: REFRACT_SPARKLE_PUBLIC_KEY is not the base64 of a 32-byte Ed25519 public key" >&2
+  exit 1
+fi
 BUILD="$ROOT/build/mac"
 mkdir -p "$BUILD" "$OUT"
 OUT=$(cd "$OUT" && pwd)
@@ -69,30 +90,37 @@ echo "==> assembling $APP"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/Server/bin" "$APP/Contents/Resources/Server/libexec/refract" "$APP/Contents/Resources"
 cp "$BIN/Refract" "$APP/Contents/MacOS/Refract"
+# Sparkle: the framework from the checksum-verified package (macos/Package.swift), copied whole
+# (symlinks kept). Without the sandbox its XPC services (Downloader, Installer) are not used:
+# remove them rather than sign and ship code that never runs. Autoupdate and Updater.app stay.
+SPARKLE=$(find "$BUILD/swift/artifacts" -type d -name Sparkle.framework -path '*macos-*' | head -n 1)
+[ -d "$SPARKLE" ] || { echo "error: Sparkle.framework not found under $BUILD/swift/artifacts" >&2; exit 1; }
+mkdir -p "$APP/Contents/Frameworks"
+ditto "$SPARKLE" "$APP/Contents/Frameworks/Sparkle.framework"
+rm -rf "$APP/Contents/Frameworks/Sparkle.framework/XPCServices" "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices"
+install_name_tool -add_rpath @executable_path/../Frameworks "$APP/Contents/MacOS/Refract"
 cp "$BUILD/go-$ARCH/refract" "$APP/Contents/Resources/Server/bin/refract"
 tar -xzf "$TOOLS" -o -C "$APP/Contents/Resources/Server/libexec/refract"
 sed "s/@VERSION@/$NUM/g" "$ROOT/macos/Resources/Info.plist" > "$APP/Contents/Info.plist"
+PLIST="$APP/Contents/Info.plist"
+if [ -n "$SPARKLE_KEY" ]; then
+  # One feed per architecture: Sparkle doesn't choose by architecture, and each app updates to its own.
+  /usr/libexec/PlistBuddy -c "Add :SUFeedURL string $FEED_BASE/appcast-$ARCH.xml" \
+    -c "Add :SUPublicEDKey string $SPARKLE_KEY" -c "Add :SUVerifyUpdateBeforeExtraction bool true" "$PLIST"
+  # Only a development (ad hoc) build lets REFRACT_APP_UPDATE_FEED point it at a test feed;
+  # a release reads its own feed, whatever the environment says (verify-app.sh --release).
+  if [ "${REFRACT_SIGN_IDENTITY:--}" = "-" ]; then
+    /usr/libexec/PlistBuddy -c "Add :RefractAllowsUpdateFeedOverride bool true" "$PLIST"
+  fi
+else
+  echo "==> no REFRACT_SPARKLE_PUBLIC_KEY: this build has updates turned off"
+fi
 cp -R "$ROOT/macos/Resources/en.lproj" "$ROOT/macos/Resources/es.lproj" "$APP/Contents/Resources/"
 # The server refuses bundled tools that group or others could replace (internal/tools).
 chmod -R go-w "$APP"
 chmod 755 "$APP/Contents/MacOS/Refract" "$APP/Contents/Resources/Server/bin/refract"
 
-echo "==> signing (identity: $IDENTITY)"
-# Inside out: every Mach-O first (the tools, then the server), then the app that seals
-# them as resources: codesign --deep doesn't sign what is under Resources, so they are
-# signed here and listed by the check below.
-find "$APP/Contents" -type f ! -path "$APP/Contents/MacOS/*" -print | while IFS= read -r f; do
-  case "$(file -b "$f")" in
-    *Mach-O*) codesign --force --options runtime --timestamp=none --sign "$IDENTITY" "$f" ;;
-  esac
-done
-codesign --force --options runtime --timestamp=none --sign "$IDENTITY" "$APP/Contents/MacOS/Refract"
-codesign --force --options runtime --timestamp=none --sign "$IDENTITY" "$APP"
-codesign --verify --deep --strict --verbose=2 "$APP"
-# What --deep can't see: every Mach-O inside is signed and its signature valid.
-find "$APP/Contents" -type f -print | while IFS= read -r f; do
-  case "$(file -b "$f")" in
-    *Mach-O*) codesign --verify --strict "$f" || { echo "error: $f is not validly signed" >&2; exit 1; } ;;
-  esac
-done
+"$ROOT/macos/sign-app.sh" "$APP"
+# The release checks (Developer ID, timestamp) run in notarize.sh, from `make mac-release`.
+"$ROOT/macos/verify-app.sh" "$APP"
 echo "$APP"

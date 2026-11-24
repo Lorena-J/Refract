@@ -5,6 +5,12 @@ This folder covers the installable packages: the CLI packages that exist today
 desktop installers being added (macOS and Windows apps, Debian/Ubuntu package, Homebrew
 cask `refract-app`). `server/` is a separate path for server deployments.
 
+The macOS app updates itself with Sparkle from a feed per architecture
+(`appcast-arm64.xml`, `appcast-amd64.xml`) attached to the same GitHub release as the archives it
+points to, written by `scripts/make-appcast.py` from the final, notarized zip; see
+[../macos/README.md](../macos/README.md#updates). Publish desktop releases as full releases (not
+pre-releases): the feed URL is `releases/latest/download/…`.
+
 Keep the portable archives and their enclosing `refract-<tag>-<os>-<arch>/` directory:
 WinGet's nested executable paths depend on that layout.
 
@@ -219,6 +225,20 @@ says where its licence comes from). A seed file without a licence fails the buil
 where the sources are (the TeX Live 2022 archives and Subversion tag) and offers them on request.
 Installers that ship an archive must keep `licenses/tex/` and show it with the other licences. Review
 the overrides again when a template or the bundle changes.
+
+## macOS app signing and notarization
+
+The macOS app (#66) is signed with a Developer ID Application certificate, uses the hardened
+runtime with no entitlements, and is notarized and stapled (#69). `macos/sign-app.sh` signs every
+Mach-O in the bundle inside out, `macos/verify-app.sh --release` fails the build on any unsigned,
+ad hoc or foreign-team Mach-O, and `macos/notarize.sh` submits, staples and assesses it.
+`make mac-release` does all of it locally; `.github/workflows/macos-app.yml` is the reusable
+workflow the release job (#71) calls, and it falls back to an ad hoc, clearly marked build when
+the secrets are absent. Repository secrets, by name: `MACOS_CERT_P12_BASE64`,
+`MACOS_CERT_PASSWORD`, `MACOS_SIGN_IDENTITY`, `NOTARY_KEY_P8_BASE64`, `NOTARY_KEY_ID`,
+`NOTARY_ISSUER_ID`. How the maintainer creates the certificate, the App Store Connect API key,
+the local `notarytool` profile and sets the secrets (`gh secret set`) is in `macos/README.md`,
+"Signing and notarization". Values never go in the repository.
 
 ## Server deployments
 
