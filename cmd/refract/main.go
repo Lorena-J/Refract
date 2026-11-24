@@ -142,6 +142,12 @@ func run(ctx context.Context, opts runOptions) error {
 	if err != nil {
 		return err
 	}
+	if publicOnly {
+		// Before anything is created in the data folder.
+		if err := checkGitForPinning(); err != nil {
+			return err
+		}
+	}
 	cfg, err := parseCompileConfig(os.Getenv)
 	if err != nil {
 		return err
@@ -228,11 +234,6 @@ func run(ctx context.Context, opts runOptions) error {
 		return err
 	}
 	missing := logTools()
-	if publicOnly {
-		if err := checkGitForPinning(); err != nil {
-			return err
-		}
-	}
 	a := &api{
 		missingTools: missing,
 		base:         session,
