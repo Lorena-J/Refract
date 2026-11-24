@@ -16,6 +16,7 @@ Notable changes to Refract. The format follows [Keep a Changelog](https://keepac
 
 ### Changed
 
+- Sign in with ChatGPT is stricter: the sign-in address no longer carries a token, token responses and refreshed ID tokens are verified (a rotation cut short by a restart or a key-server outage resumes without a new login), the local callback ignores stray or malformed requests, a failed code exchange reuses the issued registration, sign-out retries revocation once, and ChatGPT requests don't follow redirects or retry a usage limit.
 - A failed database upgrade now says that nothing was changed and where the copy from before the upgrade is (`refract.db.pre-upgrade`).
 - `refract local` keeps its secret key in the system credential store (macOS Keychain, Secret Service on Linux, Windows Credential Manager), one item per data folder, and falls back to an owner-only `secret.key` in the data folder when no store can be reached, saying so in the log. An existing `secret.key` is kept. If the key is gone from the store for a data folder that was used before, Refract logs that stored credentials can't be read instead of failing.
 
