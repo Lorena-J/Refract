@@ -462,6 +462,8 @@ Refract can use a ChatGPT subscription through "Sign in with ChatGPT", so reques
 
 For a macOS binary downloaded manually with a browser, run `xattr -d com.apple.quarantine refract` once if macOS quarantines it because it isn't signed.
 
+The sign-in checks what ChatGPT returns (tokens, account and callback), keeps the sign-in address free of tokens and prints it if the browser can't be opened.
+
 To restrict a server to one ChatGPT account, set `REFRACT_ALLOWED_SUBJECT` to the subject `refract login` prints.
 
 ### Install the CLI
