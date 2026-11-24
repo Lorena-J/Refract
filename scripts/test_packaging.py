@@ -557,8 +557,9 @@ class ToolsArchiveTests(unittest.TestCase):
             self.assertEqual(
                 hashlib.sha256(source.read_bytes()).hexdigest(),
                 digest,
-                f"{name} differs from licenses.txt; if git converted its line endings, run "
-                f"git checkout -- packaging/tex-seed/licenses/{name}",
+                f"{name} differs from licenses.txt; if git converted its line endings, restore "
+                f"the committed bytes (also when the conversion was staged): git restore "
+                f"--source=HEAD --staged --worktree -- packaging/tex-seed/licenses/{name}",
             )
 
     def test_committed_seed_lists_agree(self):
