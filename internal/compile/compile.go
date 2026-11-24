@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -32,6 +33,7 @@ type Result struct {
 	Superseded bool      `json:"superseded"` // cancelled: a newer compile of the same project, or the caller went away
 	DurationMS int64     `json:"duration_ms"`
 	PDF        string    `json:"pdf,omitempty"` // project-relative path of the PDF, when produced
+	Downloads  Downloads `json:"downloads"`
 }
 
 // Compiler builds mainFile (project-relative) inside projectDir.
@@ -70,6 +72,9 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 	stem := strings.TrimSuffix(base, path.Ext(base))
 	runCtx, cancel := context.WithTimeout(ctx, t.Timeout)
 	defer cancel()
+	// Cancelling procCtx kills tectonic without counting as a timeout.
+	procCtx, stopRun := context.WithCancel(runCtx)
+	defer stopRun()
 	setup := ""
 	sourceDir := projectDir
 	if t.Fonts != nil {
@@ -107,7 +112,7 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 	}
 	var cmd *exec.Cmd
 	if t.Sandbox != nil {
-		cmd, err = t.Sandbox.command(runCtx, sandboxJob{
+		cmd, err = t.Sandbox.command(procCtx, sandboxJob{
 			Tectonic: bin, Args: args, Bundle: t.Bundle, Cache: t.CacheDir,
 			Project: projectDir, OutDir: outDir, Out: sandboxDir(out), WorkDir: workDir, Timeout: t.Timeout,
 		})
@@ -115,7 +120,7 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 			return nil, err
 		}
 	} else {
-		cmd = exec.CommandContext(runCtx, bin, args...)
+		cmd = exec.CommandContext(procCtx, bin, args...)
 		cmd.Dir = workDir
 		// A minimal environment: the document must not be able to \input
 		// /proc/self/environ and read secrets like REFRACT_SECRET_KEY.
@@ -127,7 +132,30 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 	ownProcessGroup(cmd) // a timeout kills everything tectonic started
 	cmd.WaitDelay = 2 * time.Second
 	var stderr limitedBuffer
-	cmd.Stderr = &stderr
+	var dl downloadState
+	var dlMu sync.Mutex // one event at a time, reporter included
+	report := reporterFrom(ctx)
+	stopped := false
+	onEvent := func(e Event) {
+		dlMu.Lock()
+		defer dlMu.Unlock()
+		dl.add(e, time.Now())
+		if report != nil {
+			report(e)
+		}
+		if e.stops() && !dl.finishing {
+			stopped = true
+			stopRun() // before xdvipdfmx: the previous good PDF stays
+		}
+	}
+	// Tectonic writes its notes ("downloading …", "Running xdvipdfmx") to
+	// stdout and its warnings ("failure fetching …") to stderr. Both go to one
+	// writer, so exec gives the child a single pipe for them and the lines
+	// arrive in the order Tectonic wrote them: a failure is judged against the
+	// stage it really happened in, not against whichever stream was read first.
+	pw := &progressWriter{report: onEvent}
+	both := io.MultiWriter(&stderr, pw)
+	cmd.Stdout, cmd.Stderr = both, both
 
 	// The previous build's PDF stays for the preview; this run's counts only if
 	// it created or rewrote the file (a failed retry within the same second
@@ -138,12 +166,30 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 	}
 	start := time.Now()
 	runErr := cmd.Run()
+	pw.close()
+	dlMu.Lock()
+	downloads, wasStopped := dl, stopped
+	dlMu.Unlock()
 	if setup != "" {
 		if err := restoreSyncPaths(out, stem+".synctex.gz", sourceDir, projectDir); err != nil {
 			return nil, err
 		}
 	}
 	res := &Result{DurationMS: time.Since(start).Milliseconds(), Output: stderr.String()}
+	res.Downloads = Downloads{Missing: []string{}, Offline: downloads.offline}
+	// A download cut off by the time limit, a newer compile or the early stop didn't finish.
+	cutOff := ""
+	if wasStopped || ctx.Err() != nil || runCtx.Err() != nil {
+		cutOff = downloads.inProgress()
+	}
+	for f := range downloads.fetched {
+		if f != cutOff && !slices.Contains(downloads.missing, f) {
+			res.Downloads.Fetched++
+		}
+	}
+	if downloads.missing != nil {
+		res.Downloads.Missing = downloads.missing
+	}
 	switch {
 	case ctx.Err() != nil:
 		res.Superseded = true
@@ -151,7 +197,8 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 		res.TimedOut = true
 	}
 	var exitErr *exec.ExitError
-	if errors.As(runErr, &exitErr) && t.Sandbox != nil && cpuLimited(exitErr) && !res.Superseded && !res.TimedOut {
+	// An early stop for a failed download kills with SIGKILL too: not the CPU limit.
+	if errors.As(runErr, &exitErr) && t.Sandbox != nil && cpuLimited(exitErr) && !res.Superseded && !res.TimedOut && !downloads.offline {
 		res.TimedOut, res.CPULimit = true, true
 	}
 	if runErr != nil && !errors.As(runErr, &exitErr) && !res.TimedOut && !res.Superseded {
@@ -163,17 +210,31 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 	if log, err := readIn(out, stem+".log"); err == nil {
 		res.Problems = append(res.Problems, parseLog(string(log))...)
 	}
+	if res.Downloads.Offline {
+		res.Problems = dropDownloadNoise(res.Problems, res.Downloads.Missing)
+		res.Problems = append([]Problem{{Severity: "error", Kind: "download", Message: downloadMessage(res.Downloads.Missing)}}, res.Problems...)
+	}
 	locate(res.Problems, projectDir, mainFile)
 
 	res.OK = runErr == nil && !hasError(res.Problems)
 	if fi, err := statIn(out, stem+".pdf"); err == nil && !fi.ModTime().Before(start.Truncate(time.Second)) && // coarse-mtime filesystems
-		changed(prevPDF, fi) && !res.TimedOut && !res.Superseded {
+		changed(prevPDF, fi) && !res.TimedOut && !res.Superseded && !res.Downloads.Offline {
 		res.PDF = path.Join(BuildDir, stem+".pdf") // produced by this run, possibly with errors
 	}
 	if !res.OK && !hasError(res.Problems) {
 		msg := "Compilation failed."
 		if res.CPULimit {
 			msg = "Compilation used too much CPU time and was stopped. Look for an infinite loop."
+		} else if res.TimedOut && downloads.inProgress() != "" {
+			// Tectonic announces a download but not its end: after a long
+			// quiet spell it may still be a slow transfer, or TeX looping.
+			res.Downloads.Interrupted = true
+			msg = "Still downloading LaTeX packages when the time ran out. Compile again to continue; what was downloaded is kept."
+			if !downloads.downloadingAt(time.Now()) {
+				msg = "Compilation timed out after " + t.Timeout.String() + " while " + downloads.inProgress() + " may still have been downloading. Compile again to continue; what was downloaded is kept. If it times out again, look for an infinite loop."
+			}
+			res.Problems = append([]Problem{{Severity: "error", Kind: "download", Message: msg}}, res.Problems...)
+			return res, nil
 		} else if res.TimedOut {
 			msg = "Compilation timed out after " + t.Timeout.String() + " and was stopped. Look for an infinite loop."
 		} else if res.Superseded {
@@ -182,6 +243,15 @@ func (t *Tectonic) Compile(ctx context.Context, projectDir, mainFile string) (*R
 		res.Problems = append([]Problem{{Severity: "error", Kind: "error", Message: msg}}, res.Problems...)
 	}
 	return res, nil
+}
+
+// downloadMessage explains a stop caused by the package server being out of reach.
+func downloadMessage(missing []string) string {
+	msg := "This document needs LaTeX files that Refract doesn't have yet, and the package server can't be reached. This is a network problem, not an error in your document."
+	if len(missing) > 0 {
+		msg += " Missing: " + strings.Join(missing, ", ") + "."
+	}
+	return msg
 }
 
 // ErrUnsafeBuildDir is returned when the project's build folder is a symbolic
@@ -276,6 +346,7 @@ type Runner struct {
 
 	mu      sync.Mutex
 	running map[string]*slot
+	act     map[string]*liveActivity
 }
 
 type slot struct {
@@ -306,6 +377,13 @@ func (r *Runner) Compile(ctx context.Context, key, projectDir, mainFile string) 
 	if ctx.Err() != nil { // superseded while waiting for the previous build
 		return &Result{Superseded: true, Problems: []Problem{}}, nil
 	}
+	state := "compiling"
+	if _, queued := r.Compiler.(*Queue); queued {
+		state = "queued" // until the queue grants a slot
+	}
+	act := r.startActivity(key, state)
+	defer r.endActivity(key, act)
+	ctx = WithReporter(ctx, func(e Event) { r.onEvent(act, e) })
 	return r.Compiler.Compile(ctx, projectDir, mainFile)
 }
 
